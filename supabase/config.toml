@@ -1,0 +1,68 @@
+project_id = "fimmfxizfxlenzvmfudo"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://localhost"
+
+[ingest]
+enabled = false
+port = 54324
+
+[storage]
+enabled = true
+port = 54325
+image_transformation = {
+  enabled = true
+}
+
+[auth]
+enabled = true
+port = 54326
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["https://fimmfxizfxlenzvmfudo.supabase.co"]
+jwt_expiry = 3600
+enable_signup = true
+enable_confirmations = false
+
+[functions.log-redemption]
+verify_jwt = true
+
+[functions.create-offerx-checkout]
+verify_jwt = true
+
+[functions.check-offerx-subscription]
+verify_jwt = true
+
+[functions.cancel-offerx-subscription]
+verify_jwt = true
+
+[functions.create-partnership-payment]
+verify_jwt = true
+
+[functions.generate-offer-from-website]
+verify_jwt = true
+
+[functions.check-payment-method]
+verify_jwt = true
+
+[functions.create-setup-session]
+verify_jwt = true
+
+[functions.send-location-qr]
+verify_jwt = true
+
+[functions.cancel-partnership]
+verify_jwt = true

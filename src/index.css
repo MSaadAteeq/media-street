@@ -1,0 +1,199 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Offer Ave Design System - Professional QR Code Retail Platform
+All colors MUST be HSL. Modern blue and orange theme with tech-forward aesthetics.
+*/
+
+@layer base {
+  :root {
+    /* Base colors - Clean professional palette - DARK THEME DEFAULT */
+    --background: 218 23% 8%;
+    --foreground: 217 32% 96%;
+
+    --card: 218 23% 10%;
+    --card-foreground: 217 32% 96%;
+
+    --popover: 218 23% 10%;
+    --popover-foreground: 217 32% 96%;
+
+    /* Primary - Brand Blue */
+    --primary: 200 100% 60%;
+    --primary-dark: 200 100% 50%;
+    --primary-light: 200 100% 75%;
+    --primary-foreground: 218 23% 8%;
+
+    /* Accent - Brand Green for CTAs and highlights */
+    --accent-green: 142 76% 45%;
+    --accent-green-dark: 142 76% 36%;
+    --accent-green-light: 142 76% 55%;
+    --accent-green-foreground: 218 23% 8%;
+
+    /* Gradient Purple for overlays and effects */
+    --gradient-purple: 260 100% 85%;
+    --gradient-purple-dark: 260 100% 75%;
+    --gradient-purple-light: 260 100% 90%;
+
+    /* Secondary - Dark blues and grays */
+    --secondary: 218 23% 15%;
+    --secondary-foreground: 217 32% 96%;
+    --secondary-dark: 218 23% 12%;
+
+    --muted: 218 23% 15%;
+    --muted-foreground: 218 11% 65%;
+
+    --accent: 218 23% 15%;
+    --accent-foreground: 217 32% 96%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 218 23% 20%;
+    --input: 218 23% 20%;
+    --ring: 217 91% 60%;
+
+    --radius: 0.75rem;
+
+    /* Success states for positive metrics */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+
+    /* Warning states */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    /* Brand gradients using your established colors */
+    --gradient-primary: linear-gradient(135deg, hsl(200 100% 50%), hsl(200 100% 70%));
+    --gradient-hero: linear-gradient(135deg, hsl(200 100% 50%) 0%, hsl(260 100% 80%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(260 100% 80%) 100%);
+    --gradient-subtle: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(200 50% 98%) 100%);
+    --gradient-rainbow: linear-gradient(90deg, hsl(198 100% 40%), hsl(142 76% 36%), hsl(277 68% 62%), hsl(344 72% 53%), hsl(51 95% 53%));
+    --gradient-vibrant: linear-gradient(45deg, hsl(198 100% 40%) 0%, hsl(142 76% 36%) 20%, hsl(277 68% 62%) 40%, hsl(344 72% 53%) 60%, hsl(51 95% 53%) 80%, hsl(271 91% 65%) 100%);
+
+    /* Shadows for logo */
+    --shadow-logo: 0 20px 40px -12px hsl(var(--primary) / 0.25);
+
+    /* QR Code pattern backgrounds using brand colors */
+    --qr-pattern-light: hsl(200 50% 98%);
+    --qr-pattern-dark: hsl(200 100% 50%);
+
+    /* Shadows using brand primary color */
+    --shadow-soft: 0 4px 20px -4px hsl(200 100% 50% / 0.1);
+    --shadow-medium: 0 10px 40px -10px hsl(200 100% 50% / 0.2);
+    --shadow-strong: 0 20px 60px -20px hsl(200 100% 50% / 0.3);
+
+    /* Sidebar variables */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 218 23% 23%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 32% 96%;
+    --sidebar-accent-foreground: 218 23% 23%;
+    --sidebar-border: 217 32% 89%;
+    --sidebar-ring: 217 91% 60%;
+  }
+
+  .dark {
+    /* Dark mode - Professional dark theme */
+    --background: 218 23% 8%;
+    --foreground: 217 32% 96%;
+
+    --card: 218 23% 10%;
+    --card-foreground: 217 32% 96%;
+
+    --popover: 218 23% 10%;
+    --popover-foreground: 217 32% 96%;
+
+    --primary: 200 100% 60%;
+    --primary-dark: 200 100% 50%;
+    --primary-light: 200 100% 75%;
+    --primary-foreground: 218 23% 8%;
+
+    --accent-green: 142 76% 45%;
+    --accent-green-dark: 142 76% 36%;
+    --accent-green-light: 142 76% 55%;
+    --accent-green-foreground: 218 23% 8%;
+
+    --gradient-purple: 260 100% 85%;
+    --gradient-purple-dark: 260 100% 75%;
+    --gradient-purple-light: 260 100% 90%;
+
+    --success: 142 76% 45%;
+    --warning: 38 92% 60%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(200 100% 60%), hsl(200 100% 75%));
+    --gradient-hero: linear-gradient(135deg, hsl(200 100% 60%) 0%, hsl(260 100% 85%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(142 76% 45%) 0%, hsl(260 100% 85%) 100%);
+    --gradient-subtle: linear-gradient(180deg, hsl(218 23% 8%) 0%, hsl(218 23% 12%) 100%);
+    --gradient-rainbow: linear-gradient(90deg, hsl(198 100% 40%), hsl(142 76% 36%), hsl(277 68% 62%), hsl(344 72% 53%), hsl(51 95% 53%));
+    --gradient-vibrant: linear-gradient(45deg, hsl(198 100% 40%) 0%, hsl(142 76% 36%) 20%, hsl(277 68% 62%) 40%, hsl(344 72% 53%) 60%, hsl(51 95% 53%) 80%, hsl(271 91% 65%) 100%);
+
+    --qr-pattern-light: hsl(218 23% 15%);
+    --qr-pattern-dark: hsl(200 100% 60%);
+
+    --shadow-soft: 0 4px 20px -4px hsl(0 0% 0% / 0.3);
+    --shadow-medium: 0 10px 40px -10px hsl(0 0% 0% / 0.4);
+    --shadow-strong: 0 20px 60px -20px hsl(0 0% 0% / 0.5);
+
+    --sidebar-background: 218 23% 10%;
+    --sidebar-foreground: 217 32% 96%;
+    --sidebar-primary: 217 91% 75%;
+    --sidebar-primary-foreground: 218 23% 8%;
+    --sidebar-accent: 218 23% 15%;
+    --sidebar-accent-foreground: 217 32% 96%;
+    --sidebar-border: 218 23% 20%;
+    --sidebar-ring: 217 91% 75%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  /* Custom utility classes for Offer Ave branding */
+  .gradient-hero {
+    background: var(--gradient-hero);
+  }
+  
+  .gradient-primary {
+    background: var(--gradient-primary);
+  }
+  
+  .gradient-subtle {
+    background: var(--gradient-subtle);
+  }
+
+  .text-gradient-primary {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+  
+  .shadow-medium {
+    box-shadow: var(--shadow-medium);
+  }
+  
+  .shadow-strong {
+    box-shadow: var(--shadow-strong);
+  }
+  
+  /* QR Pattern backgrounds */
+  .qr-pattern {
+    background-image: 
+      radial-gradient(circle at 2px 2px, var(--qr-pattern-dark) 1px, transparent 0),
+      radial-gradient(circle at 14px 14px, var(--qr-pattern-dark) 1px, transparent 0);
+    background-size: 16px 16px;
+    background-color: var(--qr-pattern-light);
+  }
+}
