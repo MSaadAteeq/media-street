@@ -85,7 +85,7 @@ export default function Login() {
       } else {
         toast({
           title: "Welcome!",
-          description: "You've been signed in successfully.",
+          description: "You've been signed in successfully",
         });
         localStorage.setItem('token', response.token)
         navigate("/dashboard");
