@@ -37,7 +37,7 @@ const apiHandler = async ({
   const apiInterceptor = axios.create({
     baseURL,
     timeoutErrorMessage: "Request timeout! please retry.",
-    withCredentials: true,
+    // withCredentials: true,
     // credentials: "include",
     ...headers(),
   });
