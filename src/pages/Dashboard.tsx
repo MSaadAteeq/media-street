@@ -481,6 +481,7 @@ const Dashboard = () => {
 
   const handleLogout = () => {
     // Static logout - just navigate to login
+    localStorage.removeItem('token')
     navigate('/login');
   };
 
