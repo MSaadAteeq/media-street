@@ -20,6 +20,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
 import { SupportDialog } from "@/components/SupportDialog";
+import { useDispatch } from "react-redux";
+import { authActions } from "@/store/auth/auth";
+import type { AppDispatch } from "@/store";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -40,6 +43,8 @@ const Dashboard = () => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [supportDialogOpen, setSupportDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  const dispatch = useDispatch<AppDispatch>();
 
   // Static data - completely hardcoded
   const staticOffers = [
@@ -481,6 +486,7 @@ const Dashboard = () => {
 
   const handleLogout = () => {
     // Static logout - just navigate to login
+    dispatch(authActions.logout())
     localStorage.removeItem('token')
     navigate('/login');
   };

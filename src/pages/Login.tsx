@@ -15,12 +15,17 @@ import { Store, ArrowRight } from "lucide-react";
 import Logo from "@/components/Logo";
 import smallBusinessPartnerships from "@/assets/small-business-partnerships.jpg";
 import { post } from "@/services/apis";
+import { useDispatch } from "react-redux";
+import { authActions } from "@/store/auth/auth";
+import type { AppDispatch } from "@/store";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   rememberMe: z.boolean().optional(),
 });
+
+// const dispatch = useDispatch();
 
 const signupSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -40,6 +45,10 @@ export default function Login() {
   const [activeTab, setActiveTab] = useState("signin");
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // console.log(authActions);
+
+  const dispatch = useDispatch<AppDispatch>();
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -75,14 +84,16 @@ export default function Login() {
           password: data.password
         }
       })
-
+      // dispatch(authActions)
       if (response.status !== "success") {
         toast({
           title: "Sign In Failed",
           description: response.message,
           variant: "destructive",
         });
+
       } else {
+        dispatch(authActions.login({ email: data.email, fullName: response?.data?.user?.fullName }));
         toast({
           title: "Welcome!",
           description: "You've been signed in successfully",
