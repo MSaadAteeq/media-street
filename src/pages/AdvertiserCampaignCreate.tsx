@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ArrowRight, Check, Upload, Zap, MapPin, CreditCard, ExternalLink, Clock, Map } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { QRCodeSVG } from 'qrcode.react';
 import RetailerSelectionMap from "@/components/RetailerSelectionMap";
 import mediaStreetIcon from "@/assets/media-street-logo-icon.png";
@@ -177,30 +177,17 @@ const AdvertiserCampaignCreate = () => {
     }
     setIsGenerating(true);
     try {
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('generate-offer-from-website', {
-        body: {
-          website
-        }
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      if (data?.callToAction) {
-        setCallToAction(data.callToAction);
-      }
-      if (data?.businessName && !campaignName) {
-        setCampaignName(`${data.businessName} Campaign`);
-      }
-      if (data?.offerImageUrl) {
-        const imageResponse = await fetch(data.offerImageUrl);
-        const imageBlob = await imageResponse.blob();
-        const imageFile = new File([imageBlob], 'campaign-image.png', {
-          type: imageBlob.type || 'image/png'
-        });
-        setCampaignImage(imageFile);
-      }
+      // TODO: Replace with Node.js API call
+      // const response = await post({ end_point: 'offers/generate-from-website', body: { website } });
+      // if (response.data?.callToAction) {
+      //   setCallToAction(response.data.callToAction);
+      // }
+      // if (response.data?.businessName && !campaignName) {
+      //   setCampaignName(`${response.data.businessName} Campaign`);
+      // }
+      
+      // Mock implementation
+      toast.info('Campaign generation will be available after API integration');
       toast({
         title: "Success",
         description: "AI generated your campaign!"
@@ -250,12 +237,19 @@ const AdvertiserCampaignCreate = () => {
     }
     setLoading(true);
     try {
-      const {
-        data: {
-          user
-        }
-      } = await supabase.auth.getUser();
-      if (!user) {
+      // TODO: Replace with Node.js API calls
+      // const userResponse = await get({ end_point: 'auth/me' });
+      // const paymentResponse = await post({ 
+      //   end_point: 'advertiser/create-campaign-payment', 
+      //   body: {
+      //     campaign_data: { ... },
+      //     store_count: selectedRetailers.length,
+      //     retailers: selectedRetailers
+      //   }
+      // });
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
         toast({
           title: "Authentication Required",
           description: "Please log in to create campaigns",
@@ -263,41 +257,22 @@ const AdvertiserCampaignCreate = () => {
         });
         return;
       }
-
-      // Campaign will be created after successful payment via webhook
-      const campaignData = {
-        user_id: user.id,
-        campaign_name: campaignName,
-        call_to_action: callToAction,
-        website: website,
-        total_stores: selectedRetailers.length,
-        weekly_cost: totalWeeklyCost
-      };
-
-      // Create Stripe checkout session
-      const {
-        data: paymentData,
-        error: paymentError
-      } = await supabase.functions.invoke('create-campaign-payment', {
-        body: {
-          campaign_data: campaignData,
-          store_count: selectedRetailers.length,
-          retailers: selectedRetailers
-        }
-      });
-      if (paymentError) throw paymentError;
-      if (paymentData?.url) {
-        window.open(paymentData.url, '_blank');
-        toast({
-          title: "Redirecting to Payment",
-          description: "Complete your payment in the new tab"
-        });
-
-        // Navigate back to dashboard after short delay
-        setTimeout(() => {
-          navigate('/advertiser/dashboard');
-        }, 2000);
-      }
+      
+      // Mock implementation
+      toast.info('Campaign payment will be available after API integration');
+      return;
+      
+      // TODO: Uncomment when API is ready:
+      // if (paymentResponse.data?.url) {
+      //   window.open(paymentResponse.data.url, '_blank');
+      //   toast({
+      //     title: "Redirecting to Payment",
+      //     description: "Complete your payment in the new tab"
+      //   });
+      //   setTimeout(() => {
+      //     navigate('/advertiser/dashboard');
+      //   }, 2000);
+      // }
     } catch (error) {
       console.error("Error creating campaign:", error);
       toast({

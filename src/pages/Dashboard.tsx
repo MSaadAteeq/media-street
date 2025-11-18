@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWeeklyCountdown } from "@/hooks/useWeeklyCountdown";
 import coffeePromo from "@/assets/coffee-promo.jpg";
@@ -18,11 +18,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Toaster } from "@/components/ui/toaster";
+// import { Toaster } from "@/components/ui/toaster";
 import { SupportDialog } from "@/components/SupportDialog";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
+import { get, post } from "@/services/apis";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -45,48 +46,105 @@ const Dashboard = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const dispatch = useDispatch<AppDispatch>();
+  const authData = useSelector((state: any) => state.auth.authData);
 
-  // Static data - completely hardcoded
-  const staticOffers = [
-    {
-      id: 1,
-      call_to_action: "Get 20% off your first purchase",
-      is_active: true,
-      redemption_start_date: "2024-01-01",
-      redemption_end_date: "2024-12-31",
-      redemption_code_prefix: "OFFER"
-    }
-  ];
+  // Dynamic data state
+  const [offers, setOffers] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [partnerships, setPartnerships] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [hasOpenOffer, setHasOpenOffer] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    inboundViews: 0,
+    outboundViews: 0,
+    totalRedemptions: 0,
+    activeOffers: 0
+  });
 
-  const staticLocations = [
-    {
-      id: 1,
-      name: "Sally's Salon",
-      address: "120 Broadway New York, NY",
-      is_active: true
-    }
-  ];
+  // Fetch dashboard data on mount
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
 
-  const staticPartnerships = [
-    {
-      id: 1,
-      retailer_id: "user-1",
-      partner_id: "user-2",
-      status: "active"
-    }
-  ];
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch user profile
+      try {
+        const userResponse = await get({ end_point: 'users/me', token: true });
+        if (userResponse.success && userResponse.data) {
+          setCurrentUser(userResponse.data);
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      }
 
-  const staticCurrentUser = {
-    id: 'user-3',
-    profile: {
-      first_name: "Kris",
-      store_name: "Sally's Salon"
+      // Fetch locations
+      try {
+        const locationsResponse = await get({ end_point: 'locations', token: true });
+        if (locationsResponse.success && locationsResponse.data) {
+          setLocations(locationsResponse.data);
+        }
+      } catch (error) {
+        console.error('Error fetching locations:', error);
+      }
+
+      // Fetch offers
+      try {
+        const offersResponse = await get({ end_point: 'offers', token: true });
+        if (offersResponse.success && offersResponse.data) {
+          setOffers(offersResponse.data);
+          const activeOffers = offersResponse.data.filter((o: any) => o.is_active);
+          setHasOpenOffer(activeOffers.some((o: any) => o.is_open_offer));
+          
+          // Calculate stats
+          const totalRedemptions = offersResponse.data.reduce((sum: number, o: any) => sum + (o.redemption_count || 0), 0);
+          setStats(prev => ({
+            ...prev,
+            activeOffers: activeOffers.length,
+            totalRedemptions
+          }));
+        }
+      } catch (error) {
+        console.error('Error fetching offers:', error);
+      }
+
+      // Fetch partnerships
+      try {
+        const partnersResponse = await get({ end_point: 'partners', token: true });
+        if (partnersResponse.success && partnersResponse.data) {
+          setPartnerships(partnersResponse.data);
+        }
+      } catch (error) {
+        console.error('Error fetching partnerships:', error);
+      }
+
+      // Fetch redemptions for stats
+      try {
+        const redemptionsResponse = await get({ end_point: 'redemptions', token: true });
+        if (redemptionsResponse.success && redemptionsResponse.data) {
+          // Calculate inbound/outbound views from redemptions
+          // This is a simplified calculation - adjust based on your data structure
+          setStats(prev => ({
+            ...prev,
+            inboundViews: redemptionsResponse.data.length || 0,
+            outboundViews: redemptionsResponse.data.length || 0
+          }));
+        }
+      } catch (error) {
+        console.error('Error fetching redemptions:', error);
+      }
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const staticHasOpenOffer = true;
-
-  const validateRedemptionCode = (code: string) => {
+  const validateRedemptionCode = async (code: string) => {
     if (!code.trim()) {
       return {
         isValid: false,
@@ -94,40 +152,44 @@ const Dashboard = () => {
       };
     }
 
-    // Check if code matches any active offer
-    const matchingOffer = staticOffers.find(offer => {
-      const prefix = offer.redemption_code_prefix || 'OFFER';
-      return code.toUpperCase().startsWith(prefix.toUpperCase());
-    });
+    try {
+      // Verify redemption code via API
+      const response = await post({ 
+        end_point: 'redemptions/verify', 
+        body: { code },
+        token: true
+      });
 
-    if (!matchingOffer) {
+      if (response.success && response.data?.valid) {
+        return {
+          isValid: true,
+          offer: response.data.offer
+        };
+      } else {
+        return {
+          isValid: false,
+          error: response.message || "Invalid redemption code"
+        };
+      }
+    } catch (error: any) {
+      // Fallback: Check if code matches any active offer
+      const matchingOffer = offers.find((offer: any) => {
+        const prefix = offer.redemption_code_prefix || offer.redemption_code || 'OFFER';
+        return code.toUpperCase().startsWith(prefix.toUpperCase());
+      });
+
+      if (!matchingOffer) {
+        return {
+          isValid: false,
+          error: "This code doesn't match any of your active offers. Please check your My Offers section."
+        };
+      }
+
       return {
-        isValid: false,
-        error: "This code doesn't match any of your active offers. Please check your My Offers section."
+        isValid: true,
+        offer: matchingOffer
       };
     }
-
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-
-    if (matchingOffer.redemption_start_date && todayStr < matchingOffer.redemption_start_date) {
-      return {
-        isValid: false,
-        error: "This offer's redemption period hasn't started yet."
-      };
-    }
-
-    if (matchingOffer.redemption_end_date && todayStr > matchingOffer.redemption_end_date) {
-      return {
-        isValid: false,
-        error: "This offer's redemption period has ended."
-      };
-    }
-
-    return {
-      isValid: true,
-      offer: matchingOffer
-    };
   };
 
   const handlePrintOffer = (imageSrc: string) => {
@@ -454,34 +516,54 @@ const Dashboard = () => {
     return "/lovable-uploads/21938e2c-ec16-42e4-aa4b-d9b87ba22815.png";
   };
 
-  const handleLogRedemption = () => {
+  const handleLogRedemption = async () => {
     if (!couponCode.trim()) return;
 
     setIsLoading(true);
-    const validation = validateRedemptionCode(couponCode);
+    try {
+      const validation = await validateRedemptionCode(couponCode);
 
-    if (!validation.isValid) {
+      if (!validation.isValid) {
+        toast({
+          title: "Invalid Redemption Code",
+          description: validation.error,
+          variant: "destructive"
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Create redemption via API
+      const response = await post({
+        end_point: 'redemptions',
+        body: {
+          redemption_code: couponCode,
+          offer_id: validation.offer?.id
+        },
+        token: true
+      });
+
+      if (response.success) {
+        toast({
+          title: "Redemption Logged Successfully!",
+          description: response.message || `Coupon code "${couponCode}" logged successfully!`
+        });
+
+        setCouponCode("");
+        // Refresh dashboard data
+        fetchDashboardData();
+      } else {
+        throw new Error(response.message || 'Failed to log redemption');
+      }
+    } catch (error: any) {
       toast({
-        title: "Invalid Redemption Code",
-        description: validation.error,
+        title: "Error",
+        description: error?.response?.data?.message || error?.message || "Failed to log redemption",
         variant: "destructive"
       });
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    // Simulate API call delay
-    setTimeout(() => {
-      const pointsMessage = Math.random() > 0.5 ? `You and Joe's Coffee each earned 1 leaderboard point!` : 'You earned 1 leaderboard point!';
-
-      toast({
-        title: "Redemption Logged Successfully!",
-        description: `Coupon code "${couponCode}" logged for: ${validation.offer.call_to_action}. ${pointsMessage}`
-      });
-
-      setCouponCode("");
-      setIsLoading(false);
-    }, 1000);
   };
 
   const handleLogout = () => {
@@ -667,7 +749,7 @@ const Dashboard = () => {
                       <div className="flex items-center justify-between">
                         <div className="space-y-1">
                           <p className="text-sm text-muted-foreground">Inbound Views This Week</p>
-                          <p className="text-3xl font-bold text-primary">23</p>
+                          <p className="text-3xl font-bold text-primary">{stats.inboundViews}</p>
                         </div>
                         <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center">
                           <QrCode className="h-6 w-6 text-primary" />
@@ -689,7 +771,7 @@ const Dashboard = () => {
                       <div className="flex items-center justify-between">
                         <div className="space-y-1">
                           <p className="text-sm text-muted-foreground">Outbound Views This Week</p>
-                          <p className="text-3xl font-bold text-accent-green">15</p>
+                          <p className="text-3xl font-bold text-accent-green">{stats.outboundViews}</p>
                         </div>
                         <div className="h-12 w-12 bg-accent-green/10 rounded-full flex items-center justify-center">
                           <QrCode className="h-6 w-6 text-accent-green" />
@@ -710,7 +792,7 @@ const Dashboard = () => {
               {/* Welcome Section */}
               <div className="space-y-2">
                 <h1 className="text-3xl font-bold text-foreground">
-                  Welcome Back{staticCurrentUser?.profile?.first_name ? `, ${staticCurrentUser.profile.first_name}` : ''}
+                  Welcome Back{currentUser?.fullName ? `, ${currentUser.fullName.split(' ')[0]}` : authData?.fullName ? `, ${authData.fullName.split(' ')[0]}` : ''}
                 </h1>
                 <p className="text-muted-foreground">Here's the latest summary for your stores on Media Street</p>
               </div>
@@ -772,7 +854,7 @@ const Dashboard = () => {
                           <div className="w-6 h-6 bg-primary/20 rounded-full flex items-center justify-center text-xs font-bold text-primary">1</div>
                           <span className="text-sm font-semibold text-foreground">Create Your Offer</span>
                         </div>
-                        <Checkbox checked={staticOffers.length > 0} className={staticOffers.length > 0 ? "data-[state=checked]:bg-accent-green data-[state=checked]:border-accent-green" : "border-muted-foreground/30"} disabled />
+                        <Checkbox checked={offers.length > 0} className={offers.length > 0 ? "data-[state=checked]:bg-accent-green data-[state=checked]:border-accent-green" : "border-muted-foreground/30"} disabled />
                       </div>
                       <p className="text-xs text-muted-foreground">Design an offer that will appear at partner stores</p>
                       <Button variant="link" size="sm" onClick={() => navigate('/offers/create')} className="text-xs p-0 h-auto">
@@ -807,7 +889,7 @@ const Dashboard = () => {
                           <div className="w-6 h-6 bg-primary/20 rounded-full flex items-center justify-center text-xs font-bold text-primary">3</div>
                           <span className="text-sm font-semibold text-foreground">Get Partners</span>
                         </div>
-                        <Checkbox checked={staticPartnerships.length > 0 || staticHasOpenOffer} className={staticPartnerships.length > 0 || staticHasOpenOffer ? "data-[state=checked]:bg-accent-green data-[state=checked]:border-accent-green" : "border-muted-foreground/30"} disabled />
+                        <Checkbox checked={partnerships.length > 0 || hasOpenOffer} className={partnerships.length > 0 || hasOpenOffer ? "data-[state=checked]:bg-accent-green data-[state=checked]:border-accent-green" : "border-muted-foreground/30"} disabled />
                       </div>
                       <p className="text-xs text-muted-foreground">Send/accept partner requests or sign up for Open Offer</p>
                       <div className="flex gap-2">
@@ -827,7 +909,7 @@ const Dashboard = () => {
                           <div className="w-6 h-6 bg-primary/20 rounded-full flex items-center justify-center text-xs font-bold text-primary">4</div>
                           <span className="text-sm font-semibold text-foreground">Scale Up</span>
                         </div>
-                        <Checkbox checked={staticLocations.length >= 2} className={staticLocations.length >= 2 ? "data-[state=checked]:bg-accent-green data-[state=checked]:border-accent-green" : "border-muted-foreground/30"} disabled />
+                        <Checkbox checked={locations.length >= 2} className={locations.length >= 2 ? "data-[state=checked]:bg-accent-green data-[state=checked]:border-accent-green" : "border-muted-foreground/30"} disabled />
                       </div>
                       <p className="text-xs text-muted-foreground">See what's working and add multiple store locations</p>
                       <Button variant="link" size="sm" onClick={() => navigate('/locations')} className="text-xs p-0 h-auto">
@@ -934,8 +1016,8 @@ const Dashboard = () => {
                     >
                       <div className="text-xs text-muted-foreground mb-1">Open Offer</div>
                       <div className="flex items-center gap-2">
-                        <Badge variant={staticHasOpenOffer ? "default" : "secondary"} className={staticHasOpenOffer ? "bg-accent-green text-white" : ""}>
-                          {staticHasOpenOffer ? "On" : "Off"}
+                        <Badge variant={hasOpenOffer ? "default" : "secondary"} className={hasOpenOffer ? "bg-accent-green text-white" : ""}>
+                          {hasOpenOffer ? "On" : "Off"}
                         </Badge>
                       </div>
                     </div>
@@ -1309,7 +1391,7 @@ const Dashboard = () => {
           </AlertDialogContent>
         </AlertDialog>
 
-        <Toaster />
+        {/* <Toaster /> */}
       </div>
     </TooltipProvider>
   );

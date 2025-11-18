@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MapPin, Sparkles, QrCode } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { QRCodeSVG } from "qrcode.react";
 import coffeeCampaign from "@/assets/pos-campaign-coffee.jpg";
@@ -93,53 +93,21 @@ const RecentOffers = () => {
   const fetchRecentOffers = async (location?: string) => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("offers")
-        .select(`
-          id,
-          call_to_action,
-          created_at,
-          location_id,
-          offer_image_url,
-          brand_logo_url,
-          locations (
-            id,
-            name,
-            address
-          )
-        `)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(10);
-
-      if (error) {
-        console.error("Error fetching offers:", error);
-        // Use sample data as fallback
-        let filteredData = sampleCampaigns;
-        if (location) {
-          filteredData = sampleCampaigns.filter((offer: any) => {
-            const searchLower = location.toLowerCase();
-            return offer.locations.name?.toLowerCase().includes(searchLower) || 
-                   offer.locations.address?.toLowerCase().includes(searchLower);
-          });
-        }
-        setOffers(filteredData);
-        return;
-      }
-
-      let filteredData = data || [];
-      if (location && filteredData.length > 0) {
-        filteredData = filteredData.filter((offer: any) => {
-          const locationData = offer.locations;
-          if (!locationData) return false;
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'offers/recent' });
+      // let filteredData = response.data || [];
+      
+      // Use sample data for now
+      let filteredData = sampleCampaigns;
+      if (location) {
+        filteredData = sampleCampaigns.filter((offer: any) => {
           const searchLower = location.toLowerCase();
-          return locationData.name?.toLowerCase().includes(searchLower) || 
-                 locationData.address?.toLowerCase().includes(searchLower);
+          return offer.locations.name?.toLowerCase().includes(searchLower) || 
+                 offer.locations.address?.toLowerCase().includes(searchLower);
         });
       }
       
-      // Use sample data if no real data
-      setOffers(filteredData.length > 0 ? filteredData : sampleCampaigns);
+      setOffers(filteredData);
     } catch (error) {
       console.error("Error fetching offers:", error);
       setOffers(sampleCampaigns);

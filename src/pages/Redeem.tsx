@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { Clock, Map, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { QRCodeSVG } from "qrcode.react";
@@ -155,9 +155,11 @@ const Redeem = () => {
         return;
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
+      // TODO: Replace with Node.js API call
+      // const response = await post({ end_point: 'redemptions/log', body: { redemption_code: redemptionCode, offer_id: offer.id } });
       
-      if (!session) {
+      const token = localStorage.getItem('token');
+      if (!token) {
         toast({
           title: "Authentication Required",
           description: "Please log in to redeem this offer.",
@@ -166,19 +168,9 @@ const Redeem = () => {
         navigate(`/login?redirect=/redeem/${offerCode}`);
         return;
       }
-
-      const { data, error } = await supabase.functions.invoke('log-redemption', {
-        body: {
-          redemption_code: redemptionCode,
-          offer_id: offer.id
-        }
-      });
-
-      if (error) throw error;
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
+      
+      // Mock implementation
+      // In real implementation, use response.data
 
       setIsRedeemed(true);
       toast({

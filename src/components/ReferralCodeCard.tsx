@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Copy, Check, Gift } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { toast } from "@/hooks/use-toast";
 
 const ReferralCodeCard = () => {
@@ -19,23 +19,17 @@ const ReferralCodeCard = () => {
 
   const fetchReferralCode = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('referral_code')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error) {
-        console.error('Error fetching referral code:', error);
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'profile/referral-code' });
+      // setReferralCode(response.data.referral_code || '');
+      
+      // Mock implementation
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setLoading(false);
         return;
       }
-
-      if (data?.referral_code) {
-        setReferralCode(data.referral_code);
-      }
+      setReferralCode('REF12345');
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -45,22 +39,15 @@ const ReferralCodeCard = () => {
 
   const fetchWeeklyPoints = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase.rpc('get_current_week_leaderboard');
-
-      if (error) {
-        console.error('Error fetching weekly points:', error);
-        return;
-      }
-
-      if (data) {
-        const currentUserEntry = data.find((entry: any) => entry.user_id === user.id);
-        if (currentUserEntry) {
-          setWeeklyPoints(currentUserEntry.points || 0);
-        }
-      }
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'leaderboard/weekly' });
+      // const currentUserEntry = response.data.find((entry: any) => entry.user_id === currentUserId);
+      // if (currentUserEntry) {
+      //   setWeeklyPoints(currentUserEntry.points || 0);
+      // }
+      
+      // Mock implementation
+      setWeeklyPoints(0);
     } catch (error) {
       console.error('Error:', error);
     }

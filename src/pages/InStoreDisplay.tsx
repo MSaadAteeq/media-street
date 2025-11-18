@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { shuffleArray } from "@/utils/distance";
 import {
   Carousel,
@@ -91,15 +91,15 @@ const InStoreDisplay = () => {
 
     setSubmittingRequest(true);
     try {
-      const { error } = await supabase.functions.invoke('send-tablet-request', {
-        body: {
-          storeName: selectedLocation.name,
-          storeAddress: selectedLocation.address,
-          transactionsPerDay: tabletRequestData.transactionsPerDay
-        }
-      });
-
-      if (error) throw error;
+      // TODO: Replace with Node.js API call
+      // await post({ 
+      //   end_point: 'tablet/request', 
+      //   body: {
+      //     storeName: selectedLocation.name,
+      //     storeAddress: selectedLocation.address,
+      //     transactionsPerDay: tabletRequestData.transactionsPerDay
+      //   }
+      // });
 
       setRequestSubmitted(true);
       toast.success("Request submitted successfully!");

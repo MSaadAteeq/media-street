@@ -26,8 +26,9 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { useToast } from "@/hooks/use-toast";
+import { get, deleteApi } from "@/services/apis";
 import {
   Table,
   TableBody,
@@ -47,6 +48,8 @@ interface Offer {
   created_at: string;
   is_active: boolean;
   redemption_count: number;
+  is_open_offer?: boolean;
+  available_for_partnership?: boolean;
 }
 
 interface Location {
@@ -77,150 +80,249 @@ const Offers = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [allOpenOffers, setAllOpenOffers] = useState<any[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOpenOffers, setLoadingOpenOffers] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("your-offers");
 
   useEffect(() => {
-    fetchOffers();
+    // Fetch locations first, then offers (so locations are available for mapping)
+    fetchLocations().then(() => {
+      fetchOffers();
+    });
     fetchRedemptions();
-    fetchLocations();
+    fetchAllOpenOffers();
   }, []);
+
+  const fetchAllOpenOffers = async () => {
+    try {
+      setLoadingOpenOffers(true);
+      // Fetch all open offers from all retailers (public endpoint)
+      const response = await get({ 
+        end_point: 'offers/open',
+        token: false // Public endpoint - no auth required
+      });
+      
+      if (response.success && response.data) {
+        // Get current user ID to exclude own offers
+        const currentUserResponse = await get({ 
+          end_point: 'users/me',
+          token: true
+        });
+        const currentUserId = currentUserResponse.success && currentUserResponse.data 
+          ? (currentUserResponse.data._id?.toString() || currentUserResponse.data.id?.toString())
+          : null;
+
+        // Format open offers data and exclude current user's offers
+        const formattedOpenOffers = response.data
+          .filter((offer: any) => {
+            // Exclude current user's own offers
+            const offerUserId = offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
+            return offerUserId !== currentUserId;
+          })
+          .map((offer: any) => {
+            const offerLocations = Array.isArray(offer.locations) 
+              ? offer.locations.map((loc: any) => {
+                  if (loc && typeof loc === 'object' && loc._id) {
+                    return {
+                      name: loc.name || '',
+                      address: loc.address || ''
+                    };
+                  }
+                  return { name: 'Unknown', address: '' };
+                })
+              : [];
+
+            return {
+              id: offer._id?.toString() || offer.id?.toString(),
+              call_to_action: offer.callToAction || offer.call_to_action || '',
+              locations: offerLocations,
+              created_at: offer.createdAt || offer.created_at || new Date().toISOString(),
+              is_active: offer.isActive !== undefined ? offer.isActive : (offer.is_active !== undefined ? offer.is_active : true),
+              redemption_count: offer.redemptionCount || offer.redemption_count || 0,
+              is_open_offer: true,
+              retailer_name: offer.user?.fullName || 'Unknown Retailer',
+              retailer_email: offer.user?.email || ''
+            };
+          });
+        
+        setAllOpenOffers(formattedOpenOffers);
+      } else {
+        setAllOpenOffers([]);
+      }
+    } catch (error) {
+      console.error('Error fetching all open offers:', error);
+      setAllOpenOffers([]);
+    } finally {
+      setLoadingOpenOffers(false);
+    }
+  };
 
   const fetchLocations = async () => {
     try {
-      const { data, error } = await supabase
-        .from("locations")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      // Add sample locations with current offers if no real data exists
-      if (!data || data.length === 0) {
-        const sampleLocations = [
-          {
-            id: "loc-1",
-            name: "Coffee Corner",
-            address: "123 Main St",
-            current_offer: { id: "sample-1", call_to_action: "Get 15% off your coffee order" },
-            total_redemptions: 23
-          },
-          {
-            id: "loc-2", 
-            name: "Bloom & Blossom",
-            address: "456 Garden Ave",
-            current_offer: { id: "sample-2", call_to_action: "Buy 2 get 1 free flowers" },
-            total_redemptions: 8
-          },
-          {
-            id: "loc-3",
-            name: "Bistro 789", 
-            address: "789 Food Plaza",
-            current_offer: null,
-            total_redemptions: 41
-          },
-          {
-            id: "loc-4",
-            name: "Tech Repair Hub",
-            address: "321 Digital Dr",
-            current_offer: null,
-            total_redemptions: 0
-          }
-        ];
-        setLocations(sampleLocations);
-      } else {
-        // Add total_redemptions to real data
-        const locationsWithRedemptions = data.map(location => ({
-          ...location,
-          total_redemptions: 0 // This would be calculated from actual redemption data
-        }));
-        setLocations(locationsWithRedemptions);
+      // Fetch locations from backend API
+      const response = await get({ 
+        end_point: 'locations',
+        token: true
+      });
+      
+      if (response.success && response.data) {
+        setLocations(response.data);
+        return;
       }
     } catch (error) {
-      console.error("Error fetching locations:", error);
+      console.error('Error fetching locations from API:', error);
     }
+    
+    // If API fails, set empty array (no fallback to static data)
+    setLocations([]);
   };
 
   const fetchOffers = async () => {
     try {
-      const { data, error } = await supabase
-        .from("offers")
-        .select(`
-          id,
-          call_to_action,
-          created_at,
-          is_active,
-          location:locations(name, address)
-        `)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      // Get redemption counts for each offer and convert to new format
-      const offersWithCounts = await Promise.all(
-        (data || []).map(async (offer) => {
-          const { count } = await supabase
-            .from("offer_redemptions")
-            .select("*", { count: "exact" })
-            .eq("offer_id", offer.id);
-
-          return {
-            ...offer,
-            locations: offer.location ? [offer.location] : [], // Convert single location to array
-            redemption_count: count || 0,
-          };
-        })
-      );
-
-      // Add sample data if no real data exists
-      if (offersWithCounts.length === 0) {
-        const sampleOffers = [
-          {
-            id: "sample-1",
-            call_to_action: "Get 15% off your coffee order",
-            locations: [
-              { name: "Coffee Corner", address: "123 Main St" },
-              { name: "Coffee Corner East", address: "456 Oak Ave" }
-            ],
-            created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            is_active: true,
-            redemption_count: 23
-          },
-          {
-            id: "sample-2", 
-            call_to_action: "Buy 2 get 1 free flowers",
-            locations: [
-              { name: "Bloom & Blossom", address: "456 Garden Ave" }
-            ],
-            created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            is_active: true,
-            redemption_count: 8
-          },
-          {
-            id: "sample-3",
-            call_to_action: "Free appetizer with entree",
-            locations: [
-              { name: "Bistro 789", address: "789 Food Plaza" },
-              { name: "Bistro Downtown", address: "321 City Center" },
-              { name: "Bistro Westside", address: "555 West Ave" }
-            ],
-            created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            is_active: false,
-            redemption_count: 41
+      setLoading(true);
+      // Fetch offers from backend API
+      const response = await get({ 
+        end_point: 'offers',
+        token: true
+      });
+      
+      console.log('Offers API Response:', response);
+      
+      if (response.success && response.data && Array.isArray(response.data)) {
+        console.log(`Total offers received from API: ${response.data.length}`);
+        
+        // Fetch locations if not already loaded (to ensure we have them for mapping)
+        let locationsData = locations;
+        if (locationsData.length === 0) {
+          try {
+            const locationsResponse = await get({ 
+              end_point: 'locations',
+              token: true
+            });
+            if (locationsResponse.success && locationsResponse.data) {
+              locationsData = locationsResponse.data;
+              setLocations(locationsData);
+            }
+          } catch (locError) {
+            console.error('Error fetching locations in fetchOffers:', locError);
           }
-        ];
-        setOffers(sampleOffers);
+        }
+        
+        // Format offers data to match frontend interface
+        const formattedOffers = response.data.map((offer: any, index: number) => {
+          try {
+            // Handle locationIds - could be populated objects or just IDs
+            // Check both locationIds (from backend) and location_ids (alternative format)
+            const locationIdsArray = offer.locationIds || offer.location_ids || [];
+            const offerLocations = Array.isArray(locationIdsArray) 
+              ? locationIdsArray.map((loc: any) => {
+                  // If it's a populated location object (has _id and name)
+                  if (loc && typeof loc === 'object' && loc._id) {
+                    return {
+                      name: loc.name || '',
+                      address: loc.address || ''
+                    };
+                  }
+                  // If it's just an ID string or ObjectId, find it from locations state
+                  const locIdStr = loc?._id?.toString() || loc?.toString() || loc;
+                  const foundLoc = locationsData.find((l: any) => {
+                    const lIdStr = l._id?.toString() || l.id?.toString();
+                    return lIdStr === locIdStr;
+                  });
+                  return foundLoc ? {
+                    name: foundLoc.name || '',
+                    address: foundLoc.address || ''
+                  } : { name: 'Unknown Location', address: '' };
+                })
+              : [];
+
+            // Ensure we have a valid ID - try multiple sources
+            const offerId = offer._id?.toString() || 
+                           offer.id?.toString() || 
+                           offer._id || 
+                           offer.id || 
+                           `offer-${index}-${Date.now()}`;
+            
+            const formattedOffer = {
+              id: offerId,
+              call_to_action: offer.callToAction || offer.call_to_action || '',
+              locations: offerLocations,
+              created_at: offer.createdAt || offer.created_at || new Date().toISOString(),
+              is_active: offer.isActive !== undefined ? offer.isActive : (offer.is_active !== undefined ? offer.is_active : true),
+              redemption_count: offer.redemptionCount || offer.redemption_count || 0,
+              is_open_offer: offer.isOpenOffer || offer.is_open_offer || false,
+              available_for_partnership: offer.availableForPartnership !== undefined 
+                ? offer.availableForPartnership 
+                : (offer.available_for_partnership !== undefined ? offer.available_for_partnership : true)
+            };
+            
+            console.log(`Formatted offer ${index + 1}:`, formattedOffer);
+            return formattedOffer;
+          } catch (offerError) {
+            console.error(`Error formatting offer ${index + 1}:`, offerError, offer);
+            // Return a basic formatted offer even if there's an error
+            return {
+              id: offer._id?.toString() || offer.id?.toString() || `offer-${index}`,
+              call_to_action: offer.callToAction || offer.call_to_action || 'Unknown Offer',
+              locations: [],
+              created_at: offer.createdAt || offer.created_at || new Date().toISOString(),
+              is_active: offer.isActive !== undefined ? offer.isActive : true,
+              redemption_count: offer.redemptionCount || offer.redemption_count || 0,
+              is_open_offer: offer.isOpenOffer || offer.is_open_offer || false,
+              available_for_partnership: offer.availableForPartnership !== undefined 
+                ? offer.availableForPartnership 
+                : true
+            };
+          }
+        });
+        
+        console.log(`Total formatted offers: ${formattedOffers.length}`);
+        console.log('Formatted offers:', formattedOffers);
+        
+        // Ensure all offers have unique IDs and are included
+        const validOffers = formattedOffers.filter((offer, index, self) => {
+          // Filter out any offers without an ID
+          if (!offer.id) {
+            console.warn(`Offer at index ${index} has no ID, skipping:`, offer);
+            return false;
+          }
+          // Check for duplicate IDs (keep first occurrence)
+          const firstIndex = self.findIndex(o => o.id === offer.id);
+          if (firstIndex !== index) {
+            console.warn(`Duplicate offer ID found: ${offer.id}, keeping first occurrence`);
+            return false;
+          }
+          return true;
+        });
+        
+        console.log(`Valid offers after filtering: ${validOffers.length}`);
+        
+        if (validOffers.length !== response.data.length) {
+          console.warn(`Warning: ${response.data.length - validOffers.length} offers were filtered out`);
+        }
+        
+        setOffers(validOffers);
+        setLoading(false);
+        return;
       } else {
-        setOffers(offersWithCounts);
+        // If response is not in expected format, log and set empty array
+        console.warn('Unexpected response format:', response);
+        setOffers([]);
+        setLoading(false);
+        return;
       }
     } catch (error) {
-      console.error("Error fetching offers:", error);
+      console.error('Error fetching offers from API:', error);
+      setOffers([]);
+      setLoading(false);
       toast({
         title: "Error",
-        description: "Failed to load offers",
+        description: "Failed to load offers. Please try again later.",
         variant: "destructive",
       });
     }
@@ -265,88 +367,47 @@ const Offers = () => {
 
   const fetchRedemptions = async () => {
     try {
-      const { data, error } = await supabase
-        .from("offer_redemptions")
-        .select(`
-          id,
-          redemption_code,
-          referring_store,
-          redeemed_at,
-          offer:offers(call_to_action),
-          location:locations(name)
-        `)
-        .order("redeemed_at", { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
+      // Fetch redemptions from backend API
+      const response = await get({ 
+        end_point: 'redemptions',
+        token: true
+      });
       
-      // Add sample data if no real data exists
-      if (!data || data.length === 0) {
-        const sampleRedemptions = [
-          {
-            id: "redemption-1",
-            redemption_code: "CR789123",
-            referring_store: "Coffee Corner",
-            redeemed_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            offer: { call_to_action: "Get 15% off your coffee order" },
-            location: { name: "Coffee Corner" }
-          },
-          {
-            id: "redemption-2",
-            redemption_code: "FL456789",
-            referring_store: "Bloom & Blossom",
-            redeemed_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-            offer: { call_to_action: "Buy 2 get 1 free flowers" },
-            location: { name: "Bloom & Blossom" }
-          },
-          {
-            id: "redemption-3",
-            redemption_code: "BR234567",
-            referring_store: "Bistro 789",
-            redeemed_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            offer: { call_to_action: "Free appetizer with entree" },
-            location: { name: "Bistro 789" }
-          },
-          {
-            id: "redemption-4",
-            redemption_code: "CF567890",
-            referring_store: "Coffee Corner",
-            redeemed_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            offer: { call_to_action: "Get 15% off your coffee order" },
-            location: { name: "Coffee Corner" }
-          }
-        ];
-        setRedemptions(sampleRedemptions);
+      if (response.success && response.data) {
+        setRedemptions(response.data);
       } else {
-        setRedemptions(data);
+        setRedemptions([]);
       }
     } catch (error) {
       console.error("Error fetching redemptions:", error);
+      setRedemptions([]);
       toast({
         title: "Error",
         description: "Failed to load redemptions",
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleDeleteOffer = async (offerId: string) => {
     try {
-      const { error } = await supabase
-        .from("offers")
-        .delete()
-        .eq("id", offerId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Offer deleted successfully",
+      const { deleteApi } = await import("@/services/apis");
+      const response = await deleteApi({ 
+        end_point: `offers/${offerId}`,
+        token: true
       });
       
-      fetchOffers();
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: response.message || "Offer deleted successfully",
+        });
+        
+        // Reload offers
+        fetchOffers();
+      } else {
+        throw new Error(response.message || 'Failed to delete offer');
+      }
     } catch (error) {
       console.error("Error deleting offer:", error);
       toast({
@@ -382,8 +443,18 @@ const Offers = () => {
            </Button>
          </div>
 
-        {/* Location Management */}
-        <Card>
+         {/* Main Tabs - Your Offers and Open Offers */}
+         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+           <TabsList className="grid w-full grid-cols-2 max-w-md">
+             <TabsTrigger value="your-offers">Your Offers</TabsTrigger>
+             <TabsTrigger value="open-offers">Open Offers</TabsTrigger>
+           </TabsList>
+
+           {/* Your Offers Tab */}
+           <TabsContent value="your-offers" className="space-y-8 mt-6">
+
+             {/* Location Management */}
+             <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MapPin className="h-5 w-5" />
@@ -474,8 +545,8 @@ const Offers = () => {
           </CardContent>
         </Card>
 
-        {/* Created Offers Table */}
-        <Card>
+             {/* Created Offers Table */}
+             <Card>
           <CardHeader>
             <CardTitle>Created Offers</CardTitle>
           </CardHeader>
@@ -489,6 +560,7 @@ const Offers = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Offer</TableHead>
+                    <TableHead>Type</TableHead>
                     <TableHead>Locations</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Redemptions</TableHead>
@@ -501,6 +573,20 @@ const Offers = () => {
                     <TableRow key={offer.id}>
                       <TableCell className="font-medium">
                         {offer.call_to_action}
+                      </TableCell>
+                      <TableCell>
+                        {(offer as any).is_open_offer ? (
+                          <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
+                            Open Offer
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">
+                            Location-based
+                            {(offer as any).available_for_partnership && (
+                              <span className="ml-1 text-xs">(Available for Partnership)</span>
+                            )}
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="space-y-2">
@@ -599,8 +685,8 @@ const Offers = () => {
           </CardContent>
         </Card>
 
-        {/* Analytics & Redemptions */}
-        <Card>
+             {/* Analytics & Redemptions */}
+             <Card>
           <CardHeader>
             <CardTitle>Analytics & Redemptions</CardTitle>
           </CardHeader>
@@ -695,8 +781,8 @@ const Offers = () => {
           </CardContent>
         </Card>
 
-        {/* Location Details Dialog */}
-        <Dialog open={isLocationDialogOpen} onOpenChange={setIsLocationDialogOpen}>
+             {/* Location Details Dialog */}
+             <Dialog open={isLocationDialogOpen} onOpenChange={setIsLocationDialogOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -725,8 +811,123 @@ const Offers = () => {
                 ))}
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
+             </DialogContent>
+             </Dialog>
+           </TabsContent>
+
+           {/* Open Offers Tab - All Retailers' Open Offers */}
+           <TabsContent value="open-offers" className="space-y-8 mt-6">
+             <Card>
+               <CardHeader>
+                 <CardTitle className="flex items-center gap-2">
+                   <Zap className="h-5 w-5 text-primary" />
+                   All Retailers' Open Offers
+                 </CardTitle>
+                 <p className="text-muted-foreground">
+                   Browse open offers from all retailers. These offers are available to all retailers and can be displayed at your locations.
+                 </p>
+               </CardHeader>
+               <CardContent>
+                 {loadingOpenOffers ? (
+                   <div className="text-center py-8">
+                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                     <p className="mt-2 text-muted-foreground">Loading open offers...</p>
+                   </div>
+                 ) : allOpenOffers.length === 0 ? (
+                   <div className="text-center py-8">
+                     <p className="text-muted-foreground mb-4">No open offers available from other retailers yet.</p>
+                     <p className="text-sm text-muted-foreground">
+                       Open offers will appear here when retailers enable them for their stores.
+                     </p>
+                   </div>
+                 ) : (
+                   <Table>
+                     <TableHeader>
+                       <TableRow>
+                         <TableHead>Offer</TableHead>
+                         <TableHead>Retailer</TableHead>
+                         <TableHead>Locations</TableHead>
+                         <TableHead>Status</TableHead>
+                         <TableHead>Redemptions</TableHead>
+                         <TableHead>Created</TableHead>
+                         <TableHead>Actions</TableHead>
+                       </TableRow>
+                     </TableHeader>
+                     <TableBody>
+                       {allOpenOffers.map((offer) => (
+                         <TableRow key={offer.id}>
+                           <TableCell className="font-medium">
+                             {offer.call_to_action}
+                           </TableCell>
+                           <TableCell>
+                             <div>
+                               <p className="font-medium">{offer.retailer_name}</p>
+                               <p className="text-xs text-muted-foreground">{offer.retailer_email}</p>
+                             </div>
+                           </TableCell>
+                           <TableCell>
+                             <div className="space-y-2">
+                               {offer.locations.length === 0 ? (
+                                 <p className="text-sm text-muted-foreground">No locations</p>
+                               ) : offer.locations.length === 1 ? (
+                                 <div>
+                                   <p className="font-medium">{offer.locations[0].name}</p>
+                                   <p className="text-sm text-muted-foreground">{offer.locations[0].address}</p>
+                                 </div>
+                               ) : (
+                                 <div>
+                                   <button
+                                     onClick={() => {
+                                       setSelectedOffer(offer);
+                                       setIsLocationDialogOpen(true);
+                                     }}
+                                     className="font-medium text-primary hover:text-primary/80 text-left"
+                                   >
+                                     {offer.locations.length} locations
+                                   </button>
+                                   <div className="mt-1 space-y-1">
+                                     {offer.locations.slice(0, 2).map((location: any, index: number) => (
+                                       <p key={index} className="text-xs text-muted-foreground">
+                                         {location.name}
+                                       </p>
+                                     ))}
+                                     {offer.locations.length > 2 && (
+                                       <p className="text-xs text-muted-foreground">
+                                         +{offer.locations.length - 2} more
+                                       </p>
+                                     )}
+                                   </div>
+                                 </div>
+                               )}
+                             </div>
+                           </TableCell>
+                           <TableCell>
+                             <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
+                               Open Offer
+                             </Badge>
+                           </TableCell>
+                           <TableCell>
+                             <span className="font-bold text-primary">{offer.redemption_count}</span>
+                           </TableCell>
+                           <TableCell>
+                             {new Date(offer.created_at).toLocaleDateString()}
+                           </TableCell>
+                           <TableCell>
+                             <div className="flex items-center gap-2">
+                               <Button variant="ghost" size="icon">
+                                 <Eye className="h-4 w-4" />
+                               </Button>
+                             </div>
+                           </TableCell>
+                         </TableRow>
+                       ))}
+                     </TableBody>
+                   </Table>
+                 )}
+               </CardContent>
+             </Card>
+           </TabsContent>
+         </Tabs>
       </div>
     </AppLayout>
   );

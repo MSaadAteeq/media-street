@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { CheckCircle, XCircle } from "lucide-react";
 
 const RedeemConfirm = () => {
@@ -38,31 +38,19 @@ const RedeemConfirm = () => {
         return;
       }
 
-      // Check if user is authenticated
-      const { data: { session } } = await supabase.auth.getSession();
+      // TODO: Replace with Node.js API call
+      // const response = await post({ end_point: 'redemptions/log', body: { redemption_code: redemptionCode, offer_id: offerData.id } });
       
-      if (!session) {
+      const token = localStorage.getItem('token');
+      if (!token) {
         // Redirect to login with return URL
         navigate(`/login?redirect=/redeem/${offerCode}/confirm?code=${redemptionCode}`);
         return;
       }
 
-      // Call the redemption function
-      const { data, error } = await supabase.functions.invoke('log-redemption', {
-        body: {
-          redemption_code: redemptionCode,
-          offer_id: offerData.id
-        }
-      });
-
-      if (error) throw error;
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
+      // Mock implementation
       setStatus('success');
-      setMessage(`Successfully redeemed! ${data.points_awarded || 0} points awarded.`);
+      setMessage(`Successfully redeemed! 0 points awarded.`);
 
       // Redirect back to main redeem page after 2 seconds
       setTimeout(() => {

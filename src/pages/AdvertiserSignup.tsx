@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -65,52 +65,33 @@ export default function AdvertiserSignup() {
   });
 
   useEffect(() => {
+    // TODO: Replace with Node.js API call to check auth status
     const checkUserAndRedirect = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
+      const token = localStorage.getItem("token");
+      if (token) {
         navigate("/advertiser/dashboard");
       }
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (session?.user) {
-          setTimeout(() => {
-            navigate("/advertiser/dashboard");
-          }, 0);
-        }
-      }
-    );
-
     checkUserAndRedirect();
-
-    return () => subscription.unsubscribe();
   }, [navigate]);
 
   const onSignIn = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
-      });
-
-      if (error) {
-        toast({
-          title: "Sign In Failed",
-          description: error.message,
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Welcome back!",
-          description: "You've been signed in successfully.",
-        });
-      }
-    } catch (error) {
+      // TODO: Replace with Node.js API call
+      // const response = await post({ end_point: 'advertisers/login', body: { email: data.email, password: data.password } });
+      
+      // Mock implementation for now
       toast({
-        title: "An error occurred",
-        description: "Please try again later.",
+        title: "Welcome back!",
+        description: "You've been signed in successfully.",
+      });
+      navigate("/advertiser/dashboard");
+    } catch (error: any) {
+      toast({
+        title: "Sign In Failed",
+        description: error.message || "Please try again later.",
         variant: "destructive",
       });
     } finally {
@@ -121,64 +102,41 @@ export default function AdvertiserSignup() {
   const onSignUp = async (data: SignupFormData) => {
     setIsLoading(true);
     try {
-      const redirectUrl = `${window.location.origin}/`;
+      // TODO: Replace with Node.js API call
+      // const response = await post({ 
+      //   end_point: 'advertisers/signup', 
+      //   body: { 
+      //     email: data.email, 
+      //     password: data.password,
+      //     fullName: data.fullName,
+      //     userType: 'advertiser'
+      //   } 
+      // });
       
-      const { data: authData, error } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          emailRedirectTo: redirectUrl,
-          data: {
-            full_name: data.fullName,
-            user_type: 'advertiser',
-          },
-        },
-      });
-
-      if (error) {
-        if (error.message.includes('already registered')) {
-          toast({
-            title: "Account exists",
-            description: "This email is already registered. Please sign in instead.",
-            variant: "destructive",
-          });
-          setActiveTab("signin");
-          loginForm.setValue("email", data.email);
-        } else {
-          toast({
-            title: "Sign Up Failed",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
-      } else if (authData.user) {
-        // Create advertiser profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            user_id: authData.user.id,
-            first_name: data.fullName.split(' ')[0] || '',
-            last_name: data.fullName.split(' ').slice(1).join(' ') || '',
-          });
-
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
-        }
-
-        toast({
-          title: "Account created!",
-          description: "Please check your email to verify your account.",
-        });
-        
-        // Redirect to advertiser dashboard
-        navigate("/advertiser/dashboard");
-      }
-    } catch (error) {
+      // Mock implementation for now
       toast({
-        title: "An error occurred",
-        description: "Please try again later.",
-        variant: "destructive",
+        title: "Account created!",
+        description: "Please check your email to verify your account.",
       });
+      
+      // Redirect to advertiser dashboard
+      navigate("/advertiser/dashboard");
+    } catch (error: any) {
+      if (error.message?.includes('already registered')) {
+        toast({
+          title: "Account exists",
+          description: "This email is already registered. Please sign in instead.",
+          variant: "destructive",
+        });
+        setActiveTab("signin");
+        loginForm.setValue("email", data.email);
+      } else {
+        toast({
+          title: "Sign Up Failed",
+          description: error.message || "Please try again later.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
     }

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Monitor, Printer } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { toast } from "sonner";
 
 interface DisplayOptionCheckProps {
@@ -29,9 +29,13 @@ const DisplayOptionCheck = ({ open, onOpenChange, onConfirm, title, description 
 
     setIsSaving(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'auth/me' });
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
         toast.error("Please log in to continue");
+        setIsSaving(false);
         return;
       }
 

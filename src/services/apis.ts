@@ -7,9 +7,9 @@ export const get = async ({
   configuration = {},
 }) => {
   configuration = {
-    "ngrok-skip-browser-warning": "true",
     "Content-Type": "application/json",
     Accept: "*/*",
+    ...configuration,
   };
   try {
     const response = await apiHandler({

@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 
 interface Offer {
   id: string;

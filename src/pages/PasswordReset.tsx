@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,33 +41,17 @@ const PasswordReset = () => {
   });
 
   useEffect(() => {
-    // Check if we have a valid session from the email link
+    // TODO: Replace with Node.js API call to verify reset token
     const checkSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error("Session error:", error);
-          setError("Invalid or expired reset link. Please request a new password reset.");
-          setIsValidSession(false);
-          return;
-        }
-
-        if (!session) {
-          setError("Invalid or expired reset link. Please request a new password reset.");
-          setIsValidSession(false);
-          return;
-        }
-
-        // Check if this is a recovery session by looking at URL params or if user has a valid session
-        // If there's a valid session and we're on this page, allow password reset
         const urlParams = new URLSearchParams(window.location.search);
         const type = urlParams.get('type');
         const accessToken = urlParams.get('access_token');
         const refreshToken = urlParams.get('refresh_token');
+        const token = urlParams.get('token');
         
-        // Allow access if: type=recovery, or if there are auth tokens in URL, or if there's a valid session
-        if (type === 'recovery' || accessToken || refreshToken || session) {
+        // Allow access if: type=recovery, or if there are auth tokens in URL
+        if (type === 'recovery' || accessToken || refreshToken || token) {
           setIsValidSession(true);
         } else {
           setError("This page is only accessible via password reset links.");
@@ -88,14 +72,12 @@ const PasswordReset = () => {
     setError(null);
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: values.password
-      });
-
-      if (error) {
-        throw error;
-      }
-
+      // TODO: Replace with Node.js API call
+      // const response = await post({ end_point: 'users/reset-password', body: { password: values.password, token } });
+      
+      // Mock implementation for now
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       toast.success("Password updated successfully! Redirecting to dashboard...");
       
       // Small delay before redirect to show the success message

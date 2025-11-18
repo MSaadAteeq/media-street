@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bot, MapPin, Zap } from "lucide-react";
+import { Bot, MapPin, Zap, Eye } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
@@ -10,9 +10,11 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { supabase } from "@/integrations/supabase/client";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+// Supabase removed - will use Node.js API
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { get, post, patch } from "@/services/apis";
 interface Location {
   id: string;
   name: string;
@@ -34,70 +36,121 @@ const OfferAI = () => {
   const [pendingLocationId, setPendingLocationId] = useState<string>("");
   const [selectedBudget, setSelectedBudget] = useState<string>("");
   const [authorized, setAuthorized] = useState(false);
+  const [allOpenOffers, setAllOpenOffers] = useState<any[]>([]);
+  const [loadingOpenOffers, setLoadingOpenOffers] = useState(false);
 
-  // Mock data for demonstration
+  // Load locations and offers from API
   useEffect(() => {
-    const loadLocations = async () => {
-      try {
-        // Use the same mock locations as shown in the store locations page
-        const mockLocations: Location[] = [{
-          id: "1",
-          name: "Sally's Salon",
-          address: "Sally's Salon Street 7, New York",
-          currentOffer: "20% off all hair services",
-          offerXActive: false,
-          openOfferActive: true,
-          activePartnerships: 3,
-          maxPartnerships: 5,
-          posConnected: true
-        }, {
-          id: "2",
-          name: "Sally's Salon",
-          address: "Sangam Cinema, Hilton Park, New York",
-          currentOffer: "15% off first visit",
-          offerXActive: false,
-          openOfferActive: false,
-          activePartnerships: 5,
-          maxPartnerships: 5,
-          posConnected: true
-        }, {
-          id: "3",
-          name: "Sally's Salon",
-          address: "Sally's Salon Street 56, New York",
-          currentOffer: "Free consultation with any service",
-          offerXActive: false,
-          openOfferActive: false,
-          activePartnerships: 2,
-          maxPartnerships: 5,
-          posConnected: true
-        }];
-        console.log('Loading mock locations:', mockLocations);
-        setLocations(mockLocations);
-      } catch (error) {
-        console.error('Error loading locations:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadLocations();
+    loadLocationsAndOffers();
+    fetchAllOpenOffers();
   }, []);
+
+  const loadLocationsAndOffers = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch locations from API
+      const locationsResponse = await get({ 
+        end_point: 'locations',
+        token: true
+      });
+      
+      // Fetch offers from API
+      const offersResponse = await get({ 
+        end_point: 'offers',
+        token: true
+      });
+      
+      // Fetch partnerships to check active partnerships
+      let partnerships: any[] = [];
+      try {
+        const partnersResponse = await get({ 
+          end_point: 'partners',
+          token: true
+        });
+        if (partnersResponse.success && partnersResponse.data) {
+          partnerships = partnersResponse.data;
+        }
+      } catch (error) {
+        console.error('Error fetching partnerships:', error);
+      }
+
+      if (locationsResponse.success && locationsResponse.data) {
+        const locationsData = locationsResponse.data;
+        const offersData = offersResponse.success ? offersResponse.data : [];
+
+        // Map locations with their current offers and open offer status
+        const mappedLocations: Location[] = locationsData.map((loc: any) => {
+          const locationId = loc._id?.toString() || loc.id?.toString();
+          
+          // Find active offer for this location
+          // Check both locationIds (array) and location_ids (array) fields
+          const locationOffers = offersData.filter((offer: any) => {
+            const offerLocationIds = offer.locationIds || offer.location_ids || [];
+            const locationIdStr = locationId;
+            return offerLocationIds.some((lid: any) => {
+              const lidStr = lid?._id?.toString() || lid?.toString() || lid;
+              return lidStr === locationIdStr;
+            }) && (offer.is_active || offer.isActive);
+          });
+          
+          const currentOffer = locationOffers.length > 0 
+            ? (locationOffers[0].call_to_action || locationOffers[0].callToAction) 
+            : null;
+          
+          // Check if location has open offer active
+          const hasOpenOffer = locationOffers.some((offer: any) => 
+            offer.is_open_offer || offer.isOpenOffer
+          );
+          
+          // Count active partnerships for this location
+          const locationPartnerships = partnerships.filter((p: any) => {
+            const pLocationId = p.location_id?._id?.toString() || p.location_id?.toString() || p.location_id;
+            return pLocationId === locationId && (p.status === 'active' || p.status === 'approved');
+          });
+
+          return {
+            id: locationId,
+            name: loc.name,
+            address: loc.address,
+            currentOffer: currentOffer || undefined,
+            offerXActive: false, // TODO: Implement OfferX feature
+            openOfferActive: hasOpenOffer,
+            activePartnerships: locationPartnerships.length,
+            maxPartnerships: 5,
+            posConnected: false // TODO: Implement POS connection check
+          };
+        });
+
+        setLocations(mappedLocations);
+      } else {
+        setLocations([]);
+      }
+    } catch (error) {
+      console.error('Error loading locations and offers:', error);
+      setLocations([]);
+      toast({
+        title: "Error",
+        description: "Failed to load locations. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
   const checkUserHasOffer = async () => {
     try {
-      const {
-        data: {
-          user
-        }
-      } = await supabase.auth.getUser();
-      if (!user) return false;
-      const {
-        data,
-        error
-      } = await supabase.from('offers').select('id').eq('user_id', user.id).limit(1);
-      if (error) {
-        console.error('Error checking offers:', error);
-        return false;
+      // Check if user has any active offers via API
+      const response = await get({ 
+        end_point: 'offers',
+        token: true
+      });
+      
+      if (response.success && response.data) {
+        const hasActiveOffer = response.data.some((offer: any) => offer.is_active);
+        return hasActiveOffer;
       }
-      return data && data.length > 0;
+      return false;
     } catch (error) {
       console.error('Error checking user offers:', error);
       return false;
@@ -131,28 +184,193 @@ const OfferAI = () => {
       setPendingLocationId(locationId);
       setShowConfirmDialog(true);
     } else {
-      // Directly turn OFF without confirmation
-      setLocations(prev => prev.map(location => location.id === locationId ? {
-        ...location,
-        openOfferActive: false
-      } : location));
+      // Turn OFF - Update offer to remove open offer status
+      try {
+        // Find offers for this location and update them
+        const offersResponse = await get({ 
+          end_point: 'offers',
+          token: true
+        });
+        
+        if (offersResponse.success && offersResponse.data) {
+          const locationOffers = offersResponse.data.filter((offer: any) => 
+            offer.location_ids && offer.location_ids.includes(locationId) && offer.is_open_offer
+          );
+          
+          // Update each open offer to remove open offer status
+          for (const offer of locationOffers) {
+            await patch({
+              end_point: `offers/${offer._id || offer.id}`,
+              body: { is_open_offer: false },
+              token: true
+            });
+          }
+        }
+
+        // Update local state
+        setLocations(prev => prev.map(location => location.id === locationId ? {
+          ...location,
+          openOfferActive: false
+        } : location));
+
+        toast({
+          title: "Success",
+          description: "Open Offer has been turned off for this location",
+        });
+      } catch (error) {
+        console.error('Error turning off open offer:', error);
+        toast({
+          title: "Error",
+          description: "Failed to turn off Open Offer. Please try again.",
+          variant: "destructive",
+        });
+      }
     }
   };
-  const handleConfirmOpenOffer = () => {
-    setLocations(prev => prev.map(location => location.id === pendingLocationId ? {
-      ...location,
-      openOfferActive: true
-    } : location));
-    setShowConfirmDialog(false);
-    setPendingLocationId("");
-    setSelectedBudget("");
-    setAuthorized(false);
+  const handleConfirmOpenOffer = async () => {
+    try {
+      // Find offers for this location and update them to be open offers
+      const offersResponse = await get({ 
+        end_point: 'offers',
+        token: true
+      });
+      
+      if (offersResponse.success && offersResponse.data) {
+        const locationOffers = offersResponse.data.filter((offer: any) => {
+          const offerLocationIds = offer.locationIds || offer.location_ids || [];
+          return offerLocationIds.some((lid: any) => {
+            const lidStr = lid?._id?.toString() || lid?.toString() || lid;
+            return lidStr === pendingLocationId;
+          }) && (offer.is_active || offer.isActive);
+        });
+        
+        if (locationOffers.length === 0) {
+          toast({
+            title: "No Active Offers",
+            description: "Please create an active offer for this location first",
+            variant: "destructive",
+          });
+          setShowConfirmDialog(false);
+          setPendingLocationId("");
+          setSelectedBudget("");
+          setAuthorized(false);
+          return;
+        }
+        
+        // Update each active offer to be an open offer
+        for (const offer of locationOffers) {
+          await patch({
+            end_point: `offers/${offer._id?.toString() || offer.id?.toString()}`,
+            body: { is_open_offer: true },
+            token: true
+          });
+        }
+      }
+
+      // Update local state
+      setLocations(prev => prev.map(location => location.id === pendingLocationId ? {
+        ...location,
+        openOfferActive: true
+      } : location));
+      
+      setShowConfirmDialog(false);
+      setPendingLocationId("");
+      setSelectedBudget("");
+      setAuthorized(false);
+      
+      toast({
+        title: "Success",
+        description: "Open Offer has been activated for this location",
+      });
+    } catch (error) {
+      console.error('Error activating open offer:', error);
+      toast({
+        title: "Error",
+        description: "Failed to activate Open Offer. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
   const handleCancelOpenOffer = () => {
     setShowConfirmDialog(false);
     setPendingLocationId("");
     setSelectedBudget("");
     setAuthorized(false);
+  };
+
+  const fetchAllOpenOffers = async () => {
+    try {
+      setLoadingOpenOffers(true);
+      // Fetch all open offers from all retailers (public endpoint)
+      const response = await get({ 
+        end_point: 'offers/open',
+        token: false // Public endpoint - no auth required
+      });
+      
+      if (response.success && response.data) {
+        // Get current user ID to exclude own offers
+        const currentUserResponse = await get({ 
+          end_point: 'users/me',
+          token: true
+        });
+        const currentUserId = currentUserResponse.success && currentUserResponse.data 
+          ? (currentUserResponse.data._id?.toString() || currentUserResponse.data.id?.toString())
+          : null;
+
+        // Format open offers data and exclude current user's offers
+        const formattedOpenOffers = response.data
+          .filter((offer: any) => {
+            // Exclude current user's own offers
+            const offerUserId = offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
+            return offerUserId !== currentUserId;
+          })
+          .map((offer: any) => {
+            // Handle locations - could be in locations array or locationIds
+            const offerLocations = Array.isArray(offer.locations) 
+              ? offer.locations.map((loc: any) => {
+                  if (loc && typeof loc === 'object' && loc._id) {
+                    return {
+                      name: loc.name || '',
+                      address: loc.address || ''
+                    };
+                  }
+                  return { name: 'Unknown', address: '' };
+                })
+              : Array.isArray(offer.locationIds)
+              ? offer.locationIds.map((loc: any) => {
+                  if (loc && typeof loc === 'object' && loc._id) {
+                    return {
+                      name: loc.name || '',
+                      address: loc.address || ''
+                    };
+                  }
+                  return { name: 'Unknown', address: '' };
+                })
+              : [];
+
+            return {
+              id: offer._id?.toString() || offer.id?.toString(),
+              call_to_action: offer.callToAction || offer.call_to_action || '',
+              locations: offerLocations,
+              created_at: offer.createdAt || offer.created_at || new Date().toISOString(),
+              is_active: offer.isActive !== undefined ? offer.isActive : (offer.is_active !== undefined ? offer.is_active : true),
+              redemption_count: offer.redemptionCount || offer.redemption_count || 0,
+              is_open_offer: true,
+              retailer_name: offer.user?.fullName || 'Unknown Retailer',
+              retailer_email: offer.user?.email || ''
+            };
+          });
+        
+        setAllOpenOffers(formattedOpenOffers);
+      } else {
+        setAllOpenOffers([]);
+      }
+    } catch (error) {
+      console.error('Error fetching all open offers:', error);
+      setAllOpenOffers([]);
+    } finally {
+      setLoadingOpenOffers(false);
+    }
   };
   if (loading) {
     return <AppLayout pageTitle="Open Offer" pageIcon={<Bot className="h-6 w-6 text-primary" />}>
@@ -178,6 +396,7 @@ const OfferAI = () => {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
+                      <div className="text-3xl font-bold tracking-tight">My offer</div>
                       <CardTitle className="text-lg flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-primary" />
                         {location.name}
@@ -240,6 +459,107 @@ const OfferAI = () => {
                 </Button>
               </CardContent>
             </Card>}
+
+          {/* All Retailers' Open Offers Section */}
+          <Card className="mt-8">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5 text-primary" />
+                All Retailers' Open Offers
+              </CardTitle>
+              <CardDescription>
+                Browse open offers from all retailers in the Open Offer network. These offers are available to display at your locations.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loadingOpenOffers ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                  <p className="mt-2 text-muted-foreground">Loading open offers...</p>
+                </div>
+              ) : allOpenOffers.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground mb-4">No open offers available from other retailers yet.</p>
+                  <p className="text-sm text-muted-foreground">
+                    Open offers will appear here when retailers enable them for their stores.
+                  </p>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Offer</TableHead>
+                      <TableHead>Retailer</TableHead>
+                      <TableHead>Locations</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Redemptions</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allOpenOffers.map((offer) => (
+                      <TableRow key={offer.id}>
+                        <TableCell className="font-medium">
+                          {offer.call_to_action}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{offer.retailer_name}</p>
+                            <p className="text-xs text-muted-foreground">{offer.retailer_email}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1">
+                            {offer.locations.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">No locations</p>
+                            ) : offer.locations.length === 1 ? (
+                              <div>
+                                <p className="font-medium text-sm">{offer.locations[0].name}</p>
+                                <p className="text-xs text-muted-foreground">{offer.locations[0].address}</p>
+                              </div>
+                            ) : (
+                              <div>
+                                <p className="font-medium text-sm">{offer.locations.length} locations</p>
+                                <div className="mt-1 space-y-1">
+                                  {offer.locations.slice(0, 2).map((location: any, index: number) => (
+                                    <p key={index} className="text-xs text-muted-foreground">
+                                      {location.name}
+                                    </p>
+                                  ))}
+                                  {offer.locations.length > 2 && (
+                                    <p className="text-xs text-muted-foreground">
+                                      +{offer.locations.length - 2} more
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
+                            Open Offer
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-bold text-primary">{offer.redemption_count}</span>
+                        </TableCell>
+                        <TableCell>
+                          {new Date(offer.created_at).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
         {/* PartnerAI Confirmation Dialog */}

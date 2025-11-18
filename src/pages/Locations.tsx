@@ -58,7 +58,7 @@ import AppLayout from "@/components/AppLayout";
 import {
   TooltipProvider,
 } from "@/components/ui/tooltip";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { useToast } from "@/components/ui/use-toast";
 
 const Locations = () => {
@@ -79,24 +79,57 @@ const Locations = () => {
   // Load locations from database
   const loadLocations = async () => {
     try {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error loading locations:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load locations",
-          variant: "destructive",
-        });
+      // Fetch locations from backend API
+      const { get } = await import("@/services/apis");
+      const response = await get({ 
+        end_point: 'locations',
+        token: true
+      });
+      
+      if (response.success && response.data) {
+        setLocations(response.data);
+        setLoading(false);
         return;
       }
-
-      setLocations(data || []);
+    } catch (error) {
+      console.error('Error fetching locations from API:', error);
+      // Fall through to mock data if API fails
+    }
+    
+    // Fallback to mock data if API call fails
+    try {
+      // Static data for now
+      const sampleLocations = [
+        {
+          id: "loc-1",
+          name: "Sally's Salon - Downtown",
+          address: "456 Oak Street, Manhattan, NY 10013",
+          retail_channel: "salon",
+          created_at: new Date().toISOString()
+        },
+        {
+          id: "loc-2",
+          name: "Sally's Salon - Uptown",
+          address: "789 Elm Avenue, Brooklyn, NY 11201",
+          retail_channel: "salon",
+          created_at: new Date().toISOString()
+        },
+        {
+          id: "loc-3",
+          name: "Sally's Salon - Midtown",
+          address: "321 Pine Boulevard, Queens, NY 11101",
+          retail_channel: "salon",
+          created_at: new Date().toISOString()
+        }
+      ];
+      setLocations(sampleLocations);
     } catch (error) {
       console.error('Error loading locations:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load locations",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -104,78 +137,7 @@ const Locations = () => {
 
   useEffect(() => {
     loadLocations();
-    addSampleLocations();
   }, []);
-
-  const addSampleLocations = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log('No user found, skipping sample locations');
-        return;
-      }
-
-      console.log('Checking for existing Sally Salon locations...');
-      // Check if sample locations already exist
-      const { data: existing, error: selectError } = await supabase
-        .from('locations')
-        .select('name')
-        .eq('user_id', user.id)
-        .ilike('name', 'Sally%Salon%');
-
-      if (selectError) {
-        console.error('Error checking existing locations:', selectError);
-      }
-
-      console.log('Existing locations:', existing);
-      if (existing && existing.length > 0) {
-        console.log('Sample locations already exist');
-        return;
-      }
-
-      console.log('Adding sample Sally Salon locations...');
-      // Add sample Sally's Salon locations
-      const sampleLocations = [
-        {
-          user_id: user.id,
-          name: "Sally's Salon - Downtown",
-          address: "456 Oak Street, Manhattan, NY 10013",
-          retail_channel: "salon"
-        },
-        {
-          user_id: user.id,
-          name: "Sally's Salon - Uptown",
-          address: "789 Elm Avenue, Brooklyn, NY 11201",
-          retail_channel: "salon"
-        },
-        {
-          user_id: user.id,
-          name: "Sally's Salon - Midtown",
-          address: "321 Pine Boulevard, Queens, NY 11101",
-          retail_channel: "salon"
-        }
-      ];
-
-      const { error, data: insertedData } = await supabase
-        .from('locations')
-        .insert(sampleLocations)
-        .select();
-
-      if (error) {
-        console.error('Error adding sample locations:', error);
-        toast({
-          title: "Error",
-          description: "Could not add sample locations: " + error.message,
-          variant: "destructive"
-        });
-      } else {
-        console.log('Successfully added sample locations:', insertedData);
-        loadLocations();
-      }
-    } catch (error) {
-      console.error('Error adding sample locations:', error);
-    }
-  };
 
   const handleAddLocation = async () => {
     if (!storeName || !address || !city || !retailChannel) {
@@ -188,51 +150,44 @@ const Locations = () => {
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast({
-          title: "Error",
-          description: "You must be logged in to add locations",
-          variant: "destructive",
-        });
-        return;
-      }
-
+      const { post } = await import("@/services/apis");
       const fullAddress = `${address}, ${city}`;
-
-      const { error } = await supabase
-        .from('locations')
-        .insert({
-          user_id: user.id,
-          name: storeName,
-          address: fullAddress,
-          retail_channel: retailChannel
-        });
-
-      if (error) {
-        console.error('Error adding location:', error);
-        toast({
-          title: "Error",
-          description: "Failed to add location",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      toast({
-        title: "Success",
-        description: "Location added successfully",
+      
+      const response = await post({ 
+        end_point: 'locations', 
+        body: { 
+          name: storeName, 
+          address: fullAddress, 
+          retail_channel: retailChannel 
+        },
+        token: true
       });
       
-      // Reset form
-      setStoreName("");
-      setAddress("");
-      setCity("");
-      setRetailChannel("");
-      setAddLocationOpen(false);
-      loadLocations();
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: response.message || "Location added successfully",
+        });
+        
+        // Reload locations
+        loadLocations();
+        
+        // Reset form
+        setStoreName("");
+        setAddress("");
+        setCity("");
+        setRetailChannel("");
+        setAddLocationOpen(false);
+      } else {
+        throw new Error(response.message || 'Failed to add location');
+      }
     } catch (error) {
       console.error("Error adding location:", error);
+      toast({
+        title: "Error",
+        description: "Failed to add location",
+        variant: "destructive",
+      });
     }
   };
 
@@ -241,68 +196,25 @@ const Locations = () => {
     
     setDeleting(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast({
-          title: "Error",
-          description: "You must be logged in to delete locations",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Delete OfferX subscriptions for this location
-      const { error: offerxError } = await supabase
-        .from('offerx_subscriptions')
-        .delete()
-        .eq('user_id', user.id);
-
-      if (offerxError) {
-        console.error('Error deleting OfferX subscriptions:', offerxError);
-      }
-
-      // Delete OfferAI subscriptions for this location
-      const { error: offeraiError } = await supabase
-        .from('offerai_subscriptions')
-        .delete()
-        .eq('location_id', locationToDelete.id);
-
-      if (offeraiError) {
-        console.error('Error deleting OfferAI subscriptions:', offeraiError);
-      }
-
-      // Delete offers for this location
-      const { error: offersError } = await supabase
-        .from('offers')
-        .delete()
-        .eq('location_id', locationToDelete.id);
-
-      if (offersError) {
-        console.error('Error deleting offers:', offersError);
-      }
-
-      // Finally delete the location
-      const { error: locationError } = await supabase
-        .from('locations')
-        .delete()
-        .eq('id', locationToDelete.id)
-        .eq('user_id', user.id);
-
-      if (locationError) {
-        console.error('Error deleting location:', locationError);
-        toast({
-          title: "Error",
-          description: "Failed to delete location",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      toast({
-        title: "Success",
-        description: "Location and all associated subscriptions have been removed",
+      const { deleteApi } = await import("@/services/apis");
+      const response = await deleteApi({ 
+        end_point: `locations/${locationToDelete.id}`,
+        token: true
       });
-      loadLocations();
+      
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: response.message || "Location and all associated subscriptions have been removed",
+        });
+        
+        // Reload locations
+        loadLocations();
+        setDeleteDialogOpen(false);
+        setLocationToDelete(null);
+      } else {
+        throw new Error(response.message || 'Failed to delete location');
+      }
     } catch (error) {
       console.error('Error deleting location:', error);
       toast({

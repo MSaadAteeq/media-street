@@ -1,6 +1,9 @@
 import { ReactNode, useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useDispatch } from "react-redux";
+import { authActions } from "@/store/auth/auth";
+import type { AppDispatch } from "@/store";
+// Supabase removed - will use Node.js API
 import { 
   Home,
   Store, 
@@ -54,6 +57,7 @@ interface PartnerNotification {
 const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const dispatch = useDispatch<AppDispatch>();
   const [notifications, setNotifications] = useState<PartnerNotification[]>([]);
   const [referralCode, setReferralCode] = useState<string>("");
 
@@ -61,23 +65,12 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
   useEffect(() => {
     const fetchReferralCode = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('referral_code')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (error) {
-          console.error('Error fetching referral code:', error);
-          return;
-        }
-
-        if (data?.referral_code) {
-          setReferralCode(data.referral_code);
-        }
+        // TODO: Replace with Node.js API call
+        // const response = await get({ end_point: 'profile/referral-code' });
+        // setReferralCode(response.data.referral_code);
+        
+        // Mock data for now
+        setReferralCode("REF12345");
       } catch (error) {
         console.error('Error:', error);
       }
@@ -438,11 +431,23 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                         className="w-full justify-start h-9 text-sm text-destructive hover:text-destructive"
                         onClick={async () => {
                           try {
-                            await supabase.auth.signOut();
-                            navigate('/login');
+                            // TODO: Replace with Node.js API call
+                            // await post({ end_point: 'auth/logout' });
+                            
+                            // Clear Redux state first
+                            dispatch(authActions.logout());
+                            
+                            // Remove token from localStorage
+                            localStorage.removeItem('token');
+                            
+                            // Navigate to login page
+                            navigate('/login', { replace: true });
                           } catch (error) {
                             console.error('Logout error:', error);
-                            navigate('/login');
+                            // Even if there's an error, clear state and redirect
+                            dispatch(authActions.logout());
+                            localStorage.removeItem('token');
+                            navigate('/login', { replace: true });
                           }
                         }}
                       >

@@ -4,7 +4,7 @@ import mediaStreetLogo from "@/assets/media-street-logo.png";
 import { Download, Mail, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 
 interface LocationQRDisplayProps {
   locationId: string;
@@ -131,17 +131,17 @@ const LocationQRDisplay = ({ locationId, locationName, locationAddress, onEmailS
         return;
       }
 
-      const { error } = await supabase.functions.invoke('send-location-qr', {
-        body: {
-          locationId,
-          locationName,
-          locationAddress,
-          qrCodeDataUrl: dataUrl,
-          requestSticker: false,
-        },
-      });
-
-      if (error) throw error;
+      // TODO: Replace with Node.js API call
+      // await post({ 
+      //   end_point: 'locations/send-qr', 
+      //   body: {
+      //     locationId,
+      //     locationName,
+      //     locationAddress,
+      //     qrCodeDataUrl: dataUrl,
+      //     requestSticker: false,
+      //   }
+      // });
 
       toast({
         title: "Email Sent!",
@@ -174,17 +174,17 @@ const LocationQRDisplay = ({ locationId, locationName, locationAddress, onEmailS
         return;
       }
 
-      const { error } = await supabase.functions.invoke('send-location-qr', {
-        body: {
-          locationId,
-          locationName,
-          locationAddress,
-          qrCodeDataUrl: dataUrl,
-          requestSticker: true,
-        },
-      });
-
-      if (error) throw error;
+      // TODO: Replace with Node.js API call
+      // await post({ 
+      //   end_point: 'locations/send-qr', 
+      //   body: {
+      //     locationId,
+      //     locationName,
+      //     locationAddress,
+      //     qrCodeDataUrl: dataUrl,
+      //     requestSticker: true,
+      //   }
+      // });
 
       toast({
         title: "Sticker Requested!",

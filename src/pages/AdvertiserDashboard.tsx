@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -24,55 +24,31 @@ export default function AdvertiserDashboard() {
 
   useEffect(() => {
     const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'auth/me' });
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
         navigate("/advertiser/signup");
       } else {
-        setUser(session.user);
+        // Mock user object
+        setUser({ id: 'user-id', email: 'user@example.com' } as any);
         
-        // Fetch profile data
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('first_name')
-          .eq('user_id', session.user.id)
-          .single();
-        
-        if (profile?.first_name) {
-          setFirstName(profile.first_name);
-        }
+        // TODO: Fetch profile data
+        // const profileResponse = await get({ end_point: 'profile' });
+        // if (profileResponse.data?.first_name) {
+        //   setFirstName(profileResponse.data.first_name);
+        // }
       }
     };
 
     checkUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (!session?.user) {
-          navigate("/advertiser/signup");
-        } else {
-          setUser(session.user);
-          
-          setTimeout(() => {
-            supabase
-              .from('profiles')
-              .select('first_name')
-              .eq('user_id', session.user.id)
-              .single()
-              .then(({ data: profile }) => {
-                if (profile?.first_name) {
-                  setFirstName(profile.first_name);
-                }
-              });
-          }, 0);
-        }
-      }
-    );
-
-    return () => subscription.unsubscribe();
   }, [navigate]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    // TODO: Replace with Node.js API call
+    // await post({ end_point: 'auth/logout' });
+    localStorage.removeItem('token');
     navigate("/");
   };
 
@@ -88,15 +64,15 @@ export default function AdvertiserDashboard() {
 
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.functions.invoke('request-custom-metric', {
-        body: {
-          objective: metricObjective,
-          userName: firstName || user?.email,
-          userEmail: user?.email,
-        },
-      });
-
-      if (error) throw error;
+      // TODO: Replace with Node.js API call
+      // await post({ 
+      //   end_point: 'advertiser/request-custom-metric', 
+      //   body: {
+      //     objective: metricObjective,
+      //     userName: firstName || user?.email,
+      //     userEmail: user?.email,
+      //   }
+      // });
 
       toast({
         title: "Request submitted",

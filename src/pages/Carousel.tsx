@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,131 +47,63 @@ const Carousel = () => {
     try {
       setLoading(true);
 
-      // Load location details
-      const { data: locationData, error: locationError } = await supabase
-        .from('locations')
-        .select('*')
-        .eq('id', locationId)
-        .maybeSingle();
-
-      if (locationError || !locationData) {
-        console.error('Error loading location:', locationError);
-        toast({
-          title: "Error",
-          description: "Could not find this location",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      setLocation(locationData);
+      // TODO: Replace with Node.js API calls
+      // const locationResponse = await get({ end_point: `locations/${locationId}` });
+      // const offersResponse = await get({ end_point: `locations/${locationId}/offers` });
+      // const openOffersResponse = await get({ end_point: `locations/${locationId}/open-offers` });
+      // const campaignsResponse = await get({ end_point: `locations/${locationId}/campaigns` });
       
-      // Check if user has Open Offer subscription
-      // Note: Once DB migration adds location_id to offerx_subscriptions, 
-      // we'll check by location_id instead of user_id
-      const { data: openOfferSub } = await supabase
-        .from('offerx_subscriptions')
-        .select('*')
-        .eq('user_id', locationData.user_id)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      const isOpenOfferSubscribed = !!openOfferSub;
-
-      // Load partner offers for this location
-      const { data: partnerData } = await supabase
-        .from('offers')
-        .select('*')
-        .eq('location_id', locationId)
-        .eq('is_active', true);
-
-      // Randomize partner offers for rotation
-      const randomizedPartners = shuffleArray(partnerData || []);
-
+      // Mock data for now
+      const locationData = {
+        id: locationId,
+        name: "Sample Location",
+        address: "123 Main St",
+        user_id: "user-1"
+      };
+      
+      setLocation(locationData as Location);
+      
+      // Mock offers
+      const randomizedPartners: Offer[] = [];
+      
+      // Load open offers from backend API (available to all retailers)
       let nearbyOpenOffers: Offer[] = [];
-
-      // If subscribed to Open Offer, fetch nearby Open Offer deals
-      if (isOpenOfferSubscribed) {
-        // Get all other locations with Open Offer subscriptions
-        const { data: openOfferSubs } = await supabase
-          .from('offerx_subscriptions')
-          .select('user_id')
-          .eq('is_active', true)
-          .neq('user_id', locationData.user_id)
-          .limit(10);
-
-        if (openOfferSubs && openOfferSubs.length > 0) {
-          const openOfferUserIds = openOfferSubs.map(sub => sub.user_id);
-
-          // Get locations from these users
-          const { data: nearbyLocations } = await supabase
-            .from('locations')
-            .select('id, name, user_id')
-            .in('user_id', openOfferUserIds);
-
-          if (nearbyLocations && nearbyLocations.length > 0) {
-            const nearbyLocationIds = nearbyLocations.map(loc => loc.id);
-            
-            // Get offers from these locations (up to 10 offers)
-            // Note: Once DB has lat/long, we'll filter by distance (within 10 miles)
-            const { data: openOffersData } = await supabase
-              .from('offers')
-              .select('*')
-              .in('location_id', nearbyLocationIds)
-              .eq('is_active', true)
-              .limit(10);
-
-            if (openOffersData) {
-              // Attach business name to each offer
-              nearbyOpenOffers = openOffersData.map(offer => {
-                const offerLocation = nearbyLocations.find(
-                  loc => loc.id === offer.location_id
-                );
-                return {
-                  ...offer,
-                  business_name: offerLocation?.name,
-                  // Distance will be calculated once lat/long are added to DB
-                  distance: undefined
-                };
-              });
-            }
-          }
-        }
-      }
-
-      // If no partner offers or open offers, load default advertiser campaigns
-      let defaultCampaigns: any[] = [];
-      if (randomizedPartners.length === 0 && nearbyOpenOffers.length === 0) {
-        const { data: campaignData } = await supabase
-          .from('campaign_retailers' as any)
-          .select(`
-            campaigns (
-              id,
-              call_to_action,
-              brand_logo_url,
-              campaign_image_url,
-              website,
-              expiration_date
-            )
-          `)
-          .eq('location_id', locationId)
-          .eq('is_default_fallback', true);
-
-        if (campaignData) {
-          defaultCampaigns = campaignData
-            .filter((cr: any) => cr.campaigns)
-            .map((cr: any) => ({
-              id: cr.campaigns.id,
-              call_to_action: cr.campaigns.call_to_action,
-              offer_image_url: cr.campaigns.campaign_image_url,
-              brand_logo_url: cr.campaigns.brand_logo_url,
-              redemption_start_date: new Date().toISOString(),
-              redemption_end_date: cr.campaigns.expiration_date || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-              location_id: locationId,
-              business_name: 'Advertiser'
+      try {
+        const { get } = await import("@/services/apis");
+        const response = await get({ 
+          end_point: 'offers/open',
+          token: false // Public endpoint
+        });
+        
+        if (response.success && response.data) {
+          nearbyOpenOffers = response.data
+            .filter((offer: any) => offer.is_open_offer && offer.is_active)
+            .map((offer: any) => ({
+              id: offer.id,
+              call_to_action: offer.call_to_action,
+              location_id: offer.location_ids?.[0] || '',
+              location_name: offer.locations?.[0]?.name || 'Unknown Location',
+              is_partner_offer: false,
+              is_open_offer: true
             }));
         }
+      } catch (error) {
+        console.error('Error fetching open offers:', error);
+        // Fallback to localStorage if API fails
+        const openOffers = JSON.parse(localStorage.getItem('mockOpenOffers') || '[]');
+        nearbyOpenOffers = openOffers
+          .filter((offer: any) => offer.is_open_offer && offer.is_active)
+          .map((offer: any) => ({
+            id: offer.id,
+            call_to_action: offer.call_to_action,
+            location_id: offer.location_ids?.[0] || '',
+            location_name: offer.locations?.[0]?.name || 'Unknown Location',
+            is_partner_offer: false,
+            is_open_offer: true
+          }));
       }
+      
+      const defaultCampaigns: Offer[] = [];
 
       // Combine: partner offers first (randomized), then nearby Open Offers, then default campaigns
       const combinedOffers: Offer[] = [

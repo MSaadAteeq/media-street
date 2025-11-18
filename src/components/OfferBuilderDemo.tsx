@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Zap, Sparkles, Clock, ArrowRight } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import mediaStreetLogoIcon from "@/assets/media-street-logo-icon.png";
@@ -47,59 +47,48 @@ const OfferBuilderDemo = () => {
     }
     setIsGenerating(true);
     try {
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('generate-offer-from-website', {
-        body: {
-          website
-        }
-      });
-      if (error) {
-        throw new Error(error.message || 'Failed to generate offer');
-      }
-      if (data?.error) {
-        throw new Error(data.error);
-      }
-      if (data?.callToAction) {
-        setGeneratedOffer(data.callToAction);
-      }
+      // TODO: Replace with Node.js API call
+      // const response = await post({ end_point: 'offers/generate-from-website', body: { website } });
+      // if (response.data?.callToAction) {
+      //   setGeneratedOffer(response.data.callToAction);
+      // }
 
-      // Always set businessName, with fallback to "Your Business"
-      setBusinessName(data?.businessName && data.businessName.trim() ? data.businessName : "Your Business");
+      // Mock implementation
+      toast.info('Offer generation will be available after API integration');
+      
+      // TODO: Uncomment when API is ready:
+      // if (response.data?.businessName) {
+      //   setBusinessName(response.data.businessName);
+      // } else {
+      //   setBusinessName("Your Business");
+      // }
+      
+      // Mock for now
+      setBusinessName("Your Business");
 
-      // Set page title and favicon
-      if (data?.pageTitle) {
-        setPageTitle(data.pageTitle);
-      }
-      if (data?.faviconUrl) {
-        setFaviconUrl(data.faviconUrl);
-      }
-      if (data?.offerImageUrl) {
-        setOfferImage(data.offerImageUrl);
-      }
-
-      // Set brand colors if available
-      if (data?.colors) {
-        setBrandColors({
-          primary: data.colors.primary || '#9333EA',
-          secondary: data.colors.secondary || '#7E3AF2'
-        });
-      }
-      console.log('Generated data:', {
-        callToAction: data?.callToAction,
-        businessName: data?.businessName,
-        pageTitle: data?.pageTitle,
-        faviconUrl: data?.faviconUrl,
-        offerImageUrl: data?.offerImageUrl
-      });
-      if (data?.callToAction) {
-        toast({
-          title: "Offer Generated! 🎉",
-          description: "Your custom offer is ready. Sign up to promote it!",
-          duration: 5000
-        });
-      }
+      // TODO: Uncomment when API is ready:
+      // if (response.data?.pageTitle) {
+      //   setPageTitle(response.data.pageTitle);
+      // }
+      // if (response.data?.faviconUrl) {
+      //   setFaviconUrl(response.data.faviconUrl);
+      // }
+      // if (response.data?.offerImageUrl) {
+      //   setOfferImage(response.data.offerImageUrl);
+      // }
+      // if (response.data?.colors) {
+      //   setBrandColors({
+      //     primary: response.data.colors.primary || '#9333EA',
+      //     secondary: response.data.colors.secondary || '#7E3AF2'
+      //   });
+      // }
+      // if (response.data?.callToAction) {
+      //   toast({
+      //     title: "Offer Generated! 🎉",
+      //     description: "Your custom offer is ready. Sign up to promote it!",
+      //     duration: 5000
+      //   });
+      // }
     } catch (error) {
       console.error("Error generating offer:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);

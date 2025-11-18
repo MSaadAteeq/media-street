@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,21 +68,12 @@ const Settings = () => {
 
   const fetchCreditBalance = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from("user_credits" as any)
-        .select("credit_balance")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (error && error.code !== "PGRST116") {
-        console.error("Error fetching credit balance:", error);
-        return;
-      }
-
-      setCreditBalance((data as any)?.credit_balance || 0);
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'credits/balance' });
+      // setCreditBalance(response.data.credit_balance || 0);
+      
+      // Mock implementation
+      setCreditBalance(0);
     } catch (error) {
       console.error("Error fetching credit balance:", error);
     }
@@ -96,19 +87,19 @@ const Settings = () => {
 
     setIsRedeemingPromo(true);
     try {
-      const { data, error } = await supabase.functions.invoke("redeem-promo-code", {
-        body: { code: promoCode.trim() },
-      });
-
-      if (error) throw error;
-
-      if (data.error) {
-        toast.error(data.error);
-      } else {
-        toast.success(`Success! $${data.credit_amount} credit added to your account`);
-        setCreditBalance(data.new_balance);
-        setPromoCode("");
-      }
+      // TODO: Replace with Node.js API call
+      // const response = await post({ end_point: 'promo-codes/redeem', body: { code: promoCode.trim() } });
+      // if (response.data.error) {
+      //   toast.error(response.data.error);
+      // } else {
+      //   toast.success(`Success! $${response.data.credit_amount} credit added to your account`);
+      //   setCreditBalance(response.data.new_balance);
+      //   setPromoCode("");
+      // }
+      
+      // Mock implementation
+      toast.info('Promo code redemption will be available after API integration');
+      setPromoCode("");
     } catch (error) {
       console.error("Error redeeming promo code:", error);
       toast.error("Failed to redeem promo code");
@@ -118,9 +109,14 @@ const Settings = () => {
   };
 
   const fetchCurrentUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      setCurrentUserId(user.id);
+    // TODO: Replace with Node.js API call
+    // const response = await get({ end_point: 'auth/me' });
+    // setCurrentUserId(response.data.user.id);
+    
+    // Mock implementation
+    const token = localStorage.getItem('token');
+    if (token) {
+      setCurrentUserId('current-user-id');
     }
   };
 

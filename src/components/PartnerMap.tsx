@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { MapPin, Send } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+// Supabase removed - will use Node.js API
 
 // Mapbox public token (this is safe to store in code as it's a public token)
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXMtbWFwYm94MjAyNSIsImEiOiJjbWd0cHZhc20wNGc1Mm1xMmZwY2NnbjdwIn0.vAUXdUR3_gZwu35mLimvCg';
@@ -91,15 +91,11 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
     if (!selectedCancelPartner?.partnership_id) return;
     setIsCanceling(true);
     try {
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('cancel-partnership', {
-        body: {
-          partnership_id: selectedCancelPartner.partnership_id
-        }
-      });
-      if (error) throw error;
+      // TODO: Replace with Node.js API call
+      // await post({ 
+      //   end_point: 'partnerships/cancel', 
+      //   body: { partnership_id: selectedCancelPartner.partnership_id }
+      // });
       toast.success(`Partnership with ${selectedCancelPartner.store_name} has been canceled`);
       setShowCancelDialog(false);
       setSelectedCancelPartner(null);

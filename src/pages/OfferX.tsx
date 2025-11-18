@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import DisplayOptionCheck from "@/components/DisplayOptionCheck";
 import { checkDisplayOptions } from "@/utils/displayOptions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -78,21 +78,14 @@ const OfferX = () => {
 
   const checkSubscriptionStatus = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const { data, error } = await supabase.functions.invoke('check-offerx-subscription', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (error) {
-        console.error('Error checking subscription:', error);
-        return;
-      }
-
-      setSubscriptionStatus(data || {subscribed: false, active_locations: []});
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'offerx/subscription-status' });
+      // setSubscriptionStatus(response.data || {subscribed: false, active_locations: []});
+      
+      // Mock implementation
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      setSubscriptionStatus({subscribed: false, active_locations: []});
     } catch (error) {
       console.error('Error checking subscription:', error);
     }
@@ -229,8 +222,14 @@ const OfferX = () => {
         // Start subscription process for this location
         setProcessingSubscription(locationId);
         try {
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) {
+          // TODO: Replace with Node.js API call
+          // const response = await post({ end_point: 'offerx/create-checkout', body: { location_id: locationId } });
+          // if (response.data.url) {
+          //   window.open(response.data.url, '_blank');
+          // }
+          
+          const token = localStorage.getItem('token');
+          if (!token) {
             toast({
               title: "Authentication Required",
               description: "Please log in to activate OfferX.",
@@ -238,26 +237,14 @@ const OfferX = () => {
             });
             return;
           }
-
-          const { data, error } = await supabase.functions.invoke('create-offerx-checkout', {
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ location_id: locationId }),
-          });
-
-          if (error) {
-            throw error;
-          }
-
-          // Open checkout in new tab
-          window.open(data.url, '_blank');
           
-          toast({
-            title: "Billing Initiated",
-            description: "Complete the payment to activate OfferX for this location. $10/month will be charged to your saved payment method.",
-          });
+          toast.info('Checkout will be available after API integration');
+          
+          // TODO: Uncomment when API is integrated
+          // toast({
+          //   title: "Billing Initiated",
+          //   description: "Complete the payment to activate OfferX for this location. $10/month will be charged to your saved payment method.",
+          // });
 
           // Check subscription status after a delay to allow for payment completion
           setTimeout(() => {
@@ -285,20 +272,11 @@ const OfferX = () => {
     } else {
       // Disable OfferX for this location and cancel its subscription
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
-
-        const { data, error } = await supabase.functions.invoke('cancel-offerx-subscription', {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ location_id: locationId }),
-        });
-
-        if (error) {
-          throw error;
-        }
+        // TODO: Replace with Node.js API call
+        // await post({ end_point: 'offerx/cancel-subscription', body: { location_id: locationId } });
+        
+        const token = localStorage.getItem('token');
+        if (!token) return;
 
         // Update local state
         setActiveLocations(prev => {
@@ -331,24 +309,15 @@ const OfferX = () => {
 
   const cancelAllSubscriptions = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const { data, error } = await supabase.functions.invoke('cancel-offerx-subscription', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}), // No location_id means cancel all
-      });
-
-      if (error) {
-        throw error;
-      }
+      // TODO: Replace with Node.js API call
+      // await post({ end_point: 'offerx/cancel-all-subscriptions', body: {} });
+      
+      const token = localStorage.getItem('token');
+      if (!token) return;
 
       toast({
         title: "All Subscriptions Cancelled",
-        description: data.message || "All OfferX subscriptions have been cancelled.",
+        description: "All OfferX subscriptions have been cancelled.",
       });
 
       // Update subscription status

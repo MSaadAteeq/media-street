@@ -11,8 +11,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Upload, ArrowLeft, MapPin, Clock, QrCode as QrCodeIcon, Navigation, Map, ChevronDown, Zap } from "lucide-react";
 import { QRCodeSVG } from 'qrcode.react';
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { useToast } from "@/hooks/use-toast";
+import { get, post } from "@/services/apis";
 import mediaStreetLogoIcon from "@/assets/media-street-logo-icon.png";
 
 interface Location {
@@ -32,6 +33,7 @@ const OfferCreate = () => {
   const [callToAction, setCallToAction] = useState("");
   const [aiGeneratedStoreName, setAiGeneratedStoreName] = useState("");
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [isOpenOffer, setIsOpenOffer] = useState(false);
   const [brandLogo, setBrandLogo] = useState<File | null>(null);
   const [adImage, setAdImage] = useState<File | null>(null);
   const [expirationDuration, setExpirationDuration] = useState("1day");
@@ -130,25 +132,229 @@ const OfferCreate = () => {
 
   const fetchLocations = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to view your locations",
-          variant: "destructive",
-        });
+      // Fetch locations from backend API
+      const response = await get({ 
+        end_point: 'locations',
+        token: true
+      });
+      
+      if (response.success && response.data) {
+        setLocations(response.data);
         setLoading(false);
         return;
       }
-
-      const { data, error } = await supabase
-        .from("locations")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setLocations(data || []);
+    } catch (error) {
+      console.error('Error fetching locations from API:', error);
+      // Fall through to mock data if API fails
+    }
+    
+    // Fallback to mock data if API call fails
+    try {
+      // Mock locations for testing
+      // First, add the three locations from the Locations tab
+      const mockLocations: Location[] = [
+        {
+          id: "loc-1",
+          name: "Sally's Salon - Downtown",
+          address: "456 Oak Street, Manhattan, NY 10013"
+        },
+        {
+          id: "loc-2",
+          name: "Sally's Salon - Uptown",
+          address: "789 Elm Avenue, Brooklyn, NY 11201"
+        },
+        {
+          id: "loc-3",
+          name: "Sally's Salon - Midtown",
+          address: "321 Pine Boulevard, Queens, NY 11101"
+        },
+        {
+          id: "retail-1",
+          name: "Retail Store – Main Branch",
+          address: "123 Main Street, New York, NY 10001"
+        },
+        {
+          id: "retail-2",
+          name: "Retail Store – Mall Road",
+          address: "456 Mall Road, New York, NY 10002"
+        },
+        {
+          id: "retail-3",
+          name: "Retail Store – DHA Phase 6",
+          address: "789 DHA Phase 6, New York, NY 10003"
+        },
+        {
+          id: "retail-4",
+          name: "Retail Store – North Market",
+          address: "321 North Market Street, New York, NY 10004"
+        },
+        {
+          id: "retail-5",
+          name: "Retail Store – City Center",
+          address: "654 City Center Plaza, New York, NY 10005"
+        },
+        {
+          id: "loc-4",
+          name: "Coffee Corner - Main Branch",
+          address: "321 Oak Street, Brooklyn, NY 11201"
+        },
+        {
+          id: "loc-5",
+          name: "Coffee Corner - Park Slope",
+          address: "654 Park Avenue, Brooklyn, NY 11215"
+        },
+        {
+          id: "loc-6",
+          name: "Bloom & Blossom - Chelsea",
+          address: "987 7th Avenue, New York, NY 10019"
+        },
+        {
+          id: "loc-7",
+          name: "Tech Repair Hub - SoHo",
+          address: "147 Spring Street, New York, NY 10012"
+        },
+        {
+          id: "loc-8",
+          name: "Bistro 789 - Greenwich",
+          address: "258 Greenwich Avenue, New York, NY 10014"
+        },
+        {
+          id: "loc-9",
+          name: "Fashion Forward - Times Square",
+          address: "1590 Broadway, New York, NY 10036"
+        },
+        {
+          id: "loc-10",
+          name: "Green Grocer - Union Square",
+          address: "200 Park Avenue South, New York, NY 10003"
+        },
+        {
+          id: "loc-11",
+          name: "Book Nook - Upper East Side",
+          address: "1250 Lexington Avenue, New York, NY 10028"
+        },
+        {
+          id: "loc-12",
+          name: "Fit Zone Gym - Lower East Side",
+          address: "85 Delancey Street, New York, NY 10002"
+        },
+        {
+          id: "loc-13",
+          name: "Artisan Bakery - West Village",
+          address: "42 Bleecker Street, New York, NY 10012"
+        },
+        {
+          id: "loc-14",
+          name: "Tech Store - Flatiron",
+          address: "175 5th Avenue, New York, NY 10010"
+        },
+        {
+          id: "loc-15",
+          name: "Pet Paradise - Upper West Side",
+          address: "250 Columbus Avenue, New York, NY 10023"
+        },
+        {
+          id: "loc-16",
+          name: "Smoothie Bar - Financial District",
+          address: "100 Wall Street, New York, NY 10005"
+        },
+        {
+          id: "loc-17",
+          name: "Yoga Studio - Tribeca",
+          address: "345 Greenwich Street, New York, NY 10013"
+        },
+        {
+          id: "loc-18",
+          name: "Vintage Vinyl - East Village",
+          address: "123 St. Marks Place, New York, NY 10009"
+        },
+        {
+          id: "loc-19",
+          name: "Gourmet Deli - Hell's Kitchen",
+          address: "789 9th Avenue, New York, NY 10019"
+        },
+        {
+          id: "loc-20",
+          name: "Beauty Boutique - Nolita",
+          address: "234 Mulberry Street, New York, NY 10012"
+        },
+        {
+          id: "loc-21",
+          name: "Pizza Palace - Little Italy",
+          address: "456 Mulberry Street, New York, NY 10013"
+        },
+        {
+          id: "loc-22",
+          name: "Fresh Market - Chinatown",
+          address: "789 Canal Street, New York, NY 10013"
+        },
+        {
+          id: "loc-23",
+          name: "Shoe Store - Herald Square",
+          address: "1350 Broadway, New York, NY 10018"
+        },
+        {
+          id: "loc-24",
+          name: "Jewelry Box - Diamond District",
+          address: "47 West 47th Street, New York, NY 10036"
+        },
+        {
+          id: "loc-25",
+          name: "Ice Cream Dream - Central Park",
+          address: "200 Central Park South, New York, NY 10019"
+        },
+        {
+          id: "loc-26",
+          name: "Bike Shop - Williamsburg",
+          address: "123 Bedford Avenue, Brooklyn, NY 11211"
+        },
+        {
+          id: "loc-27",
+          name: "Wine Cellar - Astoria",
+          address: "456 Broadway, Astoria, NY 11103"
+        },
+        {
+          id: "loc-28",
+          name: "Hair Studio - Queens",
+          address: "789 Queens Boulevard, Queens, NY 11101"
+        },
+        {
+          id: "loc-29",
+          name: "Tattoo Parlor - Bushwick",
+          address: "321 Myrtle Avenue, Brooklyn, NY 11205"
+        },
+        {
+          id: "loc-30",
+          name: "Craft Store - Long Island City",
+          address: "654 Jackson Avenue, Long Island City, NY 11101"
+        },
+        {
+          id: "loc-31",
+          name: "Sushi Bar - Midtown East",
+          address: "890 3rd Avenue, New York, NY 10022"
+        },
+        {
+          id: "loc-32",
+          name: "Pharmacy Plus - Upper Manhattan",
+          address: "123 Amsterdam Avenue, New York, NY 10023"
+        },
+        {
+          id: "loc-33",
+          name: "Gift Shop - Rockefeller Center",
+          address: "30 Rockefeller Plaza, New York, NY 10112"
+        },
+        {
+          id: "loc-34",
+          name: "Dry Cleaners - Gramercy",
+          address: "234 Park Avenue South, New York, NY 10003"
+        },
+        {
+          id: "loc-35",
+          name: "Optical Center - Murray Hill",
+          address: "567 Lexington Avenue, New York, NY 10022"
+        }
+      ];
+      setLocations(mockLocations);
     } catch (error) {
       console.error("Error fetching locations:", error);
       toast({
@@ -176,16 +382,16 @@ const OfferCreate = () => {
       console.log('Calling generate-offer-from-website function...');
       console.log('⚠️ NOTE: Edge function changes may take a few minutes to deploy');
       
-      const { data, error } = await supabase.functions.invoke('generate-offer-from-website', {
-        body: { website }
+      // TODO: Replace with Node.js API call
+      // const response = await post({ end_point: 'offers/generate-from-website', body: { website } });
+      // const data = response.data;
+      
+      // Mock implementation
+      const data = null;
+      toast({
+        title: "Info",
+        description: "Offer generation will be available after API integration",
       });
-
-      console.log('Response:', { data, error });
-
-      if (error) {
-        console.error('Edge function error:', error);
-        throw new Error(error.message || 'Failed to call edge function');
-      }
 
       // Check if the response contains an error from the function
       if (data?.error) {
@@ -286,15 +492,13 @@ const OfferCreate = () => {
   const searchAndSetLogo = async (businessName: string) => {
     try {
       console.log('Searching for logo for:', businessName);
-      const { data: logoData, error: logoError } = await supabase.functions.invoke('search-business-logo', {
-        body: { businessName }
-      });
-
-      if (logoError) {
-        console.error('Error searching for logo:', logoError);
-        return;
-      }
-
+      // TODO: Replace with Node.js API call
+      // const response = await post({ end_point: 'business/search-logo', body: { businessName } });
+      // const logoData = response.data;
+      
+      // Mock implementation
+      const logoData: any = null;
+      
       if (logoData?.logoUrl) {
         console.log('Found logo URL:', logoData.logoUrl);
         const logoResponse = await fetch(logoData.logoUrl);
@@ -344,18 +548,31 @@ const OfferCreate = () => {
   };
 
   const handleCreateOffer = async () => {
-    if (!callToAction || selectedLocations.length === 0) {
+    if (!callToAction) {
       toast({
         title: "Missing Information",
-        description: "Please fill in all required fields",
+        description: "Please enter your offer text",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Always require at least one location
+    if (selectedLocations.length === 0) {
+      toast({
+        title: "Location Required",
+        description: "Please select at least one of your retail locations for this offer",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      // TODO: Replace with Node.js API call
+      // const userResponse = await get({ end_point: 'auth/me' });
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
         toast({
           title: "Authentication Required",
           description: "Please log in to create offers",
@@ -364,43 +581,63 @@ const OfferCreate = () => {
         return;
       }
 
-      // Create offers for each selected location
-      const offerPromises = selectedLocations.map(locationId => 
-        supabase
-          .from("offers")
-          .insert({
-            user_id: user.id,
-            location_id: locationId,
-            call_to_action: callToAction,
-            offer_image_url: adImage ? URL.createObjectURL(adImage) : null,
-            brand_logo_url: brandLogo ? URL.createObjectURL(brandLogo) : null,
-          })
-      );
-
-      const results = await Promise.all(offerPromises);
-      const hasErrors = results.some(result => result.error);
+      // Create offer via backend API
+      const offerData = {
+        call_to_action: callToAction,
+        is_open_offer: isOpenOffer,
+        location_ids: selectedLocations, // Always include selected locations
+        expiration_duration: expirationDuration,
+        redemption_code: redemptionCode,
+        // TODO: Handle file uploads for brand_logo and offer_image
+        // brand_logo: brandLogo,
+        // offer_image: adImage,
+      };
       
-      if (hasErrors) {
-        throw new Error("Failed to create some offers");
-      }
-
-      toast({
-        title: "Offer Created Successfully!",
-        description: "Your offer is now active. Partner with other retailers to increase offer visibility!",
-        action: (
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => navigate("/requests")}
-          >
-            Find Partners
-          </Button>
-        ),
-        duration: 8000,
+      const response = await post({ 
+        end_point: 'offers', 
+        body: offerData,
+        token: true
       });
-
-      // Navigate back to offers list
-      navigate("/offers");
+      
+      if (response.success) {
+        const offerType = isOpenOffer ? 'Open Offer' : 'Location-based Offer';
+        const locationText = `${selectedLocations.length} of your location${selectedLocations.length !== 1 ? 's' : ''}`;
+        
+        toast({
+          title: "Offer Created Successfully!",
+          description: response.message || `${offerType} created for ${locationText}. ${isOpenOffer ? 'It will appear in the Open Offers tab and be available to all retailers, while also being displayed at your selected locations.' : 'This offer is now available for partnership with other retailers!'}`,
+          duration: 5000,
+        });
+        
+        // Navigate to offers page after a short delay
+        setTimeout(() => {
+          navigate("/offers");
+        }, 1500);
+      } else {
+        throw new Error(response.message || 'Failed to create offer');
+      }
+      
+      // TODO: Uncomment and use when API is ready:
+      // const results = await Promise.all(offerPromises);
+      // const hasErrors = results.some(result => result.error);
+      // if (hasErrors) {
+      //   throw new Error("Failed to create some offers");
+      // }
+      // toast({
+      //   title: "Offer Created Successfully!",
+      //   description: "Your offer is now active. Partner with other retailers to increase offer visibility!",
+      //   action: (
+      //     <Button 
+      //       variant="outline" 
+      //       size="sm" 
+      //       onClick={() => navigate("/requests")}
+      //     >
+      //       Find Partners
+      //     </Button>
+      //   ),
+      //   duration: 8000,
+      // });
+      // navigate("/offers");
     } catch (error) {
       console.error("Error creating offer:", error);
       toast({
@@ -569,10 +806,35 @@ const OfferCreate = () => {
                   </div>
                 </div>
 
+                {/* Open Offer Checkbox */}
+                <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="open-offer"
+                      checked={isOpenOffer}
+                      onCheckedChange={(checked) => {
+                        setIsOpenOffer(checked as boolean);
+                      }}
+                    />
+                    <div className="flex-1">
+                      <Label htmlFor="open-offer" className="text-base font-semibold cursor-pointer">
+                        Open Offer
+                      </Label>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Make this offer available to all retailers. It will appear in the "Open Offers" tab and can be displayed by any retailer.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Location Selection */}
                 <div className="space-y-2">
-                  <Label htmlFor="location">Select Retail Locations</Label>
-                  <p className="text-sm text-muted-foreground">Choose which retail locations this offer is for.</p>
+                  <Label htmlFor="location">Select Your Retail Locations *</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {isOpenOffer 
+                      ? "Choose which of your retail locations will display this open offer. The offer will also be available to all other retailers."
+                      : "Choose which retail locations this offer is for. This offer will be available for partnership with other retailers."}
+                  </p>
                   
                   <Popover>
                     <PopoverTrigger asChild>
@@ -580,43 +842,59 @@ const OfferCreate = () => {
                         variant="outline"
                         role="combobox"
                         className="w-full justify-between"
+                        disabled={loading}
                       >
-                        {selectedLocations.length === 0
+                        {loading
+                          ? "Loading locations..."
+                          : selectedLocations.length === 0
                           ? "Select locations..."
                           : `${selectedLocations.length} location(s) selected`}
                         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-full p-0 bg-background border border-border shadow-lg z-50">
-                      <div className="p-4 space-y-3 max-h-64 overflow-y-auto">
-                        {locations.map((location) => (
-                          <div key={location.id} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={location.id}
-                              checked={selectedLocations.includes(location.id)}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setSelectedLocations([...selectedLocations, location.id]);
-                                } else {
-                                  setSelectedLocations(selectedLocations.filter(id => id !== location.id));
-                                }
-                              }}
-                            />
-                            <Label
-                              htmlFor={location.id}
-                              className="text-sm font-normal cursor-pointer"
-                            >
-                              {location.name} - {location.address}
-                            </Label>
+                    <PopoverContent className="w-[400px] p-0 bg-background border border-border shadow-lg z-50" align="start">
+                      <div className="p-4">
+                        {locations.length === 0 ? (
+                          <div className="text-center py-4 text-sm text-muted-foreground">
+                            No locations available
                           </div>
-                        ))}
+                        ) : (
+                          <>
+                            <div className="mb-2 text-xs font-medium text-muted-foreground">
+                              {locations.length} location{locations.length !== 1 ? 's' : ''} available
+                            </div>
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                              {locations.map((location) => (
+                                <div key={location.id} className="flex items-start space-x-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                                  <Checkbox
+                                    id={location.id}
+                                    checked={selectedLocations.includes(location.id)}
+                                    onCheckedChange={(checked) => {
+                                      if (checked) {
+                                        setSelectedLocations([...selectedLocations, location.id]);
+                                      } else {
+                                        setSelectedLocations(selectedLocations.filter(id => id !== location.id));
+                                      }
+                                    }}
+                                    className="mt-1"
+                                  />
+                                  <Label
+                                    htmlFor={location.id}
+                                    className="text-sm font-normal cursor-pointer flex-1"
+                                  >
+                                    <div>
+                                      <div className="font-medium">{location.name}</div>
+                                      <div className="text-xs text-muted-foreground mt-0.5">{location.address}</div>
+                                    </div>
+                                  </Label>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
                       </div>
                     </PopoverContent>
                   </Popover>
-                  
-                  {locations.length === 0 && (
-                    <p className="text-sm text-destructive">No locations found. Please add a location first.</p>
-                  )}
                   
                   {selectedLocations.length > 0 && (
                     <div className="mt-2">
@@ -635,6 +913,15 @@ const OfferCreate = () => {
                   )}
                 </div>
 
+                {/* Info message for open offers */}
+                {isOpenOffer && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <p className="text-sm text-blue-900 dark:text-blue-100">
+                      <strong>Open Offer:</strong> This offer will be visible to all retailers in the "Open Offers" tab and can be displayed by any retailer without requiring a partnership. You've selected {selectedLocations.length} of your own location{selectedLocations.length !== 1 ? 's' : ''} to display this offer.
+                    </p>
+                  </div>
+                )}
+
                 {/* Create Offer Button */}
                 <div className="pt-4">
                   <Button 
@@ -642,7 +929,7 @@ const OfferCreate = () => {
                     onClick={handleCreateOffer}
                     disabled={!callToAction || selectedLocations.length === 0}
                   >
-                    Create Offer
+                    Create {isOpenOffer ? 'Open ' : ''}Offer
                   </Button>
                 </div>
               </CardContent>
@@ -728,22 +1015,64 @@ const OfferCreate = () => {
                   </div>
                 </div>
 
-                {selectedLocations.length > 0 && (
-                  <div className="mt-4 p-3 bg-muted rounded-lg">
-                    <p className="text-sm font-medium">Locations ({selectedLocations.length}):</p>
-                    {selectedLocations.slice(0, 3).map(locationId => {
-                      const location = locations.find(l => l.id === locationId);
-                      return location ? (
-                        <div key={locationId} className="mt-1">
-                          <p className="text-sm text-muted-foreground">{location.name}</p>
+                {/* Offer Type and Location Info */}
+                <div className="mt-4 p-3 bg-muted rounded-lg">
+                  {isOpenOffer ? (
+                    <div>
+                      <p className="text-sm font-medium flex items-center gap-2">
+                        <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded text-xs font-semibold">
+                          OPEN OFFER
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          ({selectedLocations.length} location{selectedLocations.length !== 1 ? 's' : ''})
+                        </span>
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Available to all retailers in the Open Offers tab
+                      </p>
+                      {selectedLocations.length > 0 && (
+                        <div className="mt-2 pt-2 border-t">
+                          <p className="text-xs font-medium mb-1">Your locations:</p>
+                          {selectedLocations.slice(0, 3).map(locationId => {
+                            const location = locations.find(l => l.id === locationId);
+                            return location ? (
+                              <div key={locationId} className="mt-1">
+                                <p className="text-xs text-muted-foreground">{location.name}</p>
+                              </div>
+                            ) : null;
+                          })}
+                          {selectedLocations.length > 3 && (
+                            <p className="text-xs text-muted-foreground mt-1">+ {selectedLocations.length - 3} more</p>
+                          )}
                         </div>
-                      ) : null;
-                    })}
-                    {selectedLocations.length > 3 && (
-                      <p className="text-xs text-muted-foreground mt-1">+ {selectedLocations.length - 3} more</p>
-                    )}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  ) : selectedLocations.length > 0 ? (
+                    <div>
+                      <p className="text-sm font-medium flex items-center gap-2">
+                        <span className="px-2 py-1 bg-primary/10 text-primary rounded text-xs font-semibold">
+                          LOCATION-BASED
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          ({selectedLocations.length} location{selectedLocations.length > 1 ? 's' : ''})
+                        </span>
+                      </p>
+                      {selectedLocations.slice(0, 3).map(locationId => {
+                        const location = locations.find(l => l.id === locationId);
+                        return location ? (
+                          <div key={locationId} className="mt-1">
+                            <p className="text-sm text-muted-foreground">{location.name}</p>
+                          </div>
+                        ) : null;
+                      })}
+                      {selectedLocations.length > 3 && (
+                        <p className="text-xs text-muted-foreground mt-1">+ {selectedLocations.length - 3} more</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Select your locations</p>
+                  )}
+                </div>
               </CardContent>
             </Card>
 

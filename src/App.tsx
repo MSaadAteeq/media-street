@@ -1,11 +1,14 @@
 import { Provider } from "react-redux"
 import { PersistGate } from "redux-persist/integration/react";
 import { store, persistor } from "./store";
-import { Toaster } from "@/components/ui/toaster";
+// import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { PublicRoute } from "@/components/PublicRoute";
+import { RoleProtectedRoute } from "@/components/RoleProtectedRoute";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import TermsOfService from "./pages/TermsOfService";
@@ -38,32 +41,15 @@ const App = () => (
     <PersistGate loading={null} persistor={persistor}>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          <Toaster />
+          {/* <Toaster /> */}
           <Sonner />
           <BrowserRouter>
             <Routes>
+              {/* Public Routes */}
               <Route path="/" element={<Index />} />
-              <Route path="/login" element={<Login />} />
+              <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/advertiser/signup" element={<AdvertiserSignup />} />
-              <Route path="/advertiser/dashboard" element={<AdvertiserDashboard />} />
-              <Route path="/advertiser/campaign/create" element={<AdvertiserCampaignCreate />} />
               <Route path="/reset-password" element={<PasswordReset />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/locations" element={<Locations />} />
-              <Route path="/offers" element={<Offers />} />
-              <Route path="/offers/create" element={<OfferCreate />} />
-              <Route path="/openoffer" element={<OfferAI />} />
-              <Route path="/offerx" element={<OfferX />} />
-              <Route path="/display" element={<InStoreDisplay />} />
-              <Route path="/requests" element={<PartnerRequests />} />
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/settings/profile" element={<Settings />} />
-              <Route path="/settings/messages" element={<Settings />} />
-              <Route path="/settings/billing" element={<Settings />} />
-              <Route path="/settings/security" element={<Settings />} />
-              <Route path="/settings/notifications" element={<Settings />} />
-              <Route path="/settings/content" element={<Settings />} />
               <Route path="/terms-of-service" element={<TermsOfService />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/faq" element={<FAQ />} />
@@ -71,6 +57,29 @@ const App = () => (
               <Route path="/redeem/:offerCode/confirm" element={<RedeemConfirm />} />
               <Route path="/locations/:locationId/qr" element={<LocationQR />} />
               <Route path="/carousel/:locationId" element={<Carousel />} />
+              
+              {/* Protected Routes - Require Authentication */}
+              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/locations" element={<ProtectedRoute><Locations /></ProtectedRoute>} />
+              <Route path="/offers" element={<ProtectedRoute><Offers /></ProtectedRoute>} />
+              <Route path="/offers/create" element={<ProtectedRoute><OfferCreate /></ProtectedRoute>} />
+              <Route path="/openoffer" element={<ProtectedRoute><OfferAI /></ProtectedRoute>} />
+              <Route path="/offerx" element={<ProtectedRoute><OfferX /></ProtectedRoute>} />
+              <Route path="/display" element={<ProtectedRoute><InStoreDisplay /></ProtectedRoute>} />
+              <Route path="/requests" element={<ProtectedRoute><PartnerRequests /></ProtectedRoute>} />
+              <Route path="/advertiser/dashboard" element={<ProtectedRoute><AdvertiserDashboard /></ProtectedRoute>} />
+              <Route path="/advertiser/campaign/create" element={<ProtectedRoute><AdvertiserCampaignCreate /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/settings/profile" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/settings/messages" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/settings/billing" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/settings/security" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/settings/notifications" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              <Route path="/settings/content" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              
+              {/* Admin Routes - Require Admin Role */}
+              <Route path="/admin" element={<RoleProtectedRoute allowedRoles={["admin"]}><Admin /></RoleProtectedRoute>} />
+              
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

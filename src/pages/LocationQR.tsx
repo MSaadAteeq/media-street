@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import LocationQRDisplay from "@/components/LocationQRDisplay";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
@@ -25,18 +25,17 @@ const LocationQR = () => {
 
   const loadLocation = async () => {
     try {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('*')
-        .eq('id', locationId)
-        .maybeSingle();
-
-      if (error || !data) {
-        console.error('Error loading location:', error);
-        return;
-      }
-
-      setLocation(data);
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: `locations/${locationId}` });
+      // setLocation(response.data);
+      
+      // Mock data for now
+      const mockLocation = {
+        id: locationId || 'loc-1',
+        name: "Sample Location",
+        address: "123 Main St"
+      };
+      setLocation(mockLocation);
     } catch (error) {
       console.error('Error loading location:', error);
     } finally {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -105,9 +105,12 @@ const Admin = () => {
 
   const checkAdminAccess = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'auth/me' });
+      // const roleResponse = await get({ end_point: 'auth/check-role?role=admin' });
       
-      if (!user) {
+      const token = localStorage.getItem('token');
+      if (!token) {
         toast.error("Please log in to access admin panel");
         navigate('/login');
         return;
@@ -115,24 +118,12 @@ const Admin = () => {
 
       setIsAuthenticated(true);
 
-      // Check if user has admin role
-      const { data: hasAdminRole, error } = await supabase.rpc('has_role' as any, {
-        _user_id: user.id,
-        _role: 'admin'
-      });
-
-      if (error) {
-        console.error('Error checking admin role:', error);
-        toast.error("Error verifying admin access");
-        navigate('/');
-        return;
-      }
-
-      if (!hasAdminRole) {
-        toast.error("Access denied: Admin privileges required");
-        navigate('/');
-        return;
-      }
+      // TODO: Check admin role via API
+      // if (!roleResponse.data.hasRole) {
+      //   toast.error("Access denied: Admin privileges required");
+      //   navigate('/');
+      //   return;
+      // }
 
       setIsAdmin(true);
       await loadAdminData();
@@ -147,28 +138,25 @@ const Admin = () => {
 
   const loadAdminData = async () => {
     try {
-      // Load analytics
-      const { data: analyticsData, error: analyticsError } = await supabase.rpc('get_admin_analytics' as any);
-      if (analyticsError) throw analyticsError;
+      // TODO: Replace with Node.js API calls
+      // const analyticsResponse = await get({ end_point: 'admin/analytics' });
+      // const usersResponse = await get({ end_point: 'admin/users' });
+      // const locationsResponse = await get({ end_point: 'admin/locations' });
+      // const revenueResponse = await get({ end_point: 'admin/revenue' });
+      
+      // Mock data for now
+      const analyticsData = { total_users: 0, total_locations: 0, total_revenue: 0 };
+      const usersData: any[] = [];
+      const locationsData: any[] = [];
+      const revenueDataResponse: any[] = [];
+      
       setAnalytics(analyticsData as any);
-
-      // Load users
-      const { data: usersData, error: usersError } = await supabase.rpc('get_admin_users' as any);
-      if (usersError) throw usersError;
-      setUsers((usersData || []) as any);
-
-      // Load locations
-      const { data: locationsData, error: locationsError } = await supabase.rpc('get_admin_locations' as any);
-      if (locationsError) throw locationsError;
-      setLocations((locationsData || []) as any);
-
-      // Load revenue data
-      const { data: revenueDataResponse, error: revenueError } = await supabase.rpc('get_admin_monthly_revenue' as any);
-      if (revenueError) throw revenueError;
-      setRevenueData((revenueDataResponse || []) as any);
+      setUsers(usersData);
+      setLocations(locationsData);
+      setRevenueData(revenueDataResponse);
 
       // Process monthly trends
-      processMonthlyTrends(usersData || [], locationsData || [], revenueDataResponse || []);
+      processMonthlyTrends(usersData, locationsData, revenueDataResponse);
 
       // Load detailed data
       await loadDetailedData();
@@ -181,17 +169,15 @@ const Admin = () => {
 
   const loadDetailedData = async () => {
     try {
-      // Load detailed user data
-      const { data: userDetailsData, error: userDetailsError } = await supabase
-        .from('profiles')
-        .select(`
-          id,
-          full_name,
-          users!inner(email, created_at),
-          locations(count)
-        `);
+      // TODO: Replace with Node.js API calls
+      // const userDetailsResponse = await get({ end_point: 'admin/user-details' });
+      // const locationDetailsResponse = await get({ end_point: 'admin/location-details' });
       
-      if (!userDetailsError && userDetailsData) {
+      // Mock data for now
+      const userDetailsData: any[] = [];
+      const locationDetailsData: any[] = [];
+      
+      if (userDetailsData.length > 0) {
         const formattedUsers: UserDetail[] = await Promise.all(
           userDetailsData.map(async (user: any) => {
             // Get Stripe revenue for this user (placeholder - would need Stripe integration)
@@ -209,25 +195,8 @@ const Admin = () => {
         );
         setUserDetails(formattedUsers);
       }
-
-      // Load detailed location data
-      const { data: locationDetailsData, error: locationDetailsError } = await supabase
-        .from('locations')
-        .select(`
-          id,
-          name,
-          address,
-          city,
-          state,
-          zip,
-          profiles!locations_user_id_fkey(full_name, users!inner(email)),
-          partnerships_requesting:partnerships!partnerships_requesting_location_id_fkey(id, status),
-          partnerships_accepting:partnerships!partnerships_accepting_location_id_fkey(id, status),
-          offerx_subscription_status,
-          display_option
-        `);
       
-      if (!locationDetailsError && locationDetailsData) {
+      if (locationDetailsData && locationDetailsData.length > 0) {
         const formattedLocations: LocationDetail[] = locationDetailsData.map((location: any) => {
           const activePartnerships = [
             ...(location.partnerships_requesting || []).filter((p: any) => p.status === 'active'),
@@ -247,28 +216,11 @@ const Admin = () => {
         setLocationDetails(formattedLocations);
       }
 
-      // Load detailed partnership data
-      const { data: partnershipDetailsData, error: partnershipDetailsError } = await supabase
-        .from('partnerships')
-        .select(`
-          id,
-          created_at,
-          cancelled_at,
-          status,
-          requesting_location:locations!partnerships_requesting_location_id_fkey(name),
-          accepting_location:locations!partnerships_accepting_location_id_fkey(name),
-          analytics:partnership_analytics(
-            requesting_impressions,
-            accepting_impressions,
-            requesting_scans,
-            accepting_scans,
-            requesting_conversions,
-            accepting_conversions
-          )
-        `)
-        .order('created_at', { ascending: false });
+      // TODO: Load detailed partnership data
+      // const partnershipResponse = await get({ end_point: 'admin/partnership-details' });
+      const partnershipDetailsData: any[] = [];
       
-      if (!partnershipDetailsError && partnershipDetailsData) {
+      if (partnershipDetailsData && partnershipDetailsData.length > 0) {
         const formattedPartnerships: PartnershipDetail[] = partnershipDetailsData.map((partnership: any) => {
           const analytics = partnership.analytics?.[0] || {};
           

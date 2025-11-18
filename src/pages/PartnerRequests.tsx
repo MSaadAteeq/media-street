@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -208,27 +208,22 @@ const PartnerRequests = () => {
     }
   }, [userLocations, partnersForMap]);
   const fetchCurrentUser = async () => {
-    const {
-      data: {
-        user
-      }
-    } = await supabase.auth.getUser();
-    if (user) {
-      setCurrentUserId(user.id);
+    // TODO: Replace with Node.js API call to get current user
+    // const response = await get({ end_point: 'auth/me' });
+    // setCurrentUserId(response.data.user.id);
+    
+    // Mock implementation for now
+    const token = localStorage.getItem('token');
+    if (token) {
+      setCurrentUserId('current-user-id');
     }
   };
   const fetchUserLocations = async () => {
     try {
-      const {
-        data: {
-          user
-        },
-        error: userError
-      } = await supabase.auth.getUser();
-      if (userError || !user) {
-        console.log('❌ No authenticated user found');
-        return;
-      }
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'locations' });
+      // setUserLocations(response.data);
+      
       const mockLocations = [{
         id: "location_1",
         name: "Sally's Salon",
@@ -337,27 +332,12 @@ const PartnerRequests = () => {
   const checkPaymentMethod = async () => {
     setIsCheckingPaymentMethod(true);
     try {
-      const {
-        data: {
-          user
-        }
-      } = await supabase.auth.getUser();
-      if (!user?.email) {
-        setHasPaymentMethod(false);
-        return;
-      }
-
-      // Check with Stripe if user has a payment method
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('check-payment-method');
-      if (error) {
-        console.error('Error checking payment method:', error);
-        setHasPaymentMethod(false);
-        return;
-      }
-      setHasPaymentMethod(data?.has_payment_method || false);
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'payment/check-method' });
+      // setHasPaymentMethod(response.data.has_payment_method || false);
+      
+      // Mock implementation for now
+      setHasPaymentMethod(false);
     } catch (error) {
       console.error('Error checking payment method:', error);
       setHasPaymentMethod(false);
@@ -367,21 +347,16 @@ const PartnerRequests = () => {
   };
   const checkUserHasOffer = async () => {
     try {
-      const {
-        data: {
-          user
-        }
-      } = await supabase.auth.getUser();
-      if (!user) return false;
-      const {
-        data,
-        error
-      } = await supabase.from('offers').select('id').eq('user_id', user.id).limit(1);
-      if (error) {
-        console.error('Error checking offers:', error);
-        return false;
-      }
-      return data && data.length > 0;
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'offers/check' });
+      // return response.data.has_offers || false;
+      
+      // Mock implementation - check localStorage for location-based offers (available for partnership)
+      const storedOffers = JSON.parse(localStorage.getItem('mockOffers') || '[]');
+      const hasLocationBasedOffer = storedOffers.some((offer: any) => 
+        !offer.is_open_offer && offer.is_active && offer.available_for_partnership
+      );
+      return hasLocationBasedOffer;
     } catch (error) {
       console.error('Error checking user offers:', error);
       return false;
@@ -389,15 +364,14 @@ const PartnerRequests = () => {
   };
   const handleAddPaymentMethod = async () => {
     try {
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('create-setup-session');
-      if (error) throw error;
-      if (data?.url) {
-        window.open(data.url, '_blank');
-        toast.info('Please complete payment setup in the new window');
-      }
+      // TODO: Replace with Node.js API call
+      // const response = await post({ end_point: 'payment/create-setup-session' });
+      // if (response.data.url) {
+      //   window.open(response.data.url, '_blank');
+      //   toast.info('Please complete payment setup in the new window');
+      // }
+      
+      toast.info('Payment setup will be available after API integration');
     } catch (error) {
       console.error('Error creating setup session:', error);
       toast.error('Failed to open payment setup');
@@ -405,28 +379,12 @@ const PartnerRequests = () => {
   };
   const fetchPartnerRequests = async () => {
     try {
-      const {
-        data: {
-          user
-        }
-      } = await supabase.auth.getUser();
-      if (!user) return;
-      const {
-        data: requestsData,
-        error: requestsError
-      } = await supabase.from('partner_requests').select('*').or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`).order('created_at', {
-        ascending: false
-      });
-      if (requestsError) throw requestsError;
-      const enrichedRequests = await Promise.all((requestsData || []).map(async request => {
-        const [senderProfile, recipientProfile] = await Promise.all([supabase.from('profiles').select('store_name, first_name, last_name').eq('user_id', request.sender_id).maybeSingle(), supabase.from('profiles').select('store_name, first_name, last_name').eq('user_id', request.recipient_id).maybeSingle()]);
-        return {
-          ...request,
-          sender_profile: senderProfile.data,
-          recipient_profile: recipientProfile.data
-        };
-      }));
-      setRequests(enrichedRequests);
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: 'partner-requests' });
+      // setRequests(response.data);
+      
+      // Use existing exampleRequests data
+      setRequests(exampleRequests);
     } catch (error) {
       console.error('Error fetching partner requests:', error);
       toast.error('Failed to load partner requests');
@@ -465,13 +423,14 @@ const PartnerRequests = () => {
       return;
     }
     try {
-      const {
-        data,
-        error
-      } = await supabase.from('profiles').select('store_name, retail_address').ilike('store_name', `%${query}%`).not('store_name', 'is', null).limit(10);
-      if (error) throw error;
-      const filteredExamples = exampleStores.filter(example => example.store_name.toLowerCase().includes(query.toLowerCase()) && !(data || []).some(dbStore => dbStore.store_name === example.store_name));
-      setStoreOptions([...(data || []), ...filteredExamples]);
+      // TODO: Replace with Node.js API call
+      // const response = await get({ end_point: `profiles/search?query=${query}` });
+      // const filteredExamples = exampleStores.filter(example => example.store_name.toLowerCase().includes(query.toLowerCase()) && !(response.data || []).some(dbStore => dbStore.store_name === example.store_name));
+      // setStoreOptions([...(response.data || []), ...filteredExamples]);
+      
+      // Mock implementation
+      const filteredExamples = exampleStores.filter(store => store.store_name.toLowerCase().includes(query.toLowerCase()));
+      setStoreOptions(filteredExamples);
     } catch (error) {
       console.error('Error searching stores:', error);
       const filteredExamples = exampleStores.filter(store => store.store_name.toLowerCase().includes(query.toLowerCase()));
@@ -481,14 +440,12 @@ const PartnerRequests = () => {
   const validatePromoCode = async (code: string) => {
     if (!code.trim()) return false;
     try {
-      const {
-        data,
-        error
-      } = await supabase.rpc('validate_promo_code', {
-        promo_code_text: code
-      });
-      if (error) throw error;
-      return data && data.length > 0 && data[0].is_valid;
+      // TODO: Replace with Node.js API call
+      // const response = await post({ end_point: 'promo-codes/validate', body: { code } });
+      // return response.data.is_valid || false;
+      
+      // Mock implementation
+      return false;
     } catch (error) {
       console.error('Error validating promo code:', error);
       return false;
@@ -540,98 +497,32 @@ const PartnerRequests = () => {
         toast.error('Please select which location you want to send the request for');
         return;
       }
-      const {
-        data: {
-          user
-        }
-      } = await supabase.auth.getUser();
-      if (!user) {
+      // TODO: Replace with Node.js API calls
+      // const userResponse = await get({ end_point: 'auth/me' });
+      // const recipientResponse = await get({ end_point: `profiles/search?store_name=${newPartnerStore.trim()}` });
+      // const existingRequestResponse = await get({ end_point: 'partner-requests/check-existing' });
+      // const offerxCheckResponse = await get({ end_point: 'offerx/check-status' });
+      
+      // Mock implementation for now
+      const token = localStorage.getItem('token');
+      if (!token) {
         toast.error('You must be logged in to send partner requests');
         return;
       }
-      const {
-        data: recipientData,
-        error: recipientError
-      } = await supabase.from('profiles').select('user_id').eq('store_name', newPartnerStore.trim()).maybeSingle();
-      if (recipientError || !recipientData) {
-        toast.error('Store not found');
-        return;
-      }
-      if (recipientData.user_id === user.id) {
-        toast.error('You cannot send a partner request to yourself');
-        return;
-      }
-
-      // Check for existing pending request from current user to recipient
-      const {
-        data: existingOutgoingRequest,
-        error: outgoingCheckError
-      } = await supabase.from('partner_requests').select('id').eq('sender_id', user.id).eq('recipient_id', recipientData.user_id).eq('status', 'pending').maybeSingle();
-      if (outgoingCheckError) {
-        console.error('Error checking existing requests:', outgoingCheckError);
-        toast.error('Unable to verify existing requests');
-        return;
-      }
-      if (existingOutgoingRequest) {
-        toast.error('You already have a pending request to this store');
-        return;
-      }
-
-      // Check for existing pending request from recipient to current user
-      const {
-        data: existingIncomingRequest,
-        error: incomingCheckError
-      } = await supabase.from('partner_requests').select('id').eq('sender_id', recipientData.user_id).eq('recipient_id', user.id).eq('status', 'pending').maybeSingle();
-      if (incomingCheckError) {
-        console.error('Error checking incoming requests:', incomingCheckError);
-        toast.error('Unable to verify incoming requests');
-        return;
-      }
-      if (existingIncomingRequest) {
-        toast.error('This store has already sent you a pending request. Please respond to their request instead.');
-        return;
-      }
-
-      // Check if recipient has OpenOffer enabled
-      const {
-        data: recipientOfferxData,
-        error: recipientOfferxError
-      } = await supabase.from('offerx_subscriptions').select('id').eq('user_id', recipientData.user_id).eq('is_active', true).maybeSingle();
-      if (recipientOfferxError) {
-        console.error('Error checking recipient OpenOffer status:', recipientOfferxError);
-        toast.error('Unable to verify partner availability');
-        return;
-      }
-      if (recipientOfferxData) {
-        toast.error('This store has OpenOffer enabled and cannot accept partner requests');
-        return;
-      }
-
-      // Check if sender (current user) has OpenOffer enabled
-      const {
-        data: senderOfferxData,
-        error: senderOfferxError
-      } = await supabase.from('offerx_subscriptions').select('id').eq('user_id', user.id).eq('is_active', true).maybeSingle();
-      if (senderOfferxError) {
-        console.error('Error checking sender OpenOffer status:', senderOfferxError);
-        toast.error('Unable to verify your OpenOffer status');
-        return;
-      }
-      if (senderOfferxData) {
-        toast.error('You have OpenOffer enabled and cannot send partner requests');
-        return;
-      }
+      
+      // Mock recipient data
+      const recipientData = { user_id: 'recipient-user-id' };
 
       // Check if user has selected display options
       const hasDisplayOption = await checkDisplayOptions();
       if (!hasDisplayOption) {
         setPendingAction(() => async () => {
-          await sendPartnerRequestFinal(user.id, recipientData.user_id);
+          await sendPartnerRequestFinal('current-user-id', recipientData.user_id);
         });
         setShowDisplayOptionCheck(true);
         return;
       }
-      await sendPartnerRequestFinal(user.id, recipientData.user_id);
+      await sendPartnerRequestFinal('current-user-id', recipientData.user_id);
     } catch (error) {
       console.error('Error sending partner request:', error);
       toast.error('Failed to send partner request');
@@ -639,15 +530,21 @@ const PartnerRequests = () => {
   };
   const sendPartnerRequestFinal = async (senderId: string, recipientId: string) => {
     try {
-      const {
-        error
-      } = await supabase.from('partner_requests').insert({
+      // TODO: Replace with Node.js API call
+      // await post({ end_point: 'partner-requests', body: { sender_id: senderId, recipient_id: recipientId } });
+      
+      // Mock implementation - update local state
+      const newRequest = {
+        id: `req-${Date.now()}`,
         sender_id: senderId,
-        recipient_id: recipientId
-      });
-      if (error) {
-        throw error;
-      }
+        recipient_id: recipientId,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        sender_profile: { store_name: "Sally's Salon", first_name: 'Sally', last_name: 'Johnson' },
+        recipient_profile: { store_name: newPartnerStore, first_name: '', last_name: '' }
+      };
+      setRequests([newRequest, ...requests]);
       const locationText = userLocations.length > 1 ? ` for ${userLocations.find(loc => loc.id === selectedLocationId)?.name}` : '';
       if (isPromoValid) {
         toast.success(`Partner request sent successfully${locationText}! Partnership fee waived with promo code "${promoCode.toUpperCase()}"`);
@@ -689,67 +586,22 @@ const PartnerRequests = () => {
     if (!pendingBillingRequest) return;
     setProcessingPayment(true);
     try {
-      const {
-        data: {
-          user
-        }
-      } = await supabase.auth.getUser();
-      if (!user) {
+      // TODO: Replace with Node.js API calls
+      // const userResponse = await get({ end_point: 'auth/me' });
+      // const offerxCheckResponse = await get({ end_point: 'offerx/check-status' });
+      // const paymentResponse = await post({ 
+      //   end_point: 'partner-requests/approve', 
+      //   body: { 
+      //     partner_request_id: pendingBillingRequest.id 
+      //   } 
+      // });
+      
+      // Mock implementation
+      const token = localStorage.getItem('token');
+      if (!token) {
         toast.error('You must be logged in to approve partner requests');
-        return;
-      }
-
-      // Check if approver has OpenOffer enabled
-      const {
-        data: approverOfferxData,
-        error: approverOfferxError
-      } = await supabase.from('offerx_subscriptions').select('id').eq('user_id', user.id).eq('is_active', true).maybeSingle();
-      if (approverOfferxError) {
-        console.error('Error checking approver OpenOffer status:', approverOfferxError);
-        toast.error('Unable to verify your OpenOffer status');
         setProcessingPayment(false);
         return;
-      }
-      if (approverOfferxData) {
-        toast.error('You have OpenOffer enabled and cannot approve partner requests');
-        setProcessingPayment(false);
-        setShowBillingConfirmDialog(false);
-        return;
-      }
-
-      // Check if sender has OpenOffer enabled
-      const {
-        data: senderOfferxData,
-        error: senderOfferxError
-      } = await supabase.from('offerx_subscriptions').select('id').eq('user_id', pendingBillingRequest.sender_id).eq('is_active', true).maybeSingle();
-      if (senderOfferxError) {
-        console.error('Error checking sender OpenOffer status:', senderOfferxError);
-        toast.error('Unable to verify partner OpenOffer status');
-        setProcessingPayment(false);
-        return;
-      }
-      if (senderOfferxData) {
-        toast.error('The requesting store has OpenOffer enabled and cannot participate in partnerships');
-        setProcessingPayment(false);
-        setShowBillingConfirmDialog(false);
-        return;
-      }
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('create-partnership-payment', {
-        headers: {
-          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          partner_request_id: pendingBillingRequest.id,
-          approver_user_id: user.id,
-          sender_user_id: pendingBillingRequest.sender_id
-        })
-      });
-      if (error) {
-        throw error;
       }
       toast.success('Partnership approved and both parties billed successfully! You and your new partner have each been charged $10.');
       setShowBillingConfirmDialog(false);
@@ -769,12 +621,15 @@ const PartnerRequests = () => {
   const confirmCancelPartnership = async () => {
     if (!pendingCancelRequest) return;
     try {
-      const {
-        error
-      } = await supabase.from('partner_requests').update({
-        status: 'cancelled'
-      }).eq('id', pendingCancelRequest.id);
-      if (error) throw error;
+      // TODO: Replace with Node.js API call
+      // await patch({ end_point: `partner-requests/${pendingCancelRequest.id}`, body: { status: 'cancelled' } });
+      
+      // Mock implementation - update local state
+      setRequests(requests.map(req => 
+        req.id === pendingCancelRequest.id 
+          ? { ...req, status: 'cancelled' as const }
+          : req
+      ));
       const partnerStoreName = getRequestType(pendingCancelRequest) === 'outgoing' ? pendingCancelRequest.recipient_profile?.store_name : pendingCancelRequest.sender_profile?.store_name;
       toast.success(`Partnership with ${partnerStoreName} has been cancelled`);
       setShowCancelDialog(false);
@@ -837,12 +692,15 @@ const PartnerRequests = () => {
   };
   const updateRequestStatus = async (requestId: string, status: 'approved' | 'rejected') => {
     try {
-      const {
-        error
-      } = await supabase.from('partner_requests').update({
-        status
-      }).eq('id', requestId);
-      if (error) throw error;
+      // TODO: Replace with Node.js API call
+      // await patch({ end_point: `partner-requests/${requestId}`, body: { status } });
+      
+      // Mock implementation - update local state
+      setRequests(requests.map(req => 
+        req.id === requestId 
+          ? { ...req, status: status as any }
+          : req
+      ));
       if (status === 'approved') {
         if (isApprovalPromoValid) {
           toast.success(`Partner request approved successfully! Partnership fee waived with promo code "${approvalPromoCode.toUpperCase()}"`);

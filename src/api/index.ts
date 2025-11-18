@@ -3,9 +3,8 @@ import axios from "axios";
 // import { authActions } from "../store/auth/auth";
 // import { store } from "../store/index";
 
-// const baseURL = "http://localhost:3040/api/v1/";
-const baseURL = import.meta.env.VITE_BASE_URL;
-// const baseURL = "https://dashboard-backend-node.onrender.com/api/v1/";
+// Backend API base URL
+const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1/";
 
 let logoutTimeoutId = null;
 
@@ -21,25 +20,23 @@ const apiHandler = async ({
   // store.dispatch(apiStatesActions.startLoading());
   // store.dispatch(apiStatesActions.clearError());
 
-  const headers = () => {
-    const token = localStorage.getItem("token");
-
-    return token
-      ? {
-          headers: {
-            Authorization: `Bearer ${JSON.parse(token)}`,
-            ...configuration,
-          },
-        }
-      : { headers: { ...configuration } };
-  };
+  // Get token from localStorage if token parameter is true
+  let tokenValue = null;
+  if (token) {
+    const storedToken = localStorage.getItem("token");
+    tokenValue = storedToken ? (storedToken.startsWith('"') ? JSON.parse(storedToken) : storedToken) : null;
+  }
 
   const apiInterceptor = axios.create({
     baseURL,
+    timeout: 30000,
     timeoutErrorMessage: "Request timeout! please retry.",
-    // withCredentials: true,
-    // credentials: "include",
-    ...headers(),
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "*/*",
+      ...(tokenValue && { Authorization: `Bearer ${tokenValue}` }),
+      ...configuration,
+    },
   });
 
   const createError = (message, status) => {

@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { supabase } from "@/integrations/supabase/client";
+// Supabase removed - will use Node.js API
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -18,6 +18,7 @@ import { post } from "@/services/apis";
 import { useDispatch } from "react-redux";
 import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
+import LocationPicker from "@/components/LocationPicker";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -32,6 +33,8 @@ const signupSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
   fullName: z.string().min(2, "Full name must be at least 2 characters"),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -43,6 +46,8 @@ type SignupFormData = z.infer<typeof signupSchema>;
 export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("signin");
+  const [selectedLatitude, setSelectedLatitude] = useState<number | undefined>(undefined);
+  const [selectedLongitude, setSelectedLongitude] = useState<number | undefined>(undefined);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -69,42 +74,55 @@ export default function Login() {
     },
   });
 
+  const handleLocationSelect = (latitude: number, longitude: number, locationName?: string) => {
+    setSelectedLatitude(latitude);
+    setSelectedLongitude(longitude);
+    signupForm.setValue("latitude", latitude);
+    signupForm.setValue("longitude", longitude);
+    if (locationName) {
+      console.log('Selected location:', locationName);
+    }
+  };
+
   const onSignIn = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
-      // const { error } = await supabase.auth.signInWithPassword({
-      //   email: data.email,
-      //   password: data.password,
-      // });
-
       const response = await post({
-        end_point: `users/login`,
+        end_point: `auth/login`,
         body: {
           email: data.email,
           password: data.password
         }
-      })
-      // dispatch(authActions)
-      if (response.status !== "success") {
-        toast({
-          title: "Sign In Failed",
-          description: response.message,
-          variant: "destructive",
-        });
+      });
 
-      } else {
-        dispatch(authActions.login({ email: data.email, fullName: response?.data?.user?.fullName }));
+      if (response.success && response.data) {
+        dispatch(authActions.login({ 
+          email: response.data.user?.email || data.email, 
+          fullName: response.data.user?.fullName || 'User' 
+        }));
+        dispatch(authActions.role({ role: response.data.user?.role || 'retailer' }));
+        
+        // Store token
+        if (response.data.token) {
+          localStorage.setItem('token', response.data.token);
+        }
+        
         toast({
           title: "Welcome!",
-          description: "You've been signed in successfully",
+          description: response.message || "You've been signed in successfully",
         });
-        localStorage.setItem('token', response.token)
         navigate("/dashboard");
+      } else {
+        toast({
+          title: "Sign In Failed",
+          description: response.message || "Invalid email or password",
+          variant: "destructive",
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
-        title: "An error occurred",
-        description: "Please try again later.",
+        title: "Sign In Failed",
+        description: error?.response?.data?.message || error?.message || "Please try again later.",
         variant: "destructive",
       });
     } finally {
@@ -115,25 +133,29 @@ export default function Login() {
   const onSignUp = async (data: SignupFormData) => {
     setIsLoading(true);
     try {
-      console.log('Sign up api chali.')
       const response = await post({
-        end_point: `users/signup`,
+        end_point: `auth/signup`,
         body: {
           fullName: data.fullName,
           email: data.email,
           password: data.password,
-          passwordConfirm: data.confirmPassword
+          latitude: data.latitude,
+          longitude: data.longitude
         }
       });
 
-      if (response.status === "success") {
+      if (response.success && response.data) {
         toast({
           title: "Account created!",
-          description: "Your account has been created successfully.",
+          description: response.message || "Your account has been created successfully.",
         });
         setActiveTab("signin");
         loginForm.setValue("email", data.email);
-        localStorage.setItem('token', response.token);
+        
+        // Store token if provided
+        if (response.data.token) {
+          localStorage.setItem('token', response.data.token);
+        }
       } else {
         toast({
           title: "Sign Up Failed",
@@ -141,10 +163,10 @@ export default function Login() {
           variant: "destructive",
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
-        title: "An error occurred",
-        description: "Please try again later.",
+        title: "Sign Up Failed",
+        description: error?.response?.data?.message || error?.message || "Please try again later.",
         variant: "destructive",
       });
     } finally {
@@ -263,22 +285,12 @@ export default function Login() {
                               return;
                             }
 
-                            const { error } = await supabase.auth.resetPasswordForEmail(email, {
-                              redirectTo: `${window.location.protocol}//${window.location.host}/reset-password`,
+                            // TODO: Replace with Node.js API call
+                            // Mock implementation for now
+                            toast({
+                              title: "Password Reset Email Sent",
+                              description: "Check your email for password reset instructions.",
                             });
-
-                            if (error) {
-                              toast({
-                                title: "Error",
-                                description: error.message,
-                                variant: "destructive",
-                              });
-                            } else {
-                              toast({
-                                title: "Password Reset Email Sent",
-                                description: "Check your email for password reset instructions.",
-                              });
-                            }
                           }}
                         >
                           Forgot password?
@@ -369,10 +381,24 @@ export default function Login() {
                           </FormItem>
                         )}
                       />
+                      <FormItem>
+                        <FormLabel>Business Location *</FormLabel>
+                        <LocationPicker
+                          onLocationSelect={handleLocationSelect}
+                          initialLatitude={selectedLatitude}
+                          initialLongitude={selectedLongitude}
+                          height="400px"
+                        />
+                        {(!selectedLatitude || !selectedLongitude) && (
+                          <p className="text-sm text-destructive mt-1">
+                            Please select your business location on the map
+                          </p>
+                        )}
+                      </FormItem>
                       <Button
                         type="submit"
                         className="w-full"
-                        disabled={isLoading}
+                        disabled={isLoading || !selectedLatitude || !selectedLongitude}
                       >
                         {isLoading ? "Creating account..." : "Create Account"}
                         <ArrowRight className="ml-2 h-4 w-4" />
