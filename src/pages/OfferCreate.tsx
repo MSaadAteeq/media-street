@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Upload, ArrowLeft, MapPin, Clock, QrCode as QrCodeIcon, Navigation, Map, ChevronDown, Zap } from "lucide-react";
 import { QRCodeSVG } from 'qrcode.react';
+import QRCode from 'qrcode';
 import { useNavigate } from "react-router-dom";
 // Supabase removed - will use Node.js API
 import { useToast } from "@/hooks/use-toast";
@@ -57,7 +58,7 @@ const OfferCreate = () => {
     if (!ctx) return;
 
     const img = new Image();
-    img.onload = () => {
+    img.onload = async () => {
       // Set canvas to 16:9 aspect ratio (standard for offer creatives)
       const targetWidth = 1280;
       const targetHeight = 720;
@@ -121,10 +122,53 @@ const OfferCreate = () => {
           ctx.fillText(line.trim(), startX, startY + (index * lineHeight));
         });
       }
+
+      // Generate QR code URL - use redemption code for now, will be updated after offer creation
+      // Note: The Redeem page will look up the offer by redemption code if offer ID is not found
+      const qrCodeUrl = `${window.location.origin}/redeem/${redemptionCode}`;
+      
+      // Generate QR code and overlay it on top right
+      try {
+        // Create a temporary canvas for QR code
+        const qrCanvas = document.createElement('canvas');
+        qrCanvas.width = 200;
+        qrCanvas.height = 200;
+        const qrCtx = qrCanvas.getContext('2d');
+        
+        if (qrCtx) {
+          // Draw white background for QR code
+          qrCtx.fillStyle = '#ffffff';
+          qrCtx.fillRect(0, 0, qrCanvas.width, qrCanvas.height);
+          
+          // Generate QR code using qrcode library
+          await QRCode.toCanvas(qrCanvas, qrCodeUrl, {
+            width: 180,
+            margin: 2,
+            color: {
+              dark: '#000000',
+              light: '#FFFFFF'
+            }
+          });
+          
+          // Draw QR code on main canvas at top right
+          const qrSize = 180;
+          const qrX = targetWidth - qrSize - 20; // 20px from right edge
+          const qrY = 20; // 20px from top
+          
+          // Draw white background behind QR code for better visibility
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(qrX - 10, qrY - 10, qrSize + 20, qrSize + 20);
+          
+          // Draw QR code
+          ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+        }
+      } catch (error) {
+        console.error('Error generating QR code:', error);
+      }
     };
     
     img.src = URL.createObjectURL(adImage);
-  }, [adImage, callToAction]);
+  }, [adImage, callToAction, redemptionCode]);
 
   useEffect(() => {
     fetchLocations();
@@ -145,226 +189,17 @@ const OfferCreate = () => {
       }
     } catch (error) {
       console.error('Error fetching locations from API:', error);
-      // Fall through to mock data if API fails
-    }
-    
-    // Fallback to mock data if API call fails
-    try {
-      // Mock locations for testing
-      // First, add the three locations from the Locations tab
-      const mockLocations: Location[] = [
-        {
-          id: "loc-1",
-          name: "Sally's Salon - Downtown",
-          address: "456 Oak Street, Manhattan, NY 10013"
-        },
-        {
-          id: "loc-2",
-          name: "Sally's Salon - Uptown",
-          address: "789 Elm Avenue, Brooklyn, NY 11201"
-        },
-        {
-          id: "loc-3",
-          name: "Sally's Salon - Midtown",
-          address: "321 Pine Boulevard, Queens, NY 11101"
-        },
-        {
-          id: "retail-1",
-          name: "Retail Store – Main Branch",
-          address: "123 Main Street, New York, NY 10001"
-        },
-        {
-          id: "retail-2",
-          name: "Retail Store – Mall Road",
-          address: "456 Mall Road, New York, NY 10002"
-        },
-        {
-          id: "retail-3",
-          name: "Retail Store – DHA Phase 6",
-          address: "789 DHA Phase 6, New York, NY 10003"
-        },
-        {
-          id: "retail-4",
-          name: "Retail Store – North Market",
-          address: "321 North Market Street, New York, NY 10004"
-        },
-        {
-          id: "retail-5",
-          name: "Retail Store – City Center",
-          address: "654 City Center Plaza, New York, NY 10005"
-        },
-        {
-          id: "loc-4",
-          name: "Coffee Corner - Main Branch",
-          address: "321 Oak Street, Brooklyn, NY 11201"
-        },
-        {
-          id: "loc-5",
-          name: "Coffee Corner - Park Slope",
-          address: "654 Park Avenue, Brooklyn, NY 11215"
-        },
-        {
-          id: "loc-6",
-          name: "Bloom & Blossom - Chelsea",
-          address: "987 7th Avenue, New York, NY 10019"
-        },
-        {
-          id: "loc-7",
-          name: "Tech Repair Hub - SoHo",
-          address: "147 Spring Street, New York, NY 10012"
-        },
-        {
-          id: "loc-8",
-          name: "Bistro 789 - Greenwich",
-          address: "258 Greenwich Avenue, New York, NY 10014"
-        },
-        {
-          id: "loc-9",
-          name: "Fashion Forward - Times Square",
-          address: "1590 Broadway, New York, NY 10036"
-        },
-        {
-          id: "loc-10",
-          name: "Green Grocer - Union Square",
-          address: "200 Park Avenue South, New York, NY 10003"
-        },
-        {
-          id: "loc-11",
-          name: "Book Nook - Upper East Side",
-          address: "1250 Lexington Avenue, New York, NY 10028"
-        },
-        {
-          id: "loc-12",
-          name: "Fit Zone Gym - Lower East Side",
-          address: "85 Delancey Street, New York, NY 10002"
-        },
-        {
-          id: "loc-13",
-          name: "Artisan Bakery - West Village",
-          address: "42 Bleecker Street, New York, NY 10012"
-        },
-        {
-          id: "loc-14",
-          name: "Tech Store - Flatiron",
-          address: "175 5th Avenue, New York, NY 10010"
-        },
-        {
-          id: "loc-15",
-          name: "Pet Paradise - Upper West Side",
-          address: "250 Columbus Avenue, New York, NY 10023"
-        },
-        {
-          id: "loc-16",
-          name: "Smoothie Bar - Financial District",
-          address: "100 Wall Street, New York, NY 10005"
-        },
-        {
-          id: "loc-17",
-          name: "Yoga Studio - Tribeca",
-          address: "345 Greenwich Street, New York, NY 10013"
-        },
-        {
-          id: "loc-18",
-          name: "Vintage Vinyl - East Village",
-          address: "123 St. Marks Place, New York, NY 10009"
-        },
-        {
-          id: "loc-19",
-          name: "Gourmet Deli - Hell's Kitchen",
-          address: "789 9th Avenue, New York, NY 10019"
-        },
-        {
-          id: "loc-20",
-          name: "Beauty Boutique - Nolita",
-          address: "234 Mulberry Street, New York, NY 10012"
-        },
-        {
-          id: "loc-21",
-          name: "Pizza Palace - Little Italy",
-          address: "456 Mulberry Street, New York, NY 10013"
-        },
-        {
-          id: "loc-22",
-          name: "Fresh Market - Chinatown",
-          address: "789 Canal Street, New York, NY 10013"
-        },
-        {
-          id: "loc-23",
-          name: "Shoe Store - Herald Square",
-          address: "1350 Broadway, New York, NY 10018"
-        },
-        {
-          id: "loc-24",
-          name: "Jewelry Box - Diamond District",
-          address: "47 West 47th Street, New York, NY 10036"
-        },
-        {
-          id: "loc-25",
-          name: "Ice Cream Dream - Central Park",
-          address: "200 Central Park South, New York, NY 10019"
-        },
-        {
-          id: "loc-26",
-          name: "Bike Shop - Williamsburg",
-          address: "123 Bedford Avenue, Brooklyn, NY 11211"
-        },
-        {
-          id: "loc-27",
-          name: "Wine Cellar - Astoria",
-          address: "456 Broadway, Astoria, NY 11103"
-        },
-        {
-          id: "loc-28",
-          name: "Hair Studio - Queens",
-          address: "789 Queens Boulevard, Queens, NY 11101"
-        },
-        {
-          id: "loc-29",
-          name: "Tattoo Parlor - Bushwick",
-          address: "321 Myrtle Avenue, Brooklyn, NY 11205"
-        },
-        {
-          id: "loc-30",
-          name: "Craft Store - Long Island City",
-          address: "654 Jackson Avenue, Long Island City, NY 11101"
-        },
-        {
-          id: "loc-31",
-          name: "Sushi Bar - Midtown East",
-          address: "890 3rd Avenue, New York, NY 10022"
-        },
-        {
-          id: "loc-32",
-          name: "Pharmacy Plus - Upper Manhattan",
-          address: "123 Amsterdam Avenue, New York, NY 10023"
-        },
-        {
-          id: "loc-33",
-          name: "Gift Shop - Rockefeller Center",
-          address: "30 Rockefeller Plaza, New York, NY 10112"
-        },
-        {
-          id: "loc-34",
-          name: "Dry Cleaners - Gramercy",
-          address: "234 Park Avenue South, New York, NY 10003"
-        },
-        {
-          id: "loc-35",
-          name: "Optical Center - Murray Hill",
-          address: "567 Lexington Avenue, New York, NY 10022"
-        }
-      ];
-      setLocations(mockLocations);
-    } catch (error) {
-      console.error("Error fetching locations:", error);
       toast({
         title: "Error",
-        description: "Failed to load locations",
+        description: "Failed to load locations. Please try again later.",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
+    
+    // If API fails, set empty array (no fallback to static data)
+    setLocations([]);
   };
 
   const handleGenerateOffer = async () => {
@@ -581,6 +416,69 @@ const OfferCreate = () => {
         return;
       }
 
+      // Convert images to base64
+      let brandLogoBase64 = null;
+      let offerImageBase64 = null;
+
+      if (brandLogo) {
+        try {
+          brandLogoBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              if (typeof reader.result === 'string') {
+                resolve(reader.result);
+              } else {
+                reject(new Error('Failed to convert brand logo to base64'));
+              }
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(brandLogo);
+          });
+        } catch (error) {
+          console.error('Error converting brand logo to base64:', error);
+          toast({
+            title: "Warning",
+            description: "Failed to process brand logo. Continuing without it.",
+            variant: "destructive",
+          });
+        }
+      }
+
+      if (adImage) {
+        try {
+          offerImageBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              if (typeof reader.result === 'string') {
+                resolve(reader.result);
+              } else {
+                reject(new Error('Failed to convert offer image to base64'));
+              }
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(adImage);
+          });
+        } catch (error) {
+          console.error('Error converting offer image to base64:', error);
+          toast({
+            title: "Warning",
+            description: "Failed to process offer image. Continuing without it.",
+            variant: "destructive",
+          });
+        }
+      }
+
+      // Get the final canvas image with QR code overlay
+      let finalOfferImageBase64 = offerImageBase64;
+      if (canvasRef.current && adImage) {
+        try {
+          finalOfferImageBase64 = canvasRef.current.toDataURL('image/png');
+        } catch (error) {
+          console.error('Error converting canvas to image:', error);
+          // Fallback to original image if canvas conversion fails
+        }
+      }
+
       // Create offer via backend API
       const offerData = {
         call_to_action: callToAction,
@@ -588,9 +486,9 @@ const OfferCreate = () => {
         location_ids: selectedLocations, // Always include selected locations
         expiration_duration: expirationDuration,
         redemption_code: redemptionCode,
-        // TODO: Handle file uploads for brand_logo and offer_image
-        // brand_logo: brandLogo,
-        // offer_image: adImage,
+        available_for_partnership: !isOpenOffer, // If not open offer, make it available for partnership
+        brand_logo: brandLogoBase64,
+        offer_image: finalOfferImageBase64, // Use canvas image with QR code overlay
       };
       
       const response = await post({ 
@@ -605,7 +503,7 @@ const OfferCreate = () => {
         
         toast({
           title: "Offer Created Successfully!",
-          description: response.message || `${offerType} created for ${locationText}. ${isOpenOffer ? 'It will appear in the Open Offers tab and be available to all retailers, while also being displayed at your selected locations.' : 'This offer is now available for partnership with other retailers!'}`,
+          description: response.message || `${offerType} created for ${locationText}. ${isOpenOffer ? 'It will appear in the Open Offers tab and be available to all retailers, while also being displayed at your selected locations.' : 'This offer is now active at your selected locations and available for partnership. Other retailers can find you in partner search!'}`,
           duration: 5000,
         });
         

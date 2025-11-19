@@ -61,6 +61,7 @@ const Redeem = () => {
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [redemptionCode, setRedemptionCode] = useState("");
+  const [couponCode, setCouponCode] = useState(""); // 6-digit coupon code
   const [isRedeemed, setIsRedeemed] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
 
@@ -89,17 +90,32 @@ const Redeem = () => {
         return;
       }
 
-      // Fetch offer by redemption_code_prefix
-      const { data: offerData, error: offerError } = await supabase
-        .from('offers')
-        .select('*')
-        .eq('redemption_code_prefix', offerCode)
-        .eq('is_active', true)
-        .maybeSingle();
+      // Fetch offer by ID or redemption code (offerCode can be either)
+      const { get } = await import('@/services/apis');
+      let offerResponse;
+      
+      // First, try to fetch by offer ID (if it's a valid ObjectId)
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(offerCode);
+      if (isValidObjectId) {
+        offerResponse = await get({ 
+          end_point: `offers/${offerCode}`,
+          token: false // Public endpoint
+        });
+      }
+      
+      // If not found by ID, try to find by redemption code
+      if (!offerResponse || !offerResponse.success || !offerResponse.data) {
+        try {
+          offerResponse = await get({ 
+            end_point: `offers/redemption-code/${offerCode}`,
+            token: false // Public endpoint
+          });
+        } catch (error) {
+          console.error('Error fetching offer by redemption code:', error);
+        }
+      }
 
-      if (offerError) throw offerError;
-
-      if (!offerData) {
+      if (!offerResponse || !offerResponse.success || !offerResponse.data) {
         toast({
           title: "Offer Not Found",
           description: "This offer may have expired or is no longer available.",
@@ -109,21 +125,57 @@ const Redeem = () => {
         return;
       }
 
+      const offerData = offerResponse.data;
       setOffer(offerData);
 
-      // Generate unique redemption code for tracking
-      const uniqueCode = `${offerCode}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-      setRedemptionCode(uniqueCode);
+      // Get location from offer data - show all locations where offer is active
+      if (offerData.locations && offerData.locations.length > 0) {
+        // Use first location for display, but note that coupon is valid at all locations
+        setLocation(offerData.locations[0]);
+      } else if (offerData.locationIds && offerData.locationIds.length > 0) {
+        // If locationIds is populated, use first one
+        if (Array.isArray(offerData.locationIds) && offerData.locationIds.length > 0) {
+          const firstLoc = offerData.locationIds[0];
+          if (firstLoc && typeof firstLoc === 'object') {
+            setLocation(firstLoc);
+          }
+        }
+      }
 
-      // Fetch location details
-      const { data: locationData } = await supabase
-        .from('locations')
-        .select('*')
-        .eq('id', offerData.location_id)
-        .maybeSingle();
+      // Generate or fetch coupon code by creating a redemption
+      try {
+        const token = localStorage.getItem('token');
+        if (token) {
+          // User is logged in, create redemption to get 6-digit coupon code
+          const { post } = await import('@/services/apis');
+          const redemptionResponse = await post({
+            end_point: 'redemptions',
+            body: {
+              offerId: offerCode,
+              redemptionCode: offerData.redemptionCode || offerData.redemption_code || 'SCAN'
+            },
+            token: true
+          });
 
-      if (locationData) {
-        setLocation(locationData);
+          if (redemptionResponse.success && redemptionResponse.data) {
+            const coupon = redemptionResponse.data.couponCode || redemptionResponse.data.coupon_code;
+            if (coupon) {
+              setCouponCode(coupon);
+              setRedemptionCode(redemptionResponse.data.redemptionCode || redemptionResponse.data.redemption_code || '');
+            }
+          }
+        } else {
+          // User not logged in, generate a temporary 6-digit code
+          const tempCode = Math.floor(100000 + Math.random() * 900000).toString();
+          setCouponCode(tempCode);
+          setRedemptionCode(`TEMP-${tempCode}`);
+        }
+      } catch (error) {
+        console.error('Error generating coupon code:', error);
+        // Generate a temporary code if API fails
+        const tempCode = Math.floor(100000 + Math.random() * 900000).toString();
+        setCouponCode(tempCode);
+        setRedemptionCode(`TEMP-${tempCode}`);
       }
 
       setLoading(false);
@@ -316,43 +368,46 @@ const Redeem = () => {
                 ) : (
                   <>
                     <p className="text-sm font-semibold text-gray-700 text-center mb-3">
-                      For cashier to redeem:
+                      Your Coupon Code:
                     </p>
-                  <div className="bg-gray-50 p-4 rounded-lg text-center">
-                    <p className="text-lg font-bold font-mono text-gray-800 mb-3 tracking-wider">
-                      {redemptionCode}
+                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-lg text-center border-2 border-purple-200">
+                    {/* Store Name */}
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">
+                      {location?.name || "Store Location"}
+                    </h3>
+                    
+                    {/* Store Address */}
+                    {location?.address && (
+                      <p className="text-sm text-gray-600 mb-4">
+                        {location.address}
+                      </p>
+                    )}
+                    
+                    {/* 6-Digit Coupon Code */}
+                    <div className="bg-white p-4 rounded-lg mb-4 shadow-md">
+                      <p className="text-xs text-gray-500 mb-2 uppercase tracking-wider">Coupon Code</p>
+                      <p className="text-4xl font-bold font-mono text-purple-600 tracking-widest mb-2">
+                        {couponCode || "------"}
+                      </p>
+                      <p className="text-xs text-gray-500">Show this code at checkout</p>
+                    </div>
+                    
+                    {/* Offer Details */}
+                    <div className="bg-white p-3 rounded-lg mb-4">
+                      <p className="text-sm font-semibold text-gray-800 mb-1">
+                        {offer.call_to_action || offer.callToAction}
+                      </p>
+                      {(offer.expires_at || offer.expiresAt) && (
+                        <p className="text-xs text-gray-500">
+                          Expires: {formatExpirationDate(offer.expires_at || offer.expiresAt)}
+                        </p>
+                      )}
+                    </div>
+                    
+                    <p className="text-xs text-gray-500 italic">
+                      Take a screenshot of this coupon to use at the store
                     </p>
-                    <div className="bg-white p-3 rounded-lg inline-block mb-2">
-                      <QRCodeSVG 
-                        value={`${window.location.origin}/redeem/confirm?code=${redemptionCode}`}
-                        size={100}
-                        level="H"
-                        includeMargin={true}
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 mb-3">Type code or scan QR to redeem</p>
-                      <p className="text-lg font-bold font-mono text-gray-800 mb-3 tracking-wider">
-                      {redemptionCode}
-                    </p>
-                    <div className="bg-white p-3 rounded-lg inline-block mb-2">
-                      <QRCodeSVG 
-                        value={`${window.location.origin}/redeem/confirm?code=${redemptionCode}`}
-                        size={100}
-                        level="H"
-                        includeMargin={true}
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 mb-3">Type code or scan QR to redeem</p>
-                      
-                      {/* Manual Redeem Button for Testing */}
-                      <button
-                        onClick={handleRedemption}
-                        disabled={redeeming}
-                        className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-                      >
-                        {redeeming ? "Redeeming..." : "Redeem Now"}
-                      </button>
-                    </div>
+                  </div>
                     
                     {/* Website Instructions */}
                     <div className="text-center mt-4 pt-2 border-t border-gray-100">

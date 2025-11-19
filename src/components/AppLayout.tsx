@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
+import { get } from "@/services/apis";
 // Supabase removed - will use Node.js API
 import { 
   Home,
@@ -60,10 +61,21 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
   const dispatch = useDispatch<AppDispatch>();
   const [notifications, setNotifications] = useState<PartnerNotification[]>([]);
   const [referralCode, setReferralCode] = useState<string>("");
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // Fetch referral code
+  // Fetch user profile and referral code
   useEffect(() => {
-    const fetchReferralCode = async () => {
+    const fetchUserData = async () => {
+      try {
+        // Fetch user profile
+        const userResponse = await get({ end_point: 'users/me', token: true });
+        if (userResponse.success && userResponse.data) {
+          setCurrentUser(userResponse.data);
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
+      }
+
       try {
         // TODO: Replace with Node.js API call
         // const response = await get({ end_point: 'profile/referral-code' });
@@ -76,7 +88,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
       }
     };
 
-    fetchReferralCode();
+    fetchUserData();
   }, []);
 
   // Mock notifications - replace with real data from Supabase
@@ -275,7 +287,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                 <div className="space-y-2">
                   <p className="font-medium text-xs sm:text-sm">Your Referral Code</p>
                   <div className="bg-muted p-2 rounded font-mono text-xs sm:text-sm">
-                    {referralCode || "Loading..."}
+                    {currentUser?.referralCode || referralCode || "Loading..."}
                   </div>
                   <p className="text-[10px] sm:text-xs text-muted-foreground">Share this code with other retailers. You'll get 3 points when they sign up!</p>
                 </div>
@@ -352,20 +364,27 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
             <HoverCard>
               <HoverCardTrigger asChild>
                 <div 
-                  className="w-8 h-8 bg-gradient-to-r from-primary to-accent-green rounded-full cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center"
+                  className="w-8 h-8 bg-gradient-to-r from-primary to-accent-green rounded-full cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center relative z-50"
                 >
                   <div className="w-6 h-6 bg-gradient-to-r from-primary to-accent-green rounded-full border-2 border-background">
-                    <img 
-                      src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" 
-                      alt="Profile" 
-                      className="w-full h-full rounded-full object-cover"
-                    />
+                    {currentUser?.fullName ? (
+                      <div className="w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white text-xs font-semibold">
+                        {currentUser.fullName.charAt(0).toUpperCase()}
+                      </div>
+                    ) : (
+                      <img 
+                        src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" 
+                        alt={currentUser?.fullName || "User"} 
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                    )}
                   </div>
                 </div>
               </HoverCardTrigger>
               <HoverCardContent 
                 align="end" 
-                className="w-80 p-0 bg-card border-border shadow-lg"
+                sideOffset={8}
+                className="w-80 p-0 bg-card border-border shadow-lg z-[100]"
               >
                 <div className="p-4 space-y-4">
                   {/* Account Section */}
@@ -373,16 +392,23 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                     <div className="text-muted-foreground text-sm font-medium">Account</div>
                     <div className="flex items-center space-x-3">
                       <div className="w-12 h-12 bg-gradient-to-r from-primary to-accent-green rounded-full flex items-center justify-center">
-                        <img 
-                          src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" 
-                          alt="Profile" 
-                          className="w-full h-full rounded-full object-cover"
-                        />
+                        {currentUser?.fullName ? (
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white font-semibold">
+                            {currentUser.fullName.charAt(0).toUpperCase()}
+                          </div>
+                        ) : (
+                          <img 
+                            src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" 
+                            alt={currentUser?.fullName || "User"} 
+                            className="w-full h-full rounded-full object-cover"
+                          />
+                        )}
                       </div>
-                      <div>
-                        <div className="font-medium text-foreground">Kris Mathis</div>
-                        <div className="text-sm text-muted-foreground">kris@mediastreet.ai</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-foreground truncate">{currentUser?.fullName || "User"}</div>
+                        <div className="text-sm text-muted-foreground truncate">{currentUser?.email || "No email"}</div>
                       </div>
+                      <div className="w-2 h-2 bg-accent-green rounded-full flex-shrink-0"></div>
                     </div>
                   </div>
 

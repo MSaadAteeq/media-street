@@ -30,15 +30,23 @@ interface Partner {
   is_current_partner?: boolean;
   partnership_id?: string;
 }
+interface UserLocation {
+  id: string;
+  name: string;
+  address: string;
+}
+
 interface PartnerMapProps {
   partners: Partner[];
   onSendRequest: (storeName: string) => void;
   onRefresh?: () => void;
+  userLocations?: UserLocation[];
 }
 const PartnerMap: React.FC<PartnerMapProps> = ({
   partners,
   onSendRequest,
-  onRefresh
+  onRefresh,
+  userLocations: propUserLocations
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -51,36 +59,62 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
   const [selectedMyLocations, setSelectedMyLocations] = useState<string[]>([]);
   const [consentChecked, setConsentChecked] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
+  const [myLocations, setMyLocations] = useState<UserLocation[]>([]);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
 
-  // Mock user's locations - in production, fetch from database
-  const myLocations = [{
-    id: '1',
-    name: "Sally's Salon - Broadway",
-    address: "123 Broadway, New York, NY"
-  }, {
-    id: '2',
-    name: "Sally's Salon - 5th Ave",
-    address: "456 5th Avenue, New York, NY"
-  }, {
-    id: '3',
-    name: "Sally's Salon - SoHo",
-    address: "789 Spring St, New York, NY"
-  }];
+  // Fetch user locations from API if not provided as props
+  useEffect(() => {
+    const fetchUserLocations = async () => {
+      if (propUserLocations) {
+        // Use locations from props
+        setMyLocations(propUserLocations);
+        return;
+      }
+
+      // Fetch from API if not provided
+      try {
+        const { get } = await import("@/services/apis");
+        const response = await get({ 
+          end_point: 'locations',
+          token: true
+        });
+        
+        if (response.success && response.data) {
+          const formattedLocations = response.data
+            .filter((loc: any) => loc && (loc._id || loc.id))
+            .map((loc: any) => ({
+              id: loc._id?.toString() || loc.id?.toString(),
+              name: loc.name || 'Unnamed Location',
+              address: loc.address || ''
+            }));
+          setMyLocations(formattedLocations);
+        } else {
+          setMyLocations([]);
+        }
+      } catch (error) {
+        console.error('Error fetching user locations:', error);
+        setMyLocations([]);
+      }
+    };
+
+    fetchUserLocations();
+  }, [propUserLocations]);
 
   // Sort partners by distance
   const sortedPartners = [...partners].sort((a, b) => (a.distance || 0) - (b.distance || 0));
   const handleSubmitRequest = () => {
-    if (selectedMyLocations.length === 0 || !consentChecked) {
-      toast.error('Please select at least one location and consent to the charge');
+    if (selectedMyLocations.length === 0) {
+      toast.error('Please select a location for this partnership');
+      return;
+    }
+    if (!consentChecked) {
+      toast.error('Please consent to the partnership terms');
       return;
     }
     if (selectedRequestPartner) {
-      // Send a request for each selected location
-      selectedMyLocations.forEach(() => {
-        onSendRequest(selectedRequestPartner.store_name);
-      });
-      toast.success(`Sent ${selectedMyLocations.length} partnership request${selectedMyLocations.length > 1 ? 's' : ''}`);
+      // Send request for the selected location
+      // Note: The parent component (PartnerRequests) will handle the actual API call with location_id
+      onSendRequest(selectedRequestPartner.store_name);
       setShowRequestDialog(false);
       setSelectedMyLocations([]);
       setConsentChecked(false);
@@ -391,31 +425,41 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
             </div>}
 
           <div className="space-y-3">
-            <Label>Select Your Location(s)</Label>
-            <div className="space-y-2 border rounded-lg p-3 max-h-40 overflow-y-auto">
-              {myLocations.map(location => (
-                <div key={location.id} className="flex items-start space-x-2">
-                  <Checkbox
-                    id={`location-${location.id}`}
-                    checked={selectedMyLocations.includes(location.id)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        setSelectedMyLocations([...selectedMyLocations, location.id]);
-                      } else {
-                        setSelectedMyLocations(selectedMyLocations.filter(id => id !== location.id));
-                      }
-                    }}
-                  />
-                  <Label 
-                    htmlFor={`location-${location.id}`}
-                    className="text-sm font-normal cursor-pointer leading-tight"
-                  >
-                    <div className="font-medium">{location.name}</div>
-                    <div className="text-muted-foreground text-xs">{location.address}</div>
-                  </Label>
-                </div>
-              ))}
+            <Label>Select Your Location</Label>
+            <div className="text-xs text-muted-foreground mb-2">
+              Select which location you want to use for this partnership. One offer can be used for one location per partnership.
             </div>
+            {myLocations.length === 0 ? (
+              <div className="border rounded-lg p-4 text-center text-sm text-muted-foreground">
+                No locations found. Please add a location first.
+              </div>
+            ) : (
+              <div className="space-y-2 border rounded-lg p-3 max-h-40 overflow-y-auto">
+                {myLocations.map(location => (
+                  <div key={location.id} className="flex items-start space-x-2">
+                    <Checkbox
+                      id={`location-${location.id}`}
+                      checked={selectedMyLocations.includes(location.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          // Only allow one location to be selected at a time
+                          setSelectedMyLocations([location.id]);
+                        } else {
+                          setSelectedMyLocations(selectedMyLocations.filter(id => id !== location.id));
+                        }
+                      }}
+                    />
+                    <Label 
+                      htmlFor={`location-${location.id}`}
+                      className="text-sm font-normal cursor-pointer leading-tight flex-1"
+                    >
+                      <div className="font-medium">{location.name}</div>
+                      <div className="text-muted-foreground text-xs">{location.address}</div>
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            )}
             {selectedMyLocations.length > 0 && (
               <p className="text-sm text-muted-foreground">
                 {selectedMyLocations.length} location{selectedMyLocations.length > 1 ? 's' : ''} selected
@@ -435,22 +479,13 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
             </ul>
           </div>
 
-          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold">Total Monthly Cost:</span>
-              <span className="text-2xl font-bold text-primary">
-                ${(selectedMyLocations.length * 7).toFixed(2)}/month
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              $7/month per location × {selectedMyLocations.length || 0} location{selectedMyLocations.length !== 1 ? 's' : ''}
-            </p>
-          </div>
+          {/* Payment section removed temporarily as per user request */}
+          {/* Note: Payment integration will be added later */}
 
           <div className="flex items-start space-x-2">
             <Checkbox id="consent" checked={consentChecked} onCheckedChange={checked => setConsentChecked(checked as boolean)} />
             <Label htmlFor="consent" className="text-sm font-normal cursor-pointer leading-tight">
-              I understand that sending {selectedMyLocations.length || 0} request{selectedMyLocations.length !== 1 ? 's' : ''} will initiate a ${(selectedMyLocations.length * 7).toFixed(2)}/month partnership fee if accepted by the other party and until cancelled on this page.
+              I agree to the partnership terms and understand that this partnership will allow cross-promotion of offers between our stores.
             </Label>
           </div>
         </div>
@@ -466,7 +501,7 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
           </Button>
           <Button onClick={handleSubmitRequest} disabled={selectedMyLocations.length === 0 || !consentChecked}>
             <Send className="h-4 w-4 mr-2" />
-            Send {selectedMyLocations.length > 0 ? selectedMyLocations.length : ''} Request{selectedMyLocations.length !== 1 ? 's' : ''}
+            Send Request
           </Button>
         </DialogFooter>
       </DialogContent>

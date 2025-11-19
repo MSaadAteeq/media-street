@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 // Supabase removed - will use Node.js API
 import { shuffleArray } from "@/utils/distance";
+import { useNavigate } from "react-router-dom";
 import {
   Carousel,
   CarouselContent,
@@ -25,6 +26,11 @@ import posSalonImage from "@/assets/pos-campaign-salon.jpg";
 import posFlowersImage from "@/assets/pos-campaign-flowers.jpg";
 import posSubsImage from "@/assets/pos-campaign-subs.jpg";
 import mediaStreetLogo from "@/assets/media-street-logo.png";
+
+// Image mapping:
+// posSalonImage - Location owner's own offers
+// posCoffeeImage - Partner offers
+// posFlowersImage - Open offers (subscribed)
 
 interface Location {
   id: string;
@@ -43,6 +49,7 @@ interface OfferAd {
 }
 
 const InStoreDisplay = () => {
+  const navigate = useNavigate();
   const [locations, setLocations] = useState<Location[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<string>("");
   const [offersAds, setOffersAds] = useState<OfferAd[]>([]);
@@ -144,148 +151,171 @@ const InStoreDisplay = () => {
   }, [selectedLocationId]);
 
   const loadLocations = async () => {
-    // Mock locations data
-    const mockLocations: Location[] = [
-      {
-        id: "1",
-        name: "Sally's Salon",
-        address: "Sally's Salon Street 7, New York"
-      },
-      {
-        id: "2",
-        name: "Sally's Salon",
-        address: "Sangam Cinema, Hilton Park, New York"
-      },
-      {
-        id: "3",
-        name: "Sally's Salon",
-        address: "Sally's Salon Street 56, New York"
+    try {
+      const { get } = await import("@/services/apis");
+      const response = await get({ 
+        end_point: 'locations',
+        token: true
+      });
+      
+      if (response.success && response.data) {
+        const formattedLocations = response.data
+          .filter((loc: any) => loc && (loc._id || loc.id))
+          .map((loc: any) => ({
+            id: loc._id?.toString() || loc.id?.toString(),
+            name: loc.name || 'Unnamed Location',
+            address: loc.address || ''
+          }));
+        setLocations(formattedLocations);
+        if (formattedLocations.length > 0) {
+          setSelectedLocationId(formattedLocations[0].id);
+        }
+      } else {
+        setLocations([]);
       }
-    ];
-
-    setLocations(mockLocations);
-    if (mockLocations.length > 0) {
-      setSelectedLocationId(mockLocations[0].id);
+    } catch (error) {
+      console.error('Error fetching locations:', error);
+      setLocations([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const loadOffersAds = async (locationId: string) => {
     try {
-      const { data: locationData } = await supabase
-        .from('locations')
-        .select('*')
-        .eq('id', locationId)
-        .maybeSingle();
-
-      if (!locationData) return;
-
-      // Check for Open Offer subscription
-      const { data: openOfferSub } = await supabase
-        .from('offerx_subscriptions')
-        .select('*')
-        .eq('user_id', locationData.user_id)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      // Load partner offers
-      const { data: partnerData } = await supabase
-        .from('offers')
-        .select('*')
-        .eq('location_id', locationId)
-        .eq('is_active', true);
-
-      // Randomize partners
-      const randomizedPartners = shuffleArray(partnerData || []);
-
-      let nearbyOffers: any[] = [];
-
-      // If Open Offer subscribed, load nearby offers
-      if (openOfferSub) {
-        const { data: openOfferSubs } = await supabase
-          .from('offerx_subscriptions')
-          .select('user_id')
-          .eq('is_active', true)
-          .neq('user_id', locationData.user_id)
-          .limit(10);
-
-        if (openOfferSubs) {
-          const userIds = openOfferSubs.map(s => s.user_id);
-          const { data: locations } = await supabase
-            .from('locations')
-            .select('id')
-            .in('user_id', userIds);
-
-          if (locations) {
-            const { data: offers } = await supabase
-              .from('offers')
-              .select('*')
-              .in('location_id', locations.map(l => l.id))
-              .eq('is_active', true)
-              .limit(10);
-
-            nearbyOffers = offers || [];
-          }
-        }
+      const { get } = await import("@/services/apis");
+      
+      // Check if displayCarousel is selected
+      const displayCarousel = localStorage.getItem('displayCarousel') === 'true';
+      
+      if (!displayCarousel) {
+        // If carousel not selected, show empty state or message
+        setOffersAds([]);
+        return;
       }
 
-      // If no partner offers or open offers, load default advertiser campaigns
-      let defaultCampaigns: any[] = [];
-      if (randomizedPartners.length === 0 && nearbyOffers.length === 0) {
-        const { data: campaignData } = await supabase
-          .from('campaign_retailers' as any)
-          .select(`
-            campaigns (
-              id,
-              call_to_action,
-              brand_logo_url,
-              campaign_image_url,
-              website,
-              expiration_date
-            )
-          `)
-          .eq('location_id', locationId)
-          .eq('is_default_fallback', true);
-
-        if (campaignData) {
-          defaultCampaigns = campaignData
-            .filter((cr: any) => cr.campaigns)
-            .map((cr: any) => cr.campaigns);
+      // First, check if location owner has an active offer - carousel only active if owner has offer
+      let locationHasActiveOffer = false;
+      try {
+        const ownerResponse = await get({ 
+          end_point: `offers/location/${locationId}/owner`,
+          token: false
+        });
+        
+        if (ownerResponse.success && ownerResponse.data && ownerResponse.data.length > 0) {
+          const now = new Date();
+          const activeOwnerOffers = ownerResponse.data.filter((offer: any) => {
+            const isActive = offer.is_active !== false && offer.isActive !== false;
+            const isNotExpired = !offer.expires_at && !offer.expiresAt || 
+              (offer.expires_at && new Date(offer.expires_at) > now) ||
+              (offer.expiresAt && new Date(offer.expiresAt) > now);
+            return isActive && isNotExpired;
+          });
+          locationHasActiveOffer = activeOwnerOffers.length > 0;
         }
+      } catch (error) {
+        console.error('Error fetching location owner offers:', error);
+      }
+      
+      // If location owner doesn't have an active offer, don't show carousel
+      if (!locationHasActiveOffer) {
+        setOffersAds([]);
+        return;
       }
 
-      // Mock data for display - will be replaced with real data
-      const mockOffersAds: OfferAd[] = [
-        ...randomizedPartners.slice(0, 2).map((p, i) => ({
-          id: p.id,
-          type: "offer" as const,
-          title: p.call_to_action,
-          description: "Partner offer",
-          image: i === 0 ? posSalonImage : posCoffeeImage,
-          validUntil: "∞"
-        })),
-        ...nearbyOffers.slice(0, 2).map((o, i) => ({
-          id: o.id,
-          type: "offer" as const,
-          title: o.call_to_action,
-          description: "Nearby Open Offer",
-          image: i === 0 ? posFlowersImage : posSubsImage,
-          partner: o.business_name,
-          validUntil: "7 days"
-        })),
-        ...defaultCampaigns.map((c: any) => ({
-          id: c.id,
-          type: "ad" as const,
-          title: c.call_to_action,
-          description: "Advertisement",
-          image: c.campaign_image_url || posCoffeeImage,
-          validUntil: c.expiration_date ? new Date(c.expiration_date).toLocaleDateString() : "∞"
-        }))
-      ];
+      // Load approved partner offers for this location (from retailers with approved partnerships)
+      let partnerOffersData: any[] = [];
+      try {
+        const partnerResponse = await get({ 
+          end_point: `offers/location/${locationId}/partners`,
+          token: false
+        });
+        
+        if (partnerResponse.success && partnerResponse.data) {
+          // Filter: Only show active, non-expired offers from approved partnerships
+          const now = new Date();
+          partnerOffersData = partnerResponse.data
+            .filter((offer: any) => {
+              const isActive = offer.is_active !== false && offer.isActive !== false;
+              const isNotExpired = !offer.expires_at && !offer.expiresAt || 
+                (offer.expires_at && new Date(offer.expires_at) > now) ||
+                (offer.expiresAt && new Date(offer.expiresAt) > now);
+              return isActive && isNotExpired;
+            })
+            .map((offer: any) => ({
+              id: offer._id?.toString() || offer.id?.toString() || '',
+              type: "offer" as const,
+              title: offer.callToAction || offer.call_to_action || '',
+              description: "Partner Offer",
+              image: offer.offer_image || offer.offerImage || posCoffeeImage, // Use different image for partner offers
+              partner: offer.user?.fullName || offer.userId?.fullName || null,
+              validUntil: offer.expires_at || offer.expiresAt || "∞"
+            }));
+        }
+      } catch (error) {
+        console.error('Error fetching partner offers:', error);
+      }
 
-      setOffersAds(mockOffersAds);
+      // Load open offers from backend API (available to all retailers)
+      let nearbyOpenOffers: any[] = [];
+      try {
+        const response = await get({ 
+          end_point: 'offers/open',
+          token: false
+        });
+        
+        if (response.success && response.data) {
+          // Filter: Only show active, non-expired open offers
+          const now = new Date();
+          nearbyOpenOffers = response.data
+            .filter((offer: any) => {
+              const isOpenOffer = offer.is_open_offer || offer.isOpenOffer;
+              const isActive = offer.is_active !== false && offer.isActive !== false;
+              const isNotExpired = !offer.expires_at && !offer.expiresAt || 
+                (offer.expires_at && new Date(offer.expires_at) > now) ||
+                (offer.expiresAt && new Date(offer.expiresAt) > now);
+              return isOpenOffer && isActive && isNotExpired;
+            })
+            .map((offer: any) => ({
+              id: offer._id?.toString() || offer.id?.toString() || '',
+              type: "offer" as const,
+              title: offer.callToAction || offer.call_to_action || '',
+              description: "Open Offer",
+              image: offer.offer_image || offer.offerImage || posFlowersImage, // Use different image for open offers
+              partner: offer.user?.fullName || offer.userId?.fullName || null,
+              validUntil: offer.expires_at || offer.expiresAt || "7 days"
+            }));
+        }
+      } catch (error) {
+        console.error('Error fetching open offers:', error);
+      }
+      
+      // Combine: Partner offers first, then open offers, then back to partner offers (rotation)
+      // This creates a rotation: Partner -> Open -> Partner -> Open...
+      const allOffersAds: OfferAd[] = [];
+      
+      // Interleave partner offers and open offers for rotation
+      const maxLength = Math.max(partnerOffersData.length, nearbyOpenOffers.length);
+      for (let i = 0; i < maxLength; i++) {
+        if (i < partnerOffersData.length) {
+          allOffersAds.push(partnerOffersData[i]);
+        }
+        if (i < nearbyOpenOffers.length) {
+          allOffersAds.push(nearbyOpenOffers[i]);
+        }
+      }
+      
+      // If we have more of one type, add remaining at the end
+      if (partnerOffersData.length > nearbyOpenOffers.length) {
+        allOffersAds.push(...partnerOffersData.slice(nearbyOpenOffers.length));
+      } else if (nearbyOpenOffers.length > partnerOffersData.length) {
+        allOffersAds.push(...nearbyOpenOffers.slice(partnerOffersData.length));
+      }
+
+      setOffersAds(allOffersAds);
     } catch (error) {
       console.error('Error loading offers:', error);
+      setOffersAds([]);
     }
   };
 
@@ -357,32 +387,33 @@ const InStoreDisplay = () => {
         </Card>
 
         {/* Carousel Display */}
-        {offersAds.length > 0 ? (
-          <div ref={carouselRef} className="relative bg-background rounded-lg">
-            {isFullscreen && (
-              <Button
-                variant="secondary"
-                size="icon"
-                onClick={handleFullscreen}
-                className="absolute top-4 left-4 z-50 h-12 w-12"
+        {localStorage.getItem('displayCarousel') === 'true' ? (
+          offersAds.length > 0 ? (
+            <div ref={carouselRef} className={`relative bg-background rounded-lg ${isFullscreen ? 'fixed inset-0 z-50 bg-black' : ''}`}>
+              {isFullscreen && (
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  onClick={handleFullscreen}
+                  className="absolute top-4 right-4 z-50 h-12 w-12 bg-white/20 hover:bg-white/30 text-white border-white/30"
+                >
+                  <Minimize className="h-6 w-6" />
+                </Button>
+              )}
+              <Carousel
+                setApi={setApi}
+                opts={{
+                  align: "start",
+                  loop: true,
+                }}
+                className={`w-full ${isFullscreen ? 'h-screen' : ''}`}
               >
-                <Minimize className="h-6 w-6" />
-              </Button>
-            )}
-            <Carousel
-              setApi={setApi}
-              opts={{
-                align: "start",
-                loop: true,
-              }}
-              className="w-full"
-            >
-              <CarouselContent>
+              <CarouselContent className={isFullscreen ? 'h-screen' : ''}>
                 {offersAds.map((item) => (
-                  <CarouselItem key={item.id}>
-                    <Card className="border-2">
-                      <CardContent className="p-0">
-                        <div className="relative aspect-video w-full overflow-hidden rounded-lg">
+                  <CarouselItem key={item.id} className={isFullscreen ? 'h-screen' : ''}>
+                    <Card className={`border-2 ${isFullscreen ? 'h-full border-0 rounded-none' : ''}`}>
+                      <CardContent className={`p-0 ${isFullscreen ? 'h-full' : ''}`}>
+                        <div className={`relative ${isFullscreen ? 'w-full h-full' : 'aspect-video w-full'} overflow-hidden ${isFullscreen ? '' : 'rounded-lg'}`}>
                           <img
                             src={item.image}
                             alt={item.title}
@@ -391,7 +422,7 @@ const InStoreDisplay = () => {
                           {/* QR Code in top right corner */}
                           <div className="absolute top-12 right-12 bg-white p-4 rounded-lg shadow-lg">
                             <img 
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`https://offerave.com/offer/${item.id}`)}`}
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`${window.location.origin}/redeem/${item.id}`)}`}
                               alt="QR Code"
                               className="w-38 h-38"
                             />
@@ -430,14 +461,24 @@ const InStoreDisplay = () => {
                   </CarouselItem>
                 ))}
               </CarouselContent>
-              <CarouselPrevious className="left-4 h-16 w-16" />
-              <CarouselNext className="right-4 h-16 w-16" />
+              <CarouselPrevious className={`left-4 h-16 w-16 ${isFullscreen ? 'bg-white/20 hover:bg-white/30 text-white border-white/30' : ''}`} />
+              <CarouselNext className={`right-4 h-16 w-16 ${isFullscreen ? 'bg-white/20 hover:bg-white/30 text-white border-white/30' : ''}`} />
             </Carousel>
           </div>
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-muted-foreground">No active partner offers for this location. Partner offers will appear here once you have approved partnerships.</p>
+              </CardContent>
+            </Card>
+          )
         ) : (
           <Card>
             <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">No active offers or ads for this location</p>
+              <p className="text-muted-foreground mb-4">Please select "Display Partner Carousel" in the display options to view partner offers.</p>
+              <Button onClick={() => navigate('/dashboard')}>
+                Go to Dashboard
+              </Button>
             </CardContent>
           </Card>
         )}

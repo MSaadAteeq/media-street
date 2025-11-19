@@ -33,8 +33,12 @@ const signupSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
   fullName: z.string().min(2, "Full name must be at least 2 characters"),
+  storeName: z.string().min(2, "Store name must be at least 2 characters"),
   latitude: z.number().optional(),
   longitude: z.number().optional(),
+  referralCode: z.string().optional().refine((val) => !val || val.length === 8, {
+    message: "Referral code must be 8 characters",
+  }),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -71,6 +75,10 @@ export default function Login() {
       password: "",
       confirmPassword: "",
       fullName: "",
+      storeName: "",
+      latitude: undefined,
+      longitude: undefined,
+      referralCode: "",
     },
   });
 
@@ -139,8 +147,11 @@ export default function Login() {
           fullName: data.fullName,
           email: data.email,
           password: data.password,
+          storeName: data.storeName,
+          location_name: data.storeName, // Use storeName for location name
           latitude: data.latitude,
-          longitude: data.longitude
+          longitude: data.longitude,
+          referral_code: data.referralCode ? data.referralCode.toUpperCase().trim() : undefined
         }
       });
 
@@ -344,6 +355,19 @@ export default function Login() {
                       />
                       <FormField
                         control={signupForm.control}
+                        name="storeName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Store Name *</FormLabel>
+                            <FormControl>
+                              <Input placeholder="My Store" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={signupForm.control}
                         name="email"
                         render={({ field }) => (
                           <FormItem>
@@ -352,6 +376,31 @@ export default function Login() {
                               <Input placeholder="Enter your email" type="email" {...field} />
                             </FormControl>
                             <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={signupForm.control}
+                        name="referralCode"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Referral Code (Optional)</FormLabel>
+                            <FormControl>
+                              <Input 
+                                placeholder="ABCD1234" 
+                                {...field}
+                                onChange={(e) => {
+                                  // Convert to uppercase and limit to 8 characters
+                                  const value = e.target.value.toUpperCase().slice(0, 8);
+                                  field.onChange(value);
+                                }}
+                                maxLength={8}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                            <p className="text-xs text-muted-foreground">
+                              Enter a referral code if you were referred by another retailer
+                            </p>
                           </FormItem>
                         )}
                       />

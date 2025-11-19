@@ -549,9 +549,75 @@ const OfferAI = () => {
                           {new Date(offer.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
-                          <Button variant="ghost" size="icon">
-                            <Eye className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              onClick={() => {
+                                // View offer details - could open a dialog or navigate
+                                toast({
+                                  title: "Offer Details",
+                                  description: offer.call_to_action,
+                                });
+                              }}
+                              title="View Details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {offer.is_subscribed || offer.isSubscribed ? (
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                disabled
+                              >
+                                Subscribed
+                              </Button>
+                            ) : (offer.is_subscribed_by_anyone || offer.isSubscribedByAnyone) ? (
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                disabled
+                                title="This offer has already been subscribed by another retailer"
+                              >
+                                Already Subscribed
+                              </Button>
+                            ) : (
+                              <Button 
+                                variant="default" 
+                                size="sm"
+                                onClick={async () => {
+                                  // Subscribe to this open offer
+                                  try {
+                                    const { post } = await import("@/services/apis");
+                                    const response = await post({
+                                      end_point: 'partners/subscribe-open-offer',
+                                      body: { offer_id: offer.id },
+                                      token: true
+                                    });
+                                    
+                                    if (response.success) {
+                                      toast({
+                                        title: "Subscribed!",
+                                        description: `You've subscribed to ${offer.retailer_name}'s open offer. It will now appear in your carousel.`,
+                                      });
+                                      // Refresh open offers list
+                                      fetchAllOpenOffers();
+                                    } else {
+                                      throw new Error(response.message || 'Failed to subscribe');
+                                    }
+                                  } catch (error: any) {
+                                    toast({
+                                      title: "Error",
+                                      description: error?.response?.data?.message || error?.message || "Failed to subscribe to offer",
+                                      variant: "destructive",
+                                    });
+                                  }
+                                }}
+                              >
+                                Subscribe
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

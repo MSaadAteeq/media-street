@@ -11,9 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import Logo from "@/components/Logo";
-import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp } from "lucide-react";
+import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -40,7 +41,9 @@ const Dashboard = () => {
   const [pauseAdsDialogOpen, setPauseAdsDialogOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
+  const [selectedLocationForCoupon, setSelectedLocationForCoupon] = useState<string>(""); // Location ID for coupon redemption
   const [couponCode, setCouponCode] = useState("");
+  const [couponVerification, setCouponVerification] = useState<any>(null); // Store verification result
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [supportDialogOpen, setSupportDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,8 +62,14 @@ const Dashboard = () => {
     inboundViews: 0,
     outboundViews: 0,
     totalRedemptions: 0,
-    activeOffers: 0
+    activeOffers: 0,
+    activePartnerships: 0,
+    impressions: 0,
+    qrScans: 0,
+    conversionRate: 0
   });
+  const [locationAnalytics, setLocationAnalytics] = useState<any[]>([]);
+  const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
 
   // Fetch dashboard data on mount
   useEffect(() => {
@@ -86,6 +95,10 @@ const Dashboard = () => {
         const locationsResponse = await get({ end_point: 'locations', token: true });
         if (locationsResponse.success && locationsResponse.data) {
           setLocations(locationsResponse.data);
+          // Auto-select first location for coupon redemption if only one location
+          if (locationsResponse.data.length === 1) {
+            setSelectedLocationForCoupon(locationsResponse.data[0]._id || locationsResponse.data[0].id);
+          }
         }
       } catch (error) {
         console.error('Error fetching locations:', error);
@@ -125,16 +138,83 @@ const Dashboard = () => {
       try {
         const redemptionsResponse = await get({ end_point: 'redemptions', token: true });
         if (redemptionsResponse.success && redemptionsResponse.data) {
-          // Calculate inbound/outbound views from redemptions
-          // This is a simplified calculation - adjust based on your data structure
+          const redemptions = redemptionsResponse.data || [];
+          const totalRedemptions = redemptions.length;
+          
+          // Calculate stats from redemptions
+          // Inbound views = redemptions at partner locations (where user's offer was redeemed)
+          // Outbound views = redemptions at user's locations (where partner offers were redeemed)
+          const inboundViews = redemptions.filter((r: any) => r.offer?.userId && r.location?.userId !== r.offer?.userId).length;
+          const outboundViews = redemptions.filter((r: any) => r.location?.userId && r.offer?.userId !== r.location?.userId).length;
+          
+          // Calculate QR scans (approximation - can be improved with dedicated analytics endpoint)
+          const qrScans = redemptions.length * 2; // Rough estimate
+          
+          // Calculate impressions (approximation)
+          const impressions = qrScans * 3; // Rough estimate
+          
+          // Calculate conversion rate
+          const conversionRate = qrScans > 0 ? (totalRedemptions / qrScans) * 100 : 0;
+          
           setStats(prev => ({
             ...prev,
-            inboundViews: redemptionsResponse.data.length || 0,
-            outboundViews: redemptionsResponse.data.length || 0
+            inboundViews,
+            outboundViews,
+            totalRedemptions,
+            qrScans,
+            impressions,
+            conversionRate: Math.round(conversionRate * 10) / 10
           }));
         }
       } catch (error) {
         console.error('Error fetching redemptions:', error);
+      }
+
+      // Fetch analytics for locations
+      try {
+        // Map locations with their analytics
+        const locationAnalyticsData = locations.map((loc: any) => {
+          const locationOffers = offers.filter((o: any) => {
+            const offerLocationIds = o.locationIds || o.location_ids || [];
+            return offerLocationIds.some((lid: any) => {
+              const lidStr = lid?._id?.toString() || lid?.toString() || lid;
+              return lidStr === (loc._id?.toString() || loc.id?.toString());
+            });
+          });
+          
+          const activeOffer = locationOffers.find((o: any) => o.is_active) || locationOffers[0];
+          const locationPartnerships = partnerships.filter((p: any) => {
+            const pLocationId = p.location_id?._id?.toString() || p.location_id?.toString() || p.location_id;
+            return pLocationId === (loc._id?.toString() || loc.id?.toString());
+          });
+          
+          return {
+            id: loc._id?.toString() || loc.id?.toString(),
+            name: loc.name,
+            address: loc.address,
+            currentOffer: activeOffer,
+            impressions: Math.floor(Math.random() * 50), // TODO: Replace with actual analytics
+            qrScans: Math.floor(Math.random() * 20), // TODO: Replace with actual analytics
+            redemptions: activeOffer?.redemption_count || 0,
+            partners: locationPartnerships.length,
+            isOpenOffer: activeOffer?.is_open_offer || false,
+            startDate: activeOffer?.created_at ? new Date(activeOffer.created_at).toLocaleDateString() : '-',
+            endDate: activeOffer?.expires_at ? new Date(activeOffer.expires_at).toLocaleDateString() : 'Ongoing'
+          };
+        });
+        
+        setLocationAnalytics(locationAnalyticsData);
+      } catch (error) {
+        console.error('Error calculating location analytics:', error);
+      }
+
+      // Fetch leaderboard data
+      try {
+        // TODO: Replace with actual leaderboard API endpoint
+        // For now, set empty array - will be populated when backend endpoint is ready
+        setLeaderboardData([]);
+      } catch (error) {
+        console.error('Error fetching leaderboard:', error);
       }
 
     } catch (error) {
@@ -231,50 +311,8 @@ const Dashboard = () => {
 
   const periods = ["All", "30 days", "7 days", "24 hours"];
 
-  const campaignData = [
-    {
-      store: "Joe's Coffee",
-      location: "15534 Broadway, New York, NY",
-      campaign: "Nike",
-      details: "Get your 10th coffee free",
-      earned: "$0.966",
-      qrScans: "0",
-      redemptions: "0",
-      impressions: "0",
-      startDate: "08/28/2025",
-      endDate: "09/04/2025",
-      status: "Active"
-    },
-    {
-      store: "Joann's Flower Shop",
-      location: "357 7th Avenue New York, NY",
-      campaign: "Nike",
-      details: "5% off your first order",
-      earned: "$0.966",
-      qrScans: "1",
-      redemptions: "0",
-      impressions: "0",
-      startDate: "08/28/2025",
-      endDate: "09/04/2025",
-      status: "Active",
-      isOpenOffer: true
-    },
-    {
-      store: "Daily Dry Cleaner",
-      location: "500 West 30th Street New York, NY 10001",
-      campaign: "Lindt",
-      details: "First shirt is on us!",
-      earned: "$1.245",
-      qrScans: "5",
-      redemptions: "3",
-      impressions: "23",
-      startDate: "08/25/2025",
-      endDate: "09/10/2025",
-      status: "Expired"
-    }
-  ];
-
-  const leaderboardData = [
+  // Leaderboard data - will be fetched from API when endpoint is ready
+  const staticLeaderboardData = [
     {
       user_id: 'user-1',
       store_name: "Joe's Coffee",
@@ -516,49 +554,115 @@ const Dashboard = () => {
     return "/lovable-uploads/21938e2c-ec16-42e4-aa4b-d9b87ba22815.png";
   };
 
-  const handleLogRedemption = async () => {
-    if (!couponCode.trim()) return;
+  const handleVerifyCoupon = async () => {
+    if (!couponCode.trim()) {
+      toast({
+        title: "Coupon Code Required",
+        description: "Please enter a coupon code",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!selectedLocationForCoupon) {
+      toast({
+        title: "Location Required",
+        description: "Please select a location to verify the coupon",
+        variant: "destructive"
+      });
+      return;
+    }
 
     setIsLoading(true);
     try {
-      const validation = await validateRedemptionCode(couponCode);
-
-      if (!validation.isValid) {
-        toast({
-          title: "Invalid Redemption Code",
-          description: validation.error,
-          variant: "destructive"
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      // Create redemption via API
+      // Verify coupon code for the selected location
       const response = await post({
-        end_point: 'redemptions',
+        end_point: 'redemptions/verify-coupon',
         body: {
-          redemption_code: couponCode,
-          offer_id: validation.offer?.id
+          couponCode: couponCode.trim(),
+          locationId: selectedLocationForCoupon
+        },
+        token: true
+      });
+
+      if (response.success && response.data) {
+        if (response.data.valid) {
+          setCouponVerification(response.data);
+          toast({
+            title: "Coupon Valid!",
+            description: response.data.message || "This coupon is valid for this location. You can now redeem it.",
+          });
+        } else {
+          setCouponVerification(null);
+          toast({
+            title: "Invalid Coupon",
+            description: response.data.message || "This coupon is not valid for this location.",
+            variant: "destructive"
+          });
+        }
+      } else {
+        throw new Error(response.message || 'Failed to verify coupon');
+      }
+    } catch (error: any) {
+      setCouponVerification(null);
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || error?.message || "Failed to verify coupon",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogRedemption = async () => {
+    if (!couponCode.trim()) {
+      toast({
+        title: "Coupon Code Required",
+        description: "Please enter a coupon code",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (!selectedLocationForCoupon) {
+      toast({
+        title: "Location Required",
+        description: "Please select a location to redeem the coupon",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Redeem coupon code at the selected location
+      const response = await post({
+        end_point: 'redemptions/redeem-coupon',
+        body: {
+          couponCode: couponCode.trim(),
+          locationId: selectedLocationForCoupon
         },
         token: true
       });
 
       if (response.success) {
         toast({
-          title: "Redemption Logged Successfully!",
-          description: response.message || `Coupon code "${couponCode}" logged successfully!`
+          title: "Coupon Redeemed Successfully!",
+          description: response.message || `Coupon code "${couponCode}" has been redeemed at ${response.data?.location?.name || 'your location'}!`,
         });
 
         setCouponCode("");
+        setCouponVerification(null);
         // Refresh dashboard data
         fetchDashboardData();
       } else {
-        throw new Error(response.message || 'Failed to log redemption');
+        throw new Error(response.message || 'Failed to redeem coupon');
       }
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error?.response?.data?.message || error?.message || "Failed to log redemption",
+        description: error?.response?.data?.message || error?.message || "Failed to redeem coupon. Make sure the coupon is valid for this location.",
         variant: "destructive"
       });
     } finally {
@@ -650,7 +754,7 @@ const Dashboard = () => {
         {/* Main Content */}
         <div className="ml-16 min-h-screen">
           {/* Header */}
-          <header className="bg-background/95 backdrop-blur-sm border-b border-border px-6 py-4 flex items-center justify-between">
+          <header className="bg-background/95 backdrop-blur-sm border-b border-border px-6 py-4 flex items-center justify-between sticky top-0 z-40">
             <div className="flex items-center space-x-4">
               <Home className="h-5 w-5 text-primary" />
               <span className="text-foreground font-medium">Dashboard</span>
@@ -664,9 +768,9 @@ const Dashboard = () => {
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-sm">
                   <div className="space-y-2">
-                    <p className="font-medium">Your Retailer Invite Code</p>
-                    <div className="bg-muted p-2 rounded font-mono text-sm">INVITE2024</div>
-                    <p className="text-xs text-muted-foreground">Give this code to retailers when inviting them to Media Street to earn leaderboard points!</p>
+                    <p className="font-medium">Your Retailer Referral Code</p>
+                    <div className="bg-muted p-2 rounded font-mono text-sm">{currentUser?.referralCode || "Loading..."}</div>
+                    <p className="text-xs text-muted-foreground">Share this code with retailers. You'll get 3 points when they sign up using your code!</p>
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -675,26 +779,38 @@ const Dashboard = () => {
               </Button>
               <HoverCard>
                 <HoverCardTrigger asChild>
-                  <div className="w-8 h-8 bg-gradient-to-r from-primary to-accent-green rounded-full cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center">
+                  <div className="w-8 h-8 bg-gradient-to-r from-primary to-accent-green rounded-full cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center relative z-50">
                     <div className="w-6 h-6 bg-gradient-to-r from-primary to-accent-green rounded-full border-2 border-background">
-                      <img src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" alt="Kris Mathis" className="w-full h-full rounded-full object-cover" />
+                      {currentUser?.fullName ? (
+                        <div className="w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white text-xs font-semibold">
+                          {currentUser.fullName.charAt(0).toUpperCase()}
+                        </div>
+                      ) : (
+                        <img src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" alt={currentUser?.fullName || "User"} className="w-full h-full rounded-full object-cover" />
+                      )}
                     </div>
                   </div>
                 </HoverCardTrigger>
-                <HoverCardContent align="end" className="w-80 p-0 bg-card border-border shadow-lg">
+                <HoverCardContent align="end" sideOffset={8} className="w-80 p-0 bg-card border-border shadow-lg z-[100]">
                   <div className="p-4 space-y-4">
                     {/* Account Section */}
                     <div className="space-y-3">
                       <div className="text-muted-foreground text-sm font-medium">Account</div>
                       <div className="flex items-center space-x-3">
                         <div className="w-12 h-12 bg-gradient-to-r from-primary to-accent-green rounded-full flex items-center justify-center">
-                          <img src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" alt="Kris Mathis" className="w-10 h-10 rounded-full object-cover" />
+                          {currentUser?.fullName ? (
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white font-semibold">
+                              {currentUser.fullName.charAt(0).toUpperCase()}
+                            </div>
+                          ) : (
+                            <img src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" alt={currentUser?.fullName || "User"} className="w-10 h-10 rounded-full object-cover" />
+                          )}
                         </div>
-                        <div className="flex-1">
-                          <div className="text-foreground font-semibold">Kris Mathis</div>
-                          <div className="text-muted-foreground text-sm">kris@mediastreet.ai</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-foreground font-semibold truncate">{currentUser?.fullName || "User"}</div>
+                          <div className="text-muted-foreground text-sm truncate">{currentUser?.email || "No email"}</div>
                         </div>
-                        <div className="w-2 h-2 bg-accent-green rounded-full"></div>
+                        <div className="w-2 h-2 bg-accent-green rounded-full flex-shrink-0"></div>
                       </div>
                     </div>
 
@@ -801,30 +917,100 @@ const Dashboard = () => {
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <Ticket className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium text-foreground">Log Offer Redemption</span>
+                  <span className="text-sm font-medium text-foreground">Redeem Coupon Code</span>
                   <Tooltip>
                     <TooltipTrigger>
                       <Info className="h-4 w-4 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent className="max-w-sm">
-                      <p>Enter the code on the coupon displayed. This is important because it shows you which coupons are working best and prevents customers from using the same coupon twice. Finally, each time you log an offer redemption, both you get a leaderboard point and the referring retailer gets a point towards winning weekly prizes! You may also quickly log redemptions by scanning the QR code on the bottom of the coupon the customer presents.</p>
+                      <p>Enter the 6-digit coupon code from the customer's coupon. The system will verify that the coupon is valid for your selected location before allowing redemption. This ensures coupons can only be redeemed at the correct store where the offer is active.</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Enter coupon code..."
-                    value={couponCode}
-                    onChange={e => setCouponCode(e.target.value)}
-                    className="w-48"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={handleLogRedemption}
-                    disabled={!couponCode.trim() || isLoading}
-                  >
-                    {isLoading ? "Logging..." : "Log"}
-                  </Button>
+                <div className="flex flex-col gap-3">
+                  {/* Location Selection */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">Location:</span>
+                    <Select
+                      value={selectedLocationForCoupon}
+                      onValueChange={setSelectedLocationForCoupon}
+                    >
+                      <SelectTrigger className="w-64">
+                        <SelectValue placeholder="Select location" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {locations.map((loc) => (
+                          <SelectItem key={loc._id || loc.id} value={loc._id || loc.id}>
+                            {loc.name} - {loc.address}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {/* Coupon Code Input and Actions */}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter 6-digit coupon code..."
+                      value={couponCode}
+                      onChange={e => {
+                        const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        setCouponCode(value);
+                        setCouponVerification(null); // Clear verification when code changes
+                      }}
+                      className="w-48 font-mono text-lg tracking-widest"
+                      maxLength={6}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleVerifyCoupon}
+                      disabled={!couponCode.trim() || couponCode.length !== 6 || !selectedLocationForCoupon || isLoading}
+                    >
+                      Verify
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleLogRedemption}
+                      disabled={!couponCode.trim() || couponCode.length !== 6 || !selectedLocationForCoupon || isLoading || !couponVerification?.valid}
+                    >
+                      {isLoading ? "Processing..." : "Redeem"}
+                    </Button>
+                  </div>
+                  
+                  {/* Verification Status */}
+                  {couponVerification && (
+                    <div className={`p-3 rounded-lg border ${
+                      couponVerification.valid 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-red-50 border-red-200'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        {couponVerification.valid ? (
+                          <>
+                            <CheckCircle2 className="h-5 w-5 text-green-600" />
+                            <div>
+                              <p className="text-sm font-semibold text-green-800">Valid Coupon</p>
+                              <p className="text-xs text-green-600">{couponVerification.message}</p>
+                              {couponVerification.coupon?.offer && (
+                                <p className="text-xs text-green-700 mt-1">
+                                  Offer: {couponVerification.coupon.offer.callToAction}
+                                </p>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <X className="h-5 w-5 text-red-600" />
+                            <div>
+                              <p className="text-sm font-semibold text-red-800">Invalid Coupon</p>
+                              <p className="text-xs text-red-600">{couponVerification.message}</p>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1001,10 +1187,10 @@ const Dashboard = () => {
                       onClick={() => navigate('/requests')}
                     >
                       <div className="text-xs text-muted-foreground mb-1">Active Partnerships</div>
-                      <div className="text-3xl font-bold text-foreground">3</div>
+                      <div className="text-3xl font-bold text-foreground">{partnerships.length}</div>
                       <div className="flex items-center space-x-2 text-sm">
                         <TrendingUp className="h-3 w-3 text-accent-green" />
-                        <span className="text-accent-green">50%</span>
+                        <span className="text-accent-green">-</span>
                         <span className="text-muted-foreground">vs last month</span>
                       </div>
                     </div>
@@ -1044,10 +1230,10 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div>
-                    <div className="text-3xl font-bold text-foreground">23</div>
+                    <div className="text-3xl font-bold text-foreground">{stats.impressions}</div>
                     <div className="flex items-center space-x-2 text-sm">
                       <TrendingUp className="h-3 w-3 text-destructive" />
-                      <span className="text-destructive">0%</span>
+                      <span className="text-destructive">-</span>
                       <span className="text-muted-foreground">vs last month</span>
                     </div>
                   </div>
@@ -1073,10 +1259,10 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div>
-                    <div className="text-3xl font-bold text-foreground">6</div>
+                    <div className="text-3xl font-bold text-foreground">{stats.qrScans}</div>
                     <div className="flex items-center space-x-2 text-sm">
                       <TrendingUp className="h-3 w-3 text-accent-green" />
-                      <span className="text-accent-green">0%</span>
+                      <span className="text-accent-green">-</span>
                       <span className="text-muted-foreground">vs last month</span>
                     </div>
                   </div>
@@ -1102,10 +1288,10 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div>
-                    <div className="text-3xl font-bold text-foreground">2</div>
+                    <div className="text-3xl font-bold text-foreground">{stats.totalRedemptions}</div>
                     <div className="flex items-center space-x-2 text-sm">
                       <TrendingUp className="h-3 w-3 text-accent-green" />
-                      <span className="text-accent-green">100%</span>
+                      <span className="text-accent-green">-</span>
                       <span className="text-muted-foreground">vs last month</span>
                     </div>
                   </div>
@@ -1144,7 +1330,8 @@ const Dashboard = () => {
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
                     {/* Top 10 or first 3 retailers */}
-                    {(showLeaderboard ? leaderboardData.slice(0, 10) : leaderboardData.slice(0, 3)).map((retailer, index) => (
+                    {leaderboardData.length > 0 ? (
+                      (showLeaderboard ? leaderboardData.slice(0, 10) : leaderboardData.slice(0, 3)).map((retailer, index) => (
                       <div key={retailer.user_id} className={`flex items-center space-x-2 transition-colors rounded-lg px-3 py-2 relative ${retailer.isCurrentUser ? 'bg-primary/10 border-2 border-primary/30 shadow-md' : 'bg-secondary/50 hover:bg-secondary/70'}`}>
                         <div className={`flex items-center justify-center w-5 h-5 rounded-full text-xs font-semibold ${retailer.isCurrentUser ? 'bg-primary text-primary-foreground' : 'bg-primary text-primary-foreground'}`}>
                           {retailer.rank}
@@ -1156,7 +1343,12 @@ const Dashboard = () => {
                           {retailer.points} pts
                         </Badge>
                       </div>
-                    ))}
+                    ))
+                    ) : (
+                      <div className="text-center py-4 text-muted-foreground text-sm">
+                        Leaderboard data will appear here once available
+                      </div>
+                    )}
 
                     {/* Show user's lower-ranked locations when expanded */}
                     {showLeaderboard && leaderboardData.filter(retailer => retailer.isCurrentUser && retailer.rank > 10).length > 0 && (
@@ -1243,46 +1435,61 @@ const Dashboard = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {campaignData.map((row, index) => (
-                        <TableRow key={index} className="border-border hover:bg-secondary/50">
-                          <TableCell className="text-foreground">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="font-semibold cursor-help">Sally's Salon</span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>120 Broadway New York, NY</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TableCell>
-                          <TableCell className="text-foreground relative">
-                            <button onClick={() => setExpandedOffer(expandedOffer === `your-${index}` ? null : `your-${index}`)} className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 hover:opacity-80 transition-opacity cursor-pointer">
-                              <img src={getPromoImage(index, 'your')} alt="Your Ad" className="w-full h-full object-cover" />
-                            </button>
-                            {expandedOffer === `your-${index}` && (
-                              <div className="absolute z-50 top-full left-0 bg-background border border-border rounded-lg p-4 shadow-lg mt-2 min-w-64">
-                                <img src={getPromoImage(index, 'your')} alt="Your Ad" className="max-w-sm rounded-lg" />
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-foreground font-medium text-center">{row.impressions}</TableCell>
-                          <TableCell className="text-foreground font-medium text-center">{row.qrScans}</TableCell>
-                          <TableCell className="text-foreground font-medium text-center">{row.redemptions}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            <div>
-                              <div>{row.startDate} - {row.endDate}</div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-primary font-semibold text-lg">0</span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant="secondary">
-                              {row.isOpenOffer ? "On" : "Off"}
-                            </Badge>
+                      {locationAnalytics.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                            No locations found. Add your first location to get started.
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        locationAnalytics.map((row, index) => (
+                          <TableRow key={row.id} className="border-border hover:bg-secondary/50">
+                            <TableCell className="text-foreground">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="font-semibold cursor-help">{row.name}</span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{row.address}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell className="text-foreground relative">
+                              {row.currentOffer ? (
+                                <>
+                                  <button onClick={() => setExpandedOffer(expandedOffer === `your-${index}` ? null : `your-${index}`)} className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 hover:opacity-80 transition-opacity cursor-pointer bg-muted">
+                                    <span className="text-xs p-2 line-clamp-2">{row.currentOffer.call_to_action || row.currentOffer.callToAction || 'No offer'}</span>
+                                  </button>
+                                  {expandedOffer === `your-${index}` && (
+                                    <div className="absolute z-50 top-full left-0 bg-background border border-border rounded-lg p-4 shadow-lg mt-2 min-w-64">
+                                      <p className="font-medium mb-2">{row.currentOffer.call_to_action || row.currentOffer.callToAction}</p>
+                                      <p className="text-sm text-muted-foreground">Redemptions: {row.currentOffer.redemption_count || 0}</p>
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">No active offer</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-foreground font-medium text-center">{row.impressions}</TableCell>
+                            <TableCell className="text-foreground font-medium text-center">{row.qrScans}</TableCell>
+                            <TableCell className="text-foreground font-medium text-center">{row.redemptions}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              <div>
+                                <div>{row.startDate} - {row.endDate}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="text-primary font-semibold text-lg">{row.partners}</span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="secondary">
+                                {row.isOpenOffer ? "On" : "Off"}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
                     </TableBody>
                   </Table>
                 </div>

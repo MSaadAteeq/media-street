@@ -185,7 +185,7 @@ const Offers = () => {
   const fetchOffers = async () => {
     try {
       setLoading(true);
-      // Fetch offers from backend API
+      // Fetch offers from backend API (should only return current user's offers)
       const response = await get({ 
         end_point: 'offers',
         token: true
@@ -195,6 +195,20 @@ const Offers = () => {
       
       if (response.success && response.data && Array.isArray(response.data)) {
         console.log(`Total offers received from API: ${response.data.length}`);
+        
+        // Get current user ID to ensure we only show user's own offers
+        let currentUserId: string | null = null;
+        try {
+          const currentUserResponse = await get({ 
+            end_point: 'users/me',
+            token: true
+          });
+          if (currentUserResponse.success && currentUserResponse.data) {
+            currentUserId = currentUserResponse.data._id?.toString() || currentUserResponse.data.id?.toString() || null;
+          }
+        } catch (userError) {
+          console.error('Error fetching current user:', userError);
+        }
         
         // Fetch locations if not already loaded (to ensure we have them for mapping)
         let locationsData = locations;
@@ -214,7 +228,15 @@ const Offers = () => {
         }
         
         // Format offers data to match frontend interface
-        const formattedOffers = response.data.map((offer: any, index: number) => {
+        // Filter to only include current user's offers (backend should already do this, but double-check)
+        const userOffers = currentUserId 
+          ? response.data.filter((offer: any) => {
+              const offerUserId = offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
+              return offerUserId === currentUserId;
+            })
+          : response.data; // If we can't get user ID, trust backend filtering
+        
+        const formattedOffers = userOffers.map((offer: any, index: number) => {
           try {
             // Handle locationIds - could be populated objects or just IDs
             // Check both locationIds (from backend) and location_ids (alternative format)
@@ -281,7 +303,7 @@ const Offers = () => {
           }
         });
         
-        console.log(`Total formatted offers: ${formattedOffers.length}`);
+        console.log(`Total formatted offers (user's own): ${formattedOffers.length}`);
         console.log('Formatted offers:', formattedOffers);
         
         // Ensure all offers have unique IDs and are included
@@ -302,8 +324,8 @@ const Offers = () => {
         
         console.log(`Valid offers after filtering: ${validOffers.length}`);
         
-        if (validOffers.length !== response.data.length) {
-          console.warn(`Warning: ${response.data.length - validOffers.length} offers were filtered out`);
+        if (validOffers.length !== userOffers.length) {
+          console.warn(`Warning: ${userOffers.length - validOffers.length} offers were filtered out`);
         }
         
         setOffers(validOffers);
@@ -743,25 +765,29 @@ const Offers = () => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   <Card>
                     <CardContent className="p-6">
-                      <div className="text-2xl font-bold">72</div>
+                      <div className="text-2xl font-bold">{redemptions.length}</div>
                       <p className="text-xs text-muted-foreground">Total Redemptions</p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="p-6">
-                      <div className="text-2xl font-bold">3</div>
+                      <div className="text-2xl font-bold">{offers.filter(o => o.is_active).length}</div>
                       <p className="text-xs text-muted-foreground">Active Offers</p>
                     </CardContent>
                   </Card>
                   <Card>
                     <CardContent className="p-6">
-                      <div className="text-2xl font-bold">24%</div>
+                      <div className="text-2xl font-bold">
+                        {redemptions.length > 0 && offers.length > 0 
+                          ? Math.round((redemptions.length / (offers.reduce((sum, o) => sum + (o.redemption_count || 0), 0) || 1)) * 100)
+                          : 0}%
+                      </div>
                       <p className="text-xs text-muted-foreground">Conversion Rate</p>
                     </CardContent>
                   </Card>
                 </div>
                 <div className="text-center py-8">
-                  <p className="text-muted-foreground">Analytics dashboard coming soon</p>
+                  <p className="text-muted-foreground">Detailed analytics coming soon</p>
                 </div>
               </TabsContent>
               
@@ -912,13 +938,74 @@ const Offers = () => {
                            <TableCell>
                              {new Date(offer.created_at).toLocaleDateString()}
                            </TableCell>
-                           <TableCell>
-                             <div className="flex items-center gap-2">
-                               <Button variant="ghost" size="icon">
-                                 <Eye className="h-4 w-4" />
-                               </Button>
-                             </div>
-                           </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={() => {
+                                  setSelectedOffer(offer);
+                                  setIsLocationDialogOpen(true);
+                                }}
+                                title="View Details"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              {offer.is_subscribed || offer.isSubscribed ? (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  disabled
+                                >
+                                  Subscribed
+                                </Button>
+                              ) : (offer.is_subscribed_by_anyone || offer.isSubscribedByAnyone) ? (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  disabled
+                                  title="This offer has already been subscribed by another retailer"
+                                >
+                                  Already Subscribed
+                                </Button>
+                              ) : (
+                                <Button 
+                                  variant="default" 
+                                  size="sm"
+                                  onClick={async () => {
+                                    // Subscribe to this open offer
+                                    try {
+                                      const { post } = await import("@/services/apis");
+                                      const response = await post({
+                                        end_point: 'partners/subscribe-open-offer',
+                                        body: { offer_id: offer.id },
+                                        token: true
+                                      });
+                                      
+                                      if (response.success) {
+                                        toast({
+                                          title: "Subscribed!",
+                                          description: `You've subscribed to ${offer.retailer_name}'s open offer. It will now appear in your carousel.`,
+                                        });
+                                        // Refresh the offers list
+                                        window.location.reload();
+                                      } else {
+                                        throw new Error(response.message || 'Failed to subscribe');
+                                      }
+                                    } catch (error: any) {
+                                      toast({
+                                        title: "Error",
+                                        description: error?.response?.data?.message || error?.message || "Failed to subscribe to offer",
+                                        variant: "destructive",
+                                      });
+                                    }
+                                  }}
+                                >
+                                  Subscribe
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
                          </TableRow>
                        ))}
                      </TableBody>

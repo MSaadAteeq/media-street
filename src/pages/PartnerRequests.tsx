@@ -14,7 +14,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Store, Check, X, Plus, Send, UserPlus, ArrowDown, ArrowUp, Eye, ChevronRight, Gift, Map, Building2, Trash2, MessageSquare, Lightbulb } from "lucide-react";
+import { Store, Check, X, Plus, Send, UserPlus, ArrowDown, ArrowUp, Eye, ChevronRight, Gift, Map as MapIcon, Building2, Trash2, MessageSquare, Lightbulb } from "lucide-react";
 import AppLayout from "@/components/AppLayout";
 import PartnerMap from "@/components/PartnerMap";
 import DisplayOptionCheck from "@/components/DisplayOptionCheck";
@@ -204,76 +204,246 @@ const PartnerRequests = () => {
   }, []);
   useEffect(() => {
     if (userLocations.length > 0 && partnersForMap.length > 0) {
-      generateRecommendations();
+      generateRecommendations().catch(error => {
+        console.error('Error generating recommendations:', error);
+      });
+    } else {
+      setRecommendations([]);
     }
   }, [userLocations, partnersForMap]);
   const fetchCurrentUser = async () => {
-    // TODO: Replace with Node.js API call to get current user
-    // const response = await get({ end_point: 'auth/me' });
-    // setCurrentUserId(response.data.user.id);
-    
-    // Mock implementation for now
-    const token = localStorage.getItem('token');
-    if (token) {
-      setCurrentUserId('current-user-id');
+    try {
+      const { get } = await import("@/services/apis");
+      const response = await get({ 
+        end_point: 'users/me',
+        token: true
+      });
+      
+      if (response.success && response.data) {
+        const userId = response.data._id?.toString() || response.data.id?.toString() || null;
+        if (userId) {
+          setCurrentUserId(userId);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+      // Fallback: try to get from token if available
+      const token = localStorage.getItem('token');
+      if (token) {
+        // Try to decode token to get user ID (basic fallback)
+        try {
+          const payload = JSON.parse(atob(token.split('.')[1]));
+          if (payload.userId) {
+            setCurrentUserId(payload.userId);
+          }
+        } catch (e) {
+          console.error('Could not extract user ID from token');
+        }
+      }
     }
   };
   const fetchUserLocations = async () => {
     try {
-      // TODO: Replace with Node.js API call
-      // const response = await get({ end_point: 'locations' });
-      // setUserLocations(response.data);
+      const { get } = await import("@/services/apis");
+      const response = await get({ 
+        end_point: 'locations',
+        token: true
+      });
       
-      const mockLocations = [{
-        id: "location_1",
-        name: "Sally's Salon",
-        address: "Sally's Salon Street 7, New York"
-      }, {
-        id: "location_2",
-        name: "Sally's Salon",
-        address: "Sangam Cinema, Hilton Park, New York"
-      }];
-      setUserLocations(mockLocations);
-      if (mockLocations.length === 1) {
-        setSelectedLocationId(mockLocations[0].id);
+      if (response.success && response.data) {
+        // Only use actual locations from API - filter out any invalid entries
+        const formattedLocations = response.data
+          .filter((loc: any) => loc && (loc._id || loc.id)) // Filter out invalid locations
+          .map((loc: any) => ({
+            id: loc._id?.toString() || loc.id?.toString(),
+            name: loc.name || 'Unnamed Location',
+            address: loc.address || ''
+          }));
+        setUserLocations(formattedLocations);
+        if (formattedLocations.length === 1) {
+          setSelectedLocationId(formattedLocations[0].id);
+        } else if (formattedLocations.length > 1 && !selectedLocationId) {
+          // If multiple locations and none selected, clear selection
+          setSelectedLocationId("");
+        }
+      } else {
+        setUserLocations([]);
       }
     } catch (error) {
-      console.error('💥 Exception in fetchUserLocations:', error);
+      console.error('Error fetching user locations:', error);
+      setUserLocations([]);
     }
   };
   const fetchPartnersForMap = async () => {
     try {
-      const mockPartners = [{
-        id: '1',
-        store_name: "Joe's Coffee",
-        retail_address: "456 Brew Street, Midtown, NY",
-        first_name: 'Joe',
-        last_name: 'Smith',
-        latitude: 40.7589,
-        longitude: -73.9851,
-        is_offerx_active: false
-      }, {
-        id: '2',
-        store_name: "Joann's Flower Shop",
-        retail_address: "789 Garden Way, Uptown, NY",
-        first_name: 'Joann',
-        last_name: 'Davis',
-        latitude: 40.7831,
-        longitude: -73.9712,
-        is_offerx_active: false
-      }, {
-        id: '3',
-        store_name: "Daily Dry Cleaner",
-        retail_address: "321 Clean Lane, Westside, NY",
-        first_name: 'Mike',
-        last_name: 'Wilson',
-        latitude: 40.7505,
-        longitude: -74.0094,
-        is_offerx_active: true
-      }];
-      setPartnersForMap(mockPartners);
+      // Fetch retailers with partnership-eligible offers (not open offers)
+      const { get } = await import("@/services/apis");
+      
+      // Get current user ID to exclude own locations
+      let currentUserId: string | null = null;
+      try {
+        const currentUserResponse = await get({ 
+          end_point: 'users/me',
+          token: true
+        });
+        if (currentUserResponse.success && currentUserResponse.data) {
+          currentUserId = currentUserResponse.data._id?.toString() || currentUserResponse.data.id?.toString() || null;
+        }
+      } catch (error) {
+        console.error('Error fetching current user:', error);
+      }
+      
+      // Strategy: Fetch all offers and filter for partnership-eligible ones
+      // We need to fetch ALL offers (not just open offers) to find partnership-eligible ones
+      let partnershipEligibleOffers: any[] = [];
+      
+      try {
+        // Try dedicated endpoint first (if backend implements it)
+        const dedicatedResponse = await get({ 
+          end_point: 'offers/partnership-eligible',
+          token: true // Use token to exclude current user's offers
+        });
+        
+        if (dedicatedResponse.success && dedicatedResponse.data) {
+          partnershipEligibleOffers = dedicatedResponse.data;
+          console.log(`Found ${partnershipEligibleOffers.length} partnership-eligible offers from dedicated endpoint`);
+          if (partnershipEligibleOffers.length > 0) {
+            console.log('Sample partnership-eligible offer:', partnershipEligibleOffers[0]);
+            console.log('Offer locations:', partnershipEligibleOffers[0].locations);
+          }
+        } else {
+          console.warn('Partnership-eligible endpoint returned:', dedicatedResponse);
+        }
+      } catch (error) {
+        console.log('Dedicated partnership-eligible endpoint not available, trying alternative methods...');
+        
+        // Strategy: We need to fetch offers that are NOT open offers
+        // The /offers/open endpoint only returns open offers, so we can't use it
+        // We need a public endpoint that returns all active offers, or we need to use authenticated endpoint
+        // For now, let's try to fetch from authenticated endpoint and see if it returns all offers
+        
+        // Note: The authenticated /offers endpoint typically only returns current user's offers
+        // We need a public endpoint like /offers/all or backend needs to implement /offers/partnership-eligible
+        // For now, we'll try authenticated endpoint as a workaround (backend should ideally have a public endpoint)
+        
+        try {
+          // Try to get all offers - this might require backend to have a public endpoint
+          // For now, we'll use authenticated endpoint but note that it may only return user's own offers
+          const allOffersResponse = await get({ 
+            end_point: 'offers',
+            token: true // Using authenticated endpoint - backend should ideally have a public one
+          });
+          
+          if (allOffersResponse.success && allOffersResponse.data) {
+            // Filter for partnership-eligible offers:
+            // - Not open offers
+            // - Active
+            // - Available for partnership
+            // - Not current user's offers
+            partnershipEligibleOffers = allOffersResponse.data.filter((offer: any) => {
+              const offerUserId = offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
+              const isOpenOffer = offer.is_open_offer || offer.isOpenOffer || false;
+              const isActive = offer.is_active !== undefined ? offer.is_active : (offer.isActive !== undefined ? offer.isActive : true);
+              const availableForPartnership = offer.available_for_partnership !== undefined 
+                ? offer.available_for_partnership 
+                : (offer.availableForPartnership !== undefined ? offer.availableForPartnership : false);
+              
+              // Exclude current user's offers and filter for partnership-eligible
+              return offerUserId !== currentUserId && !isOpenOffer && isActive && availableForPartnership;
+            });
+            
+            console.log(`Found ${partnershipEligibleOffers.length} partnership-eligible offers from authenticated endpoint`);
+          }
+        } catch (authError) {
+          console.error('Error fetching offers:', authError);
+          // If authenticated endpoint fails or only returns user's own offers,
+          // we need backend to implement a public endpoint for partnership-eligible offers
+          console.warn('Backend needs a public endpoint like /offers/partnership-eligible to show all partnership-eligible offers');
+        }
+      }
+      
+      // Extract unique locations from partnership-eligible offers
+      const locationMap = new Map();
+      
+      partnershipEligibleOffers.forEach((offer: any) => {
+        // Use locations array if available (formatted by backend), otherwise use locationIds
+        const locations = offer.locations || offer.locationIds || offer.location_ids || [];
+        const offerUserId = offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
+        
+        // Skip if this is the current user's offer
+        if (offerUserId === currentUserId) {
+          return;
+        }
+        
+        locations.forEach((loc: any) => {
+          // Handle populated location objects or formatted location objects
+          let locId: string;
+          let locName: string;
+          let locAddress: string;
+          let locLatitude: number;
+          let locLongitude: number;
+          
+          if (loc && typeof loc === 'object') {
+            // It's a populated or formatted location object
+            locId = loc._id?.toString() || loc.id?.toString() || '';
+            locName = loc.name || 'Unknown Store';
+            locAddress = loc.address || '';
+            locLatitude = loc.latitude || 0;
+            locLongitude = loc.longitude || 0;
+          } else {
+            // It's just an ID, skip if we don't have location details
+            locId = loc?.toString() || '';
+            if (!locId) return;
+            // Skip locations without details - we need populated data
+            return;
+          }
+          
+          // Only add if we have valid location data and not already in map
+          if (locId && locName && !locationMap.has(locId)) {
+            // Ensure userId is properly extracted and stored
+            const userId = offerUserId || offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
+            
+            if (!userId) {
+              console.warn('Warning: No userId found for offer:', offer._id || offer.id);
+              return; // Skip if no userId
+            }
+            
+            locationMap.set(locId, {
+              id: locId,
+              store_name: locName,
+              retail_address: locAddress,
+              first_name: offer.user?.fullName?.split(' ')[0] || offer.userId?.fullName?.split(' ')[0] || '',
+              last_name: offer.user?.fullName?.split(' ').slice(1).join(' ') || offer.userId?.fullName?.split(' ').slice(1).join(' ') || '',
+              latitude: locLatitude,
+              longitude: locLongitude,
+              is_offerx_active: false,
+              userId: userId, // Store userId for partner requests - ensure it's always set
+              user_id: userId, // Also store as user_id for compatibility
+              offer: {
+                id: offer._id?.toString() || offer.id?.toString(),
+                call_to_action: offer.callToAction || offer.call_to_action || ''
+              }
+            });
+          }
+        });
+      });
+      
+      const formattedPartners = Array.from(locationMap.values());
+      console.log(`Found ${formattedPartners.length} partnership-eligible locations from ${partnershipEligibleOffers.length} offers`);
+      
+      if (formattedPartners.length === 0 && partnershipEligibleOffers.length === 0) {
+        console.warn('No partnership-eligible offers found. This could mean:');
+        console.warn('1. No offers have been created with available_for_partnership: true');
+        console.warn('2. Backend needs a public endpoint /offers/partnership-eligible to return all partnership-eligible offers');
+        console.warn('3. The authenticated /offers endpoint only returns current user\'s offers, not all users\' offers');
+      }
+      
+      setPartnersForMap(formattedPartners);
+      
     } catch (error) {
       console.error('Error fetching partners for map:', error);
+      console.error('Note: Backend needs a public endpoint /offers/partnership-eligible to show all partnership-eligible offers');
+      setPartnersForMap([]);
     }
   };
 
@@ -287,35 +457,69 @@ const PartnerRequests = () => {
     return R * c;
   };
   
-  const generateRecommendations = () => {
-    // Mock coordinates for user locations (Sally's Salon)
-    const locationCoordinates = [{
-      id: "location_1",
-      name: "Sally's Salon",
-      address: "Sally's Salon Street 7, New York",
-      latitude: 40.7580,
-      longitude: -73.9855
-    }, {
-      id: "location_2",
-      name: "Sally's Salon",
-      address: "Sangam Cinema, Hilton Park, New York",
-      latitude: 40.7820,
-      longitude: -73.9720
-    }];
+  const generateRecommendations = async () => {
+    // Use actual user locations from database
+    if (userLocations.length === 0) {
+      setRecommendations([]);
+      return;
+    }
+
+    // Fetch location details with coordinates from API
+    const locationCoordinates: any[] = [];
+    try {
+      const { get } = await import("@/services/apis");
+      for (const loc of userLocations) {
+        try {
+          const locationResponse = await get({ 
+            end_point: `locations/${loc.id}`,
+            token: true
+          });
+          
+          if (locationResponse.success && locationResponse.data) {
+            const locationData = locationResponse.data;
+            if (locationData.latitude && locationData.longitude) {
+              locationCoordinates.push({
+                id: loc.id,
+                name: loc.name,
+                address: loc.address,
+                latitude: locationData.latitude,
+                longitude: locationData.longitude
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching location ${loc.id}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching location coordinates:', error);
+      setRecommendations([]);
+      return;
+    }
+
+    // If no locations with coordinates, return empty recommendations
+    if (locationCoordinates.length === 0) {
+      setRecommendations([]);
+      return;
+    }
+
     const recs: any[] = [];
     partnersForMap.forEach(partner => {
       locationCoordinates.forEach(location => {
-        const distance = calculateDistance(location.latitude, location.longitude, partner.latitude, partner.longitude);
-        recs.push({
-          partner_id: partner.id,
-          partner_name: partner.store_name,
-          partner_address: partner.retail_address,
-          location_id: location.id,
-          location_name: location.name,
-          location_address: location.address,
-          distance: distance,
-          is_offerx_active: partner.is_offerx_active
-        });
+        // Only calculate distance if partner has valid coordinates
+        if (partner.latitude && partner.longitude && location.latitude && location.longitude) {
+          const distance = calculateDistance(location.latitude, location.longitude, partner.latitude, partner.longitude);
+          recs.push({
+            partner_id: partner.id,
+            partner_name: partner.store_name,
+            partner_address: partner.retail_address,
+            location_id: location.id,
+            location_name: location.name,
+            location_address: location.address,
+            distance: distance,
+            is_offerx_active: partner.is_offerx_active
+          });
+        }
       });
     });
 
@@ -332,31 +536,35 @@ const PartnerRequests = () => {
   const checkPaymentMethod = async () => {
     setIsCheckingPaymentMethod(true);
     try {
-      // TODO: Replace with Node.js API call
-      // const response = await get({ end_point: 'payment/check-method' });
-      // setHasPaymentMethod(response.data.has_payment_method || false);
-      
-      // Mock implementation for now
-      setHasPaymentMethod(false);
+      // Payment system bypassed - always return true
+      setHasPaymentMethod(true);
     } catch (error) {
       console.error('Error checking payment method:', error);
-      setHasPaymentMethod(false);
+      // Even on error, bypass payment
+      setHasPaymentMethod(true);
     } finally {
       setIsCheckingPaymentMethod(false);
     }
   };
   const checkUserHasOffer = async () => {
     try {
-      // TODO: Replace with Node.js API call
-      // const response = await get({ end_point: 'offers/check' });
-      // return response.data.has_offers || false;
+      const { get } = await import("@/services/apis");
+      const response = await get({ 
+        end_point: 'offers',
+        token: true
+      });
       
-      // Mock implementation - check localStorage for location-based offers (available for partnership)
-      const storedOffers = JSON.parse(localStorage.getItem('mockOffers') || '[]');
-      const hasLocationBasedOffer = storedOffers.some((offer: any) => 
-        !offer.is_open_offer && offer.is_active && offer.available_for_partnership
-      );
-      return hasLocationBasedOffer;
+      if (response.success && response.data) {
+        // Check if user has any active location-based offers (available for partnership)
+        const hasLocationBasedOffer = response.data.some((offer: any) => 
+          !offer.is_open_offer && 
+          !offer.isOpenOffer && 
+          (offer.is_active || offer.isActive) && 
+          (offer.available_for_partnership || offer.availableForPartnership)
+        );
+        return hasLocationBasedOffer;
+      }
+      return false;
     } catch (error) {
       console.error('Error checking user offers:', error);
       return false;
@@ -379,62 +587,97 @@ const PartnerRequests = () => {
   };
   const fetchPartnerRequests = async () => {
     try {
-      // TODO: Replace with Node.js API call
-      // const response = await get({ end_point: 'partner-requests' });
-      // setRequests(response.data);
+      setLoading(true);
+      const { get } = await import("@/services/apis");
+      const response = await get({ 
+        end_point: 'partners/requests',
+        token: true
+      });
       
-      // Use existing exampleRequests data
-      setRequests(exampleRequests);
+      if (response.success && response.data) {
+        // Format requests to match interface
+        const formattedRequests = response.data.map((req: any) => ({
+          id: req._id?.toString() || req.id?.toString(),
+          sender_id: req.senderId?.toString() || req.sender_id?.toString() || req.senderId || req.sender_id,
+          recipient_id: req.recipientId?.toString() || req.recipient_id?.toString() || req.recipientId || req.recipient_id,
+          status: req.status || 'pending',
+          created_at: req.createdAt || req.created_at || new Date().toISOString(),
+          updated_at: req.updatedAt || req.updated_at || new Date().toISOString(),
+          sender_profile: req.senderProfile || req.sender_profile || {
+            store_name: req.sender?.fullName || 'Unknown',
+            first_name: req.sender?.fullName?.split(' ')[0] || '',
+            last_name: req.sender?.fullName?.split(' ').slice(1).join(' ') || '',
+            retail_address: req.senderLocation?.address || ''
+          },
+          recipient_profile: req.recipientProfile || req.recipient_profile || {
+            store_name: req.recipient?.fullName || 'Unknown',
+            first_name: req.recipient?.fullName?.split(' ')[0] || '',
+            last_name: req.recipient?.fullName?.split(' ').slice(1).join(' ') || '',
+            retail_address: req.recipientLocation?.address || ''
+          }
+        }));
+        
+        setRequests(formattedRequests);
+      } else {
+        setRequests([]);
+      }
     } catch (error) {
       console.error('Error fetching partner requests:', error);
       toast.error('Failed to load partner requests');
+      setRequests([]);
     } finally {
       setLoading(false);
     }
   };
   const searchStores = async (query: string) => {
-    const exampleStores = [{
-      store_name: "Joe's Coffee",
-      retail_address: "456 Brew Street, Midtown"
-    }, {
-      store_name: "Joann's Flower Shop",
-      retail_address: "789 Garden Way, Uptown"
-    }, {
-      store_name: "Daily Dry Cleaner",
-      retail_address: "321 Clean Lane, Westside"
-    }, {
-      store_name: "Mike's Pizza Palace",
-      retail_address: "654 Cheese Ave, Downtown"
-    }, {
-      store_name: "Sarah's Bookstore",
-      retail_address: "987 Reading Rd, Library District"
-    }];
     if (!isInputFocused) {
       setStoreOptions([]);
       return;
     }
-    if (query.length === 0) {
-      setStoreOptions(exampleStores);
-      return;
-    }
-    if (query.length < 2) {
-      const filteredExamples = exampleStores.filter(store => store.store_name.toLowerCase().includes(query.toLowerCase()));
-      setStoreOptions(filteredExamples);
-      return;
-    }
-    try {
-      // TODO: Replace with Node.js API call
-      // const response = await get({ end_point: `profiles/search?query=${query}` });
-      // const filteredExamples = exampleStores.filter(example => example.store_name.toLowerCase().includes(query.toLowerCase()) && !(response.data || []).some(dbStore => dbStore.store_name === example.store_name));
-      // setStoreOptions([...(response.data || []), ...filteredExamples]);
+    
+    // Use partners from map (partnership-eligible offers) for search
+    if (partnersForMap.length > 0) {
+      const searchQuery = query.toLowerCase().trim();
+      const matchedStores = partnersForMap
+        .filter(partner => {
+          const storeName = partner.store_name?.toLowerCase() || '';
+          const address = partner.retail_address?.toLowerCase() || '';
+          return storeName.includes(searchQuery) || address.includes(searchQuery);
+        })
+        .map(partner => ({
+          store_name: partner.store_name,
+          retail_address: partner.retail_address,
+          partner_id: partner.id
+        }));
       
-      // Mock implementation
-      const filteredExamples = exampleStores.filter(store => store.store_name.toLowerCase().includes(query.toLowerCase()));
-      setStoreOptions(filteredExamples);
-    } catch (error) {
-      console.error('Error searching stores:', error);
-      const filteredExamples = exampleStores.filter(store => store.store_name.toLowerCase().includes(query.toLowerCase()));
-      setStoreOptions(filteredExamples);
+      setStoreOptions(matchedStores);
+      return;
+    }
+    
+    // Fallback: If no partners loaded yet, show empty or try to fetch
+    if (query.length >= 2) {
+      // Try to fetch partnership-eligible offers if not already loaded
+      if (partnersForMap.length === 0) {
+        await fetchPartnersForMap();
+        // After fetching, search again
+        setTimeout(() => {
+          const searchQuery = query.toLowerCase().trim();
+          const matchedStores = partnersForMap
+            .filter(partner => {
+              const storeName = partner.store_name?.toLowerCase() || '';
+              const address = partner.retail_address?.toLowerCase() || '';
+              return storeName.includes(searchQuery) || address.includes(searchQuery);
+            })
+            .map(partner => ({
+              store_name: partner.store_name,
+              retail_address: partner.retail_address,
+              partner_id: partner.id
+            }));
+          setStoreOptions(matchedStores);
+        }, 500);
+      }
+    } else {
+      setStoreOptions([]);
     }
   };
   const validatePromoCode = async (code: string) => {
@@ -486,43 +729,123 @@ const PartnerRequests = () => {
       setNewPartnerStore(storeName);
     }
 
-    // If user has multiple locations and none is selected, open dialog and let them select there
-    // Otherwise, proceed with the dialog
+    // If user has only one location, auto-select it
+    if (userLocations.length === 1 && !selectedLocationId) {
+      setSelectedLocationId(userLocations[0].id);
+    }
+
+    // Open dialog to select location and confirm
     setShowAuthDialog(true);
   };
   const sendPartnerRequest = async () => {
     try {
-      // Validate location selection for multiple locations
-      if (userLocations.length > 1 && !selectedLocationId) {
-        toast.error('Please select which location you want to send the request for');
+      // Validate location selection - always required
+      if (!selectedLocationId) {
+        toast.error('Please select a location for this partnership request');
         return;
       }
-      // TODO: Replace with Node.js API calls
-      // const userResponse = await get({ end_point: 'auth/me' });
-      // const recipientResponse = await get({ end_point: `profiles/search?store_name=${newPartnerStore.trim()}` });
-      // const existingRequestResponse = await get({ end_point: 'partner-requests/check-existing' });
-      // const offerxCheckResponse = await get({ end_point: 'offerx/check-status' });
       
-      // Mock implementation for now
+      // Ensure selected location exists
+      const selectedLocation = userLocations.find(loc => loc.id === selectedLocationId);
+      if (!selectedLocation) {
+        toast.error('Selected location not found. Please select again.');
+        return;
+      }
+      
       const token = localStorage.getItem('token');
       if (!token) {
         toast.error('You must be logged in to send partner requests');
         return;
       }
       
-      // Mock recipient data
-      const recipientData = { user_id: 'recipient-user-id' };
+      // Find recipient from partnersForMap or storeOptions
+      let recipientId: string | null = null;
+      const searchStoreName = newPartnerStore.trim();
+      
+      console.log('Searching for recipient with store name:', searchStoreName);
+      console.log('Available partners in partnersForMap:', partnersForMap.length);
+      console.log('Sample partner:', partnersForMap[0]);
+      
+      // First, try to find from storeOptions (if user selected from dropdown)
+      const selectedStore = storeOptions.find(store => store.store_name === searchStoreName);
+      if (selectedStore && selectedStore.partner_id) {
+        console.log('Found in storeOptions, partner_id:', selectedStore.partner_id);
+        // Get the partner from partnersForMap to find the user ID
+        const partner = partnersForMap.find(p => p.id === selectedStore.partner_id);
+        if (partner) {
+          console.log('Found partner in partnersForMap:', partner);
+          recipientId = (partner as any).userId || (partner as any).user_id;
+          console.log('Extracted recipientId from partner:', recipientId);
+        }
+      }
+      
+      // If not found, try to find from partnersForMap by store name (exact match first)
+      if (!recipientId) {
+        const partner = partnersForMap.find(p => 
+          p.store_name?.toLowerCase() === searchStoreName.toLowerCase()
+        );
+        if (partner) {
+          console.log('Found partner by exact store name match:', partner);
+          recipientId = (partner as any).userId || (partner as any).user_id;
+          console.log('Extracted recipientId:', recipientId);
+        }
+      }
+      
+      // If still not found, try partial match
+      if (!recipientId) {
+        const partner = partnersForMap.find(p => 
+          p.store_name?.toLowerCase().includes(searchStoreName.toLowerCase()) ||
+          searchStoreName.toLowerCase().includes(p.store_name?.toLowerCase() || '')
+        );
+        if (partner) {
+          console.log('Found partner by partial match:', partner);
+          recipientId = (partner as any).userId || (partner as any).user_id;
+          console.log('Extracted recipientId:', recipientId);
+        }
+      }
+      
+      // If still not found, try to fetch from API using partners/search endpoint
+      if (!recipientId) {
+        try {
+          const { get } = await import("@/services/apis");
+          // Try to search for partners using the backend search endpoint
+          const searchResponse = await get({ 
+            end_point: `partners/search?query=${encodeURIComponent(searchStoreName)}`,
+            token: true
+          });
+          
+          if (searchResponse.success && searchResponse.data && searchResponse.data.length > 0) {
+            console.log('Found via API search:', searchResponse.data[0]);
+            recipientId = searchResponse.data[0]._id || searchResponse.data[0].id;
+            console.log('Extracted recipientId from API:', recipientId);
+          }
+        } catch (searchError) {
+          console.error('Error searching for recipient via API:', searchError);
+        }
+      }
+      
+      if (!recipientId) {
+        console.error('Could not find recipient. Available partners:', partnersForMap.map(p => ({
+          store_name: p.store_name,
+          userId: (p as any).userId,
+          id: p.id
+        })));
+        toast.error(`Could not find the store "${searchStoreName}". Please select from the dropdown or ensure the store has a partnership-eligible offer.`);
+        return;
+      }
+      
+      console.log('Final recipientId to send request to:', recipientId);
 
       // Check if user has selected display options
       const hasDisplayOption = await checkDisplayOptions();
       if (!hasDisplayOption) {
         setPendingAction(() => async () => {
-          await sendPartnerRequestFinal('current-user-id', recipientData.user_id);
+          await sendPartnerRequestFinal(currentUserId || 'current-user-id', recipientId);
         });
         setShowDisplayOptionCheck(true);
         return;
       }
-      await sendPartnerRequestFinal('current-user-id', recipientData.user_id);
+      await sendPartnerRequestFinal(currentUserId || 'current-user-id', recipientId);
     } catch (error) {
       console.error('Error sending partner request:', error);
       toast.error('Failed to send partner request');
@@ -530,37 +853,41 @@ const PartnerRequests = () => {
   };
   const sendPartnerRequestFinal = async (senderId: string, recipientId: string) => {
     try {
-      // TODO: Replace with Node.js API call
-      // await post({ end_point: 'partner-requests', body: { sender_id: senderId, recipient_id: recipientId } });
+      const { post } = await import("@/services/apis");
+      const response = await post({ 
+        end_point: 'partners/requests', 
+        body: { 
+          recipient_id: recipientId,
+          location_id: selectedLocationId, // Always use selected location (required)
+          promo_code: isPromoValid ? promoCode : undefined
+        },
+        token: true
+      });
       
-      // Mock implementation - update local state
-      const newRequest = {
-        id: `req-${Date.now()}`,
-        sender_id: senderId,
-        recipient_id: recipientId,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        sender_profile: { store_name: "Sally's Salon", first_name: 'Sally', last_name: 'Johnson' },
-        recipient_profile: { store_name: newPartnerStore, first_name: '', last_name: '' }
-      };
-      setRequests([newRequest, ...requests]);
-      const locationText = userLocations.length > 1 ? ` for ${userLocations.find(loc => loc.id === selectedLocationId)?.name}` : '';
-      if (isPromoValid) {
-        toast.success(`Partner request sent successfully${locationText}! Partnership fee waived with promo code "${promoCode.toUpperCase()}"`);
+      if (response.success) {
+        const locationText = userLocations.length > 1 ? ` for ${userLocations.find(loc => loc.id === selectedLocationId)?.name}` : '';
+        if (isPromoValid) {
+          toast.success(`Partner request sent successfully${locationText}! Partnership fee waived with promo code "${promoCode.toUpperCase()}"`);
+        } else {
+          toast.success(`Partner request sent successfully${locationText}!`);
+        }
+        setNewPartnerStore("");
+        setStoreOptions([]);
+        setShowAuthDialog(false);
+        setHasAgreed(false);
+        setPromoCode("");
+        setIsPromoValid(false);
+        // Reset location selection only if user has multiple locations
+        if (userLocations.length > 1) {
+          setSelectedLocationId("");
+        }
+        fetchPartnerRequests();
       } else {
-        toast.success(`Partner request sent successfully${locationText}!`);
+        throw new Error(response.message || 'Failed to send request');
       }
-      setNewPartnerStore("");
-      setStoreOptions([]);
-      setShowAuthDialog(false);
-      setHasAgreed(false);
-      setPromoCode("");
-      setIsPromoValid(false);
-      fetchPartnerRequests();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending partner request:', error);
-      toast.error('Failed to send partner request');
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to send partner request');
     }
   };
   const handleApproveRequest = async (requestId: string) => {
@@ -586,30 +913,24 @@ const PartnerRequests = () => {
     if (!pendingBillingRequest) return;
     setProcessingPayment(true);
     try {
-      // TODO: Replace with Node.js API calls
-      // const userResponse = await get({ end_point: 'auth/me' });
-      // const offerxCheckResponse = await get({ end_point: 'offerx/check-status' });
-      // const paymentResponse = await post({ 
-      //   end_point: 'partner-requests/approve', 
-      //   body: { 
-      //     partner_request_id: pendingBillingRequest.id 
-      //   } 
-      // });
+      const { patch } = await import("@/services/apis");
+      const response = await patch({ 
+        end_point: `partners/approve/${pendingBillingRequest.id}`, 
+        body: {},
+        token: true
+      });
       
-      // Mock implementation
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('You must be logged in to approve partner requests');
-        setProcessingPayment(false);
-        return;
+      if (response.success) {
+        toast.success(response.message || 'Partnership approved and both parties billed successfully! You and your new partner have each been charged $10.');
+        setShowBillingConfirmDialog(false);
+        setPendingBillingRequest(null);
+        fetchPartnerRequests();
+      } else {
+        throw new Error(response.message || 'Failed to approve partnership');
       }
-      toast.success('Partnership approved and both parties billed successfully! You and your new partner have each been charged $10.');
-      setShowBillingConfirmDialog(false);
-      setPendingBillingRequest(null);
-      fetchPartnerRequests();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing partnership payment:', error);
-      toast.error(error.message || 'Failed to process partnership payment. Please ensure both parties have saved payment methods.');
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to process partnership payment. Please ensure both parties have saved payment methods.');
     } finally {
       setProcessingPayment(false);
     }
@@ -621,23 +942,25 @@ const PartnerRequests = () => {
   const confirmCancelPartnership = async () => {
     if (!pendingCancelRequest) return;
     try {
-      // TODO: Replace with Node.js API call
-      // await patch({ end_point: `partner-requests/${pendingCancelRequest.id}`, body: { status: 'cancelled' } });
+      const { patch } = await import("@/services/apis");
+      const response = await patch({ 
+        end_point: `partners/cancel/${pendingCancelRequest.id}`, 
+        body: {},
+        token: true
+      });
       
-      // Mock implementation - update local state
-      setRequests(requests.map(req => 
-        req.id === pendingCancelRequest.id 
-          ? { ...req, status: 'cancelled' as const }
-          : req
-      ));
-      const partnerStoreName = getRequestType(pendingCancelRequest) === 'outgoing' ? pendingCancelRequest.recipient_profile?.store_name : pendingCancelRequest.sender_profile?.store_name;
-      toast.success(`Partnership with ${partnerStoreName} has been cancelled`);
-      setShowCancelDialog(false);
-      setPendingCancelRequest(null);
-      fetchPartnerRequests();
-    } catch (error) {
+      if (response.success) {
+        const partnerStoreName = getRequestType(pendingCancelRequest) === 'outgoing' ? pendingCancelRequest.recipient_profile?.store_name : pendingCancelRequest.sender_profile?.store_name;
+        toast.success(response.message || `Partnership with ${partnerStoreName} has been cancelled`);
+        setShowCancelDialog(false);
+        setPendingCancelRequest(null);
+        fetchPartnerRequests();
+      } else {
+        throw new Error(response.message || 'Failed to cancel partnership');
+      }
+    } catch (error: any) {
       console.error('Error cancelling partnership:', error);
-      toast.error('Failed to cancel partnership');
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to cancel partnership');
     }
   };
   const handleOpenMessaging = (request: PartnerRequest) => {
@@ -692,33 +1015,41 @@ const PartnerRequests = () => {
   };
   const updateRequestStatus = async (requestId: string, status: 'approved' | 'rejected') => {
     try {
-      // TODO: Replace with Node.js API call
-      // await patch({ end_point: `partner-requests/${requestId}`, body: { status } });
+      const { patch } = await import("@/services/apis");
+      const endpoint = status === 'approved' 
+        ? `partners/approve/${requestId}`
+        : `partners/reject/${requestId}`;
       
-      // Mock implementation - update local state
-      setRequests(requests.map(req => 
-        req.id === requestId 
-          ? { ...req, status: status as any }
-          : req
-      ));
-      if (status === 'approved') {
-        if (isApprovalPromoValid) {
-          toast.success(`Partner request approved successfully! Partnership fee waived with promo code "${approvalPromoCode.toUpperCase()}"`);
+      const response = await patch({ 
+        end_point: endpoint, 
+        body: {
+          promo_code: status === 'approved' && isApprovalPromoValid ? approvalPromoCode : undefined
+        },
+        token: true
+      });
+      
+      if (response.success) {
+        if (status === 'approved') {
+          if (isApprovalPromoValid) {
+            toast.success(`Partner request approved successfully! Partnership fee waived with promo code "${approvalPromoCode.toUpperCase()}"`);
+          } else {
+            toast.success(response.message || 'Partner request approved successfully!');
+          }
+          setShowApprovalAuthDialog(false);
+          setHasApprovalAgreed(false);
+          setPendingApprovalRequestId(null);
+          setApprovalPromoCode("");
+          setIsApprovalPromoValid(false);
         } else {
-          toast.success('Partner request approved successfully!');
+          toast.success(response.message || `Partner request ${status} successfully!`);
         }
-        setShowApprovalAuthDialog(false);
-        setHasApprovalAgreed(false);
-        setPendingApprovalRequestId(null);
-        setApprovalPromoCode("");
-        setIsApprovalPromoValid(false);
+        fetchPartnerRequests();
       } else {
-        toast.success(`Partner request ${status} successfully!`);
+        throw new Error(response.message || 'Failed to update partner request');
       }
-      fetchPartnerRequests();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating partner request:', error);
-      toast.error('Failed to update partner request');
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to update partner request');
     }
   };
   const getStatusBadge = (status: string) => {
@@ -734,10 +1065,17 @@ const PartnerRequests = () => {
     }
   };
   const getRequestType = (request: PartnerRequest) => {
-    return request.sender_id === currentUserId ? 'outgoing' : 'incoming';
+    // Compare as strings to handle both ObjectId and string formats
+    const senderIdStr = request.sender_id?.toString() || request.senderId?.toString() || '';
+    const currentUserIdStr = currentUserId?.toString() || '';
+    
+    // If sender_id matches current user, it's an outgoing request
+    // Otherwise, it's an incoming request (user is the receiver)
+    return senderIdStr === currentUserIdStr ? 'outgoing' : 'incoming';
   };
   const getRequestTypeIcon = (request: PartnerRequest) => {
-    const isOutgoing = request.sender_id === currentUserId;
+    const requestType = getRequestType(request);
+    const isOutgoing = requestType === 'outgoing';
     return <TooltipProvider>
       <Tooltip>
         <TooltipTrigger>
@@ -776,7 +1114,7 @@ const PartnerRequests = () => {
             Partner Requests
           </TabsTrigger>
           <TabsTrigger value="map" className="flex items-center gap-2">
-            <Map className="h-4 w-4" />
+            <MapIcon className="h-4 w-4" />
             Partner Search
           </TabsTrigger>
           <TabsTrigger value="recommendations" className="flex items-center gap-2">
@@ -898,7 +1236,7 @@ const PartnerRequests = () => {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Map className="h-5 w-5" />
+                <MapIcon className="h-5 w-5" />
                 Partner Search
               </CardTitle>
               <CardDescription>
@@ -906,7 +1244,11 @@ const PartnerRequests = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <PartnerMap partners={partnersForMap} onSendRequest={handleSendRequest} />
+              <PartnerMap 
+                partners={partnersForMap} 
+                onSendRequest={handleSendRequest}
+                userLocations={userLocations}
+              />
 
               <div className="border-t pt-4">
                 <div className="flex flex-col sm:flex-row gap-4">
@@ -1106,29 +1448,34 @@ const PartnerRequests = () => {
           </DialogHeader>
 
           <div className="space-y-4">
-            {userLocations.length > 1 && <div className="space-y-3">
-              <label className="text-sm font-medium">Select Location for Partnership</label>
+            <div className="space-y-3">
+              <label className="text-sm font-medium">
+                Select Location for Partnership {userLocations.length > 1 && <span className="text-muted-foreground">(Required)</span>}
+              </label>
+              <div className="text-xs text-muted-foreground mb-2">
+                Select which location you want to use for this partnership. One offer can be used for one location per partnership.
+              </div>
               <div className="grid grid-cols-1 gap-2">
-                {userLocations.map(location => <Button key={location.id} variant={selectedLocationId === location.id ? "default" : "outline"} className="w-full justify-start text-left h-auto py-3" onClick={() => setSelectedLocationId(location.id)}>
-                  <div className="flex flex-col items-start">
-                    <span className="font-medium">{location.name}</span>
-                    <span className="text-xs text-muted-foreground">{location.address}</span>
-                  </div>
-                </Button>)}
+                {userLocations.map(location => (
+                  <Button 
+                    key={location.id} 
+                    variant={selectedLocationId === location.id ? "default" : "outline"} 
+                    className="w-full justify-start text-left h-auto py-3" 
+                    onClick={() => setSelectedLocationId(location.id)}
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{location.name}</span>
+                      <span className="text-xs text-muted-foreground">{location.address}</span>
+                    </div>
+                  </Button>
+                ))}
               </div>
-            </div>}
+              {userLocations.length > 0 && !selectedLocationId && (
+                <p className="text-xs text-red-600">Please select a location to continue</p>
+              )}
+            </div>
 
-            {!hasPaymentMethod && !isPromoValid && <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 space-y-3">
-              <div className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                Payment Method Required
-              </div>
-              <div className="text-xs text-yellow-800 dark:text-yellow-200">
-                You need to add a payment method before sending partnership requests. The $7/month fee will be charged when your request is accepted.
-              </div>
-              <Button onClick={handleAddPaymentMethod} className="w-full" size="sm">
-                Add Payment Method
-              </Button>
-            </div>}
+            {/* Payment method check bypassed - payment system disabled */}
 
             <div className="space-y-2">
               <label htmlFor="promo-code" className="text-sm font-medium">
@@ -1150,7 +1497,7 @@ const PartnerRequests = () => {
                   }
                 }} />
                 <label htmlFor="agree-terms" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  {isPromoValid ? "I agree to the partnership terms (fee waived)" : "I agree to the $7 partnership fee charged to my payment method on file when the partnership request is accepted by the other retailer, and monthly until cancelled."}
+                  I agree to the partnership terms and understand that this partnership will allow cross-promotion of offers between our stores.
                 </label>
               </div>
             </div>
@@ -1162,10 +1509,14 @@ const PartnerRequests = () => {
               setHasAgreed(false);
               setPromoCode("");
               setIsPromoValid(false);
+              // Reset location selection only if user has multiple locations
+              if (userLocations.length > 1) {
+                setSelectedLocationId("");
+              }
             }}>
               Cancel
             </Button>
-            <Button onClick={sendPartnerRequest} disabled={!hasAgreed && !isPromoValid || !hasPaymentMethod && !isPromoValid || userLocations.length > 1 && !selectedLocationId} className="gap-2">
+            <Button onClick={sendPartnerRequest} disabled={!hasAgreed && !isPromoValid || !selectedLocationId} className="gap-2">
               <Send className="h-4 w-4" />
               Send Request
             </Button>
@@ -1187,17 +1538,7 @@ const PartnerRequests = () => {
           </DialogHeader>
 
           <div className="space-y-4">
-            {!hasPaymentMethod && !isApprovalPromoValid && <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 space-y-3">
-              <div className="text-sm font-medium text-yellow-900 dark:text-yellow-100">
-                Payment Method Required
-              </div>
-              <div className="text-xs text-yellow-800 dark:text-yellow-200">
-                You need to add a payment method before approving partnership requests. The $7/month fee will be charged when you approve.
-              </div>
-              <Button onClick={handleAddPaymentMethod} className="w-full" size="sm">
-                Add Payment Method
-              </Button>
-            </div>}
+            {/* Payment method check bypassed - payment system disabled */}
 
             <div className="space-y-2">
               <label htmlFor="approval-promo-code" className="text-sm font-medium">
@@ -1219,7 +1560,7 @@ const PartnerRequests = () => {
                   }
                 }} />
                 <label htmlFor="agree-approval-terms" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                  {isApprovalPromoValid ? "I agree to the partnership terms (fee waived)" : "I agree to the $7 partnership fee charged to my payment method on file when the partnership request is accepted by the other retailer, and monthly until cancelled."}
+                  I agree to the partnership terms and understand that this partnership will allow cross-promotion of offers between our stores.
                 </label>
               </div>
 
@@ -1240,7 +1581,7 @@ const PartnerRequests = () => {
             }}>
               Cancel
             </Button>
-            <Button onClick={() => pendingApprovalRequestId && updateRequestStatus(pendingApprovalRequestId, 'approved')} disabled={!hasApprovalAgreed && !isApprovalPromoValid || !hasPaymentMethod && !isApprovalPromoValid} className="bg-green-600 hover:bg-green-700">
+            <Button onClick={() => pendingApprovalRequestId && updateRequestStatus(pendingApprovalRequestId, 'approved')} disabled={!hasApprovalAgreed && !isApprovalPromoValid} className="bg-green-600 hover:bg-green-700">
               <Check className="h-4 w-4 mr-2" />
               Approve Partnership
             </Button>

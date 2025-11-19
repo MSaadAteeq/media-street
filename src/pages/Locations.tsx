@@ -13,6 +13,7 @@ import {
   Ticket,
   Monitor
 } from "lucide-react";
+import LocationPicker from "@/components/LocationPicker";
 import { 
   Table,
   TableBody,
@@ -71,14 +72,16 @@ const Locations = () => {
   const [deleting, setDeleting] = useState(false);
   const [addLocationOpen, setAddLocationOpen] = useState(false);
   const [storeName, setStoreName] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
   const [retailChannel, setRetailChannel] = useState("");
+  const [selectedLatitude, setSelectedLatitude] = useState<number | undefined>(undefined);
+  const [selectedLongitude, setSelectedLongitude] = useState<number | undefined>(undefined);
+  const [selectedAddress, setSelectedAddress] = useState<string>("");
 
 
   // Load locations from database
   const loadLocations = async () => {
     try {
+      setLoading(true);
       // Fetch locations from backend API
       const { get } = await import("@/services/apis");
       const response = await get({ 
@@ -93,57 +96,36 @@ const Locations = () => {
       }
     } catch (error) {
       console.error('Error fetching locations from API:', error);
-      // Fall through to mock data if API fails
-    }
-    
-    // Fallback to mock data if API call fails
-    try {
-      // Static data for now
-      const sampleLocations = [
-        {
-          id: "loc-1",
-          name: "Sally's Salon - Downtown",
-          address: "456 Oak Street, Manhattan, NY 10013",
-          retail_channel: "salon",
-          created_at: new Date().toISOString()
-        },
-        {
-          id: "loc-2",
-          name: "Sally's Salon - Uptown",
-          address: "789 Elm Avenue, Brooklyn, NY 11201",
-          retail_channel: "salon",
-          created_at: new Date().toISOString()
-        },
-        {
-          id: "loc-3",
-          name: "Sally's Salon - Midtown",
-          address: "321 Pine Boulevard, Queens, NY 11101",
-          retail_channel: "salon",
-          created_at: new Date().toISOString()
-        }
-      ];
-      setLocations(sampleLocations);
-    } catch (error) {
-      console.error('Error loading locations:', error);
       toast({
         title: "Error",
-        description: "Failed to load locations",
+        description: "Failed to load locations. Please try again later.",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
+    
+    // If API fails, set empty array (no fallback to static data)
+    setLocations([]);
   };
 
   useEffect(() => {
     loadLocations();
   }, []);
 
+  const handleLocationSelect = (latitude: number, longitude: number, locationName?: string) => {
+    setSelectedLatitude(latitude);
+    setSelectedLongitude(longitude);
+    if (locationName) {
+      setSelectedAddress(locationName);
+    }
+  };
+
   const handleAddLocation = async () => {
-    if (!storeName || !address || !city || !retailChannel) {
+    if (!storeName || !selectedLatitude || !selectedLongitude || !retailChannel) {
       toast({
         title: "Missing Information",
-        description: "Please fill in all fields",
+        description: "Please fill in all fields and select a location on the map",
         variant: "destructive",
       });
       return;
@@ -151,13 +133,14 @@ const Locations = () => {
 
     try {
       const { post } = await import("@/services/apis");
-      const fullAddress = `${address}, ${city}`;
       
       const response = await post({ 
         end_point: 'locations', 
         body: { 
           name: storeName, 
-          address: fullAddress, 
+          address: selectedAddress || `Location at ${selectedLatitude}, ${selectedLongitude}`, 
+          latitude: selectedLatitude,
+          longitude: selectedLongitude,
           retail_channel: retailChannel 
         },
         token: true
@@ -174,8 +157,9 @@ const Locations = () => {
         
         // Reset form
         setStoreName("");
-        setAddress("");
-        setCity("");
+        setSelectedLatitude(undefined);
+        setSelectedLongitude(undefined);
+        setSelectedAddress("");
         setRetailChannel("");
         setAddLocationOpen(false);
       } else {
@@ -383,7 +367,7 @@ const Locations = () => {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label htmlFor="storeName">Store Name</Label>
+                <Label htmlFor="storeName">Store Name *</Label>
                 <Input
                   id="storeName"
                   placeholder="Enter store name"
@@ -392,25 +376,7 @@ const Locations = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="address">Street Address</Label>
-                <Input
-                  id="address"
-                  placeholder="123 Main Street"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="city">City, State ZIP</Label>
-                <Input
-                  id="city"
-                  placeholder="New York, NY 10001"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="retailChannel">Retail Channel</Label>
+                <Label htmlFor="retailChannel">Retail Channel *</Label>
                 <Select value={retailChannel} onValueChange={setRetailChannel}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select retail channel" />
@@ -425,12 +391,41 @@ const Locations = () => {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>Business Location *</Label>
+                <LocationPicker
+                  onLocationSelect={handleLocationSelect}
+                  initialLatitude={selectedLatitude}
+                  initialLongitude={selectedLongitude}
+                  height="400px"
+                />
+                {(!selectedLatitude || !selectedLongitude) && (
+                  <p className="text-sm text-destructive mt-1">
+                    Please select your business location on the map
+                  </p>
+                )}
+                {selectedAddress && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Selected: {selectedAddress}
+                  </p>
+                )}
+              </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setAddLocationOpen(false)}>
+              <Button variant="outline" onClick={() => {
+                setAddLocationOpen(false);
+                setStoreName("");
+                setSelectedLatitude(undefined);
+                setSelectedLongitude(undefined);
+                setSelectedAddress("");
+                setRetailChannel("");
+              }}>
                 Cancel
               </Button>
-              <Button onClick={handleAddLocation}>
+              <Button 
+                onClick={handleAddLocation}
+                disabled={!storeName || !selectedLatitude || !selectedLongitude || !retailChannel}
+              >
                 Add Location
               </Button>
             </DialogFooter>
