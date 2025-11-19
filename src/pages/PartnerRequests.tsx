@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Store, Check, X, Plus, Send, UserPlus, ArrowDown, ArrowUp, Eye, ChevronRight, Gift, Map as MapIcon, Building2, Trash2, MessageSquare, Lightbulb } from "lucide-react";
 import AppLayout from "@/components/AppLayout";
@@ -48,106 +49,8 @@ type PartnerRequest = {
 const PartnerRequests = () => {
   const navigate = useNavigate();
 
-  // Example data for demonstration
-  const exampleRequests: PartnerRequest[] = [{
-    id: '1',
-    sender_id: 'current-user-id',
-    recipient_id: 'joes-coffee-id',
-    status: 'approved',
-    created_at: '2024-09-03T10:00:00Z',
-    updated_at: '2024-09-03T11:00:00Z',
-    sender_profile: {
-      store_name: "Sally's Salon",
-      first_name: 'Sally',
-      last_name: 'Johnson',
-      retail_address: "123 Beauty Blvd, Downtown"
-    },
-    recipient_profile: {
-      store_name: "Joe's Coffee",
-      first_name: 'Joe',
-      last_name: 'Smith',
-      retail_address: "456 Brew Street, Midtown"
-    }
-  }, {
-    id: '2',
-    sender_id: 'joanns-flower-id',
-    recipient_id: 'current-user-id',
-    status: 'pending',
-    created_at: '2024-09-04T14:30:00Z',
-    updated_at: '2024-09-04T14:30:00Z',
-    sender_profile: {
-      store_name: "Joann's Flower Shop",
-      first_name: 'Joann',
-      last_name: 'Davis',
-      retail_address: "789 Garden Way, Uptown"
-    },
-    recipient_profile: {
-      store_name: "Sally's Salon",
-      first_name: 'Sally',
-      last_name: 'Johnson',
-      retail_address: "123 Beauty Blvd, Downtown"
-    }
-  }, {
-    id: '3',
-    sender_id: 'current-user-id',
-    recipient_id: 'daily-dry-cleaner-id',
-    status: 'rejected',
-    created_at: '2024-09-01T09:15:00Z',
-    updated_at: '2024-09-02T16:45:00Z',
-    sender_profile: {
-      store_name: "Sally's Salon",
-      first_name: 'Sally',
-      last_name: 'Johnson',
-      retail_address: "123 Beauty Blvd, Downtown"
-    },
-    recipient_profile: {
-      store_name: "Daily Dry Cleaner",
-      first_name: 'Mike',
-      last_name: 'Wilson',
-      retail_address: "321 Clean Lane, Westside"
-    }
-  }, {
-    id: '4',
-    sender_id: 'media-street-ad-id',
-    recipient_id: 'current-user-id',
-    status: 'pending',
-    created_at: '2024-09-05T16:00:00Z',
-    updated_at: '2024-09-05T16:00:00Z',
-    sender_profile: {
-      store_name: "Media Street",
-      first_name: 'Media',
-      last_name: 'Street',
-      retail_address: "Ad Network"
-    },
-    recipient_profile: {
-      store_name: "Sally's Salon",
-      first_name: 'Sally',
-      last_name: 'Johnson',
-      retail_address: "123 Beauty Blvd, Downtown"
-    }
-  }, {
-    id: '5',
-    sender_id: 'current-user-id',
-    recipient_id: 'mikes-pizza-id',
-    status: 'cancelled',
-    created_at: '2024-08-15T10:00:00Z',
-    updated_at: '2024-09-01T14:00:00Z',
-    sender_profile: {
-      store_name: "Sally's Salon",
-      first_name: 'Sally',
-      last_name: 'Johnson',
-      retail_address: "123 Beauty Blvd, Downtown"
-    },
-    recipient_profile: {
-      store_name: "Mike's Pizza Palace",
-      first_name: 'Mike',
-      last_name: 'Romano',
-      retail_address: "654 Cheese Ave, Downtown"
-    }
-  }].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  const [requests, setRequests] = useState<PartnerRequest[]>(exampleRequests);
-  console.log('Partner requests:', requests);
-  const [loading, setLoading] = useState(false);
+  const [requests, setRequests] = useState<PartnerRequest[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [newPartnerStore, setNewPartnerStore] = useState("");
   const [storeOptions, setStoreOptions] = useState<{
@@ -431,14 +334,36 @@ const PartnerRequests = () => {
       const formattedPartners = Array.from(locationMap.values());
       console.log(`Found ${formattedPartners.length} partnership-eligible locations from ${partnershipEligibleOffers.length} offers`);
       
-      if (formattedPartners.length === 0 && partnershipEligibleOffers.length === 0) {
+      // Filter out locations without valid coordinates (latitude and longitude must be valid numbers)
+      const validPartners = formattedPartners.filter(partner => {
+        const hasValidCoords = partner.latitude && partner.longitude && 
+                               typeof partner.latitude === 'number' && 
+                               typeof partner.longitude === 'number' &&
+                               partner.latitude !== 0 && 
+                               partner.longitude !== 0 &&
+                               !isNaN(partner.latitude) && 
+                               !isNaN(partner.longitude);
+        
+        if (!hasValidCoords) {
+          console.warn(`Location "${partner.store_name}" (${partner.id}) is missing valid coordinates: lat=${partner.latitude}, lng=${partner.longitude}`);
+        }
+        
+        return hasValidCoords;
+      });
+      
+      console.log(`Filtered to ${validPartners.length} locations with valid coordinates (removed ${formattedPartners.length - validPartners.length} without coordinates)`);
+      
+      if (validPartners.length === 0 && partnershipEligibleOffers.length === 0) {
         console.warn('No partnership-eligible offers found. This could mean:');
         console.warn('1. No offers have been created with available_for_partnership: true');
         console.warn('2. Backend needs a public endpoint /offers/partnership-eligible to return all partnership-eligible offers');
         console.warn('3. The authenticated /offers endpoint only returns current user\'s offers, not all users\' offers');
+      } else if (validPartners.length === 0 && partnershipEligibleOffers.length > 0) {
+        console.warn(`Found ${partnershipEligibleOffers.length} offers but none have valid location coordinates.`);
+        console.warn('Please ensure all locations have latitude and longitude set when creating them.');
       }
       
-      setPartnersForMap(formattedPartners);
+      setPartnersForMap(validPartners);
       
     } catch (error) {
       console.error('Error fetching partners for map:', error);
@@ -595,7 +520,7 @@ const PartnerRequests = () => {
       });
       
       if (response.success && response.data) {
-        // Format requests to match interface
+        // Format requests to match interface and include offer images
         const formattedRequests = response.data.map((req: any) => ({
           id: req._id?.toString() || req.id?.toString(),
           sender_id: req.senderId?.toString() || req.sender_id?.toString() || req.senderId || req.sender_id,
@@ -614,7 +539,12 @@ const PartnerRequests = () => {
             first_name: req.recipient?.fullName?.split(' ')[0] || '',
             last_name: req.recipient?.fullName?.split(' ').slice(1).join(' ') || '',
             retail_address: req.recipientLocation?.address || ''
-          }
+          },
+          // Include offer images from backend
+          sender_offer_image: req.senderOfferImage || req.sender_offer_image || req.senderOffer?.offerImage || null,
+          recipient_offer_image: req.recipientOfferImage || req.recipient_offer_image || req.recipientOffer?.offerImage || null,
+          sender_offer: req.senderOffer || null,
+          recipient_offer: req.recipientOffer || null
         }));
         
         setRequests(formattedRequests);
@@ -853,12 +783,25 @@ const PartnerRequests = () => {
   };
   const sendPartnerRequestFinal = async (senderId: string, recipientId: string) => {
     try {
+      // Find the partner location ID from partnersForMap based on the store name
+      // This is the location ID of the partner's location that was selected
+      let partnerLocationId: string | undefined = undefined;
+      const searchStoreName = newPartnerStore.trim();
+      const selectedPartner = partnersForMap.find(p => 
+        p.store_name?.toLowerCase() === searchStoreName.toLowerCase()
+      );
+      if (selectedPartner && selectedPartner.id) {
+        partnerLocationId = selectedPartner.id;
+        console.log('Found partner location ID:', partnerLocationId);
+      }
+      
       const { post } = await import("@/services/apis");
       const response = await post({ 
         end_point: 'partners/requests', 
         body: { 
           recipient_id: recipientId,
-          location_id: selectedLocationId, // Always use selected location (required)
+          location_id: selectedLocationId, // Requester's location (required)
+          partner_location_id: partnerLocationId, // Partner's location ID (optional but recommended)
           promo_code: isPromoValid ? promoCode : undefined
         },
         token: true
@@ -1304,26 +1247,64 @@ const PartnerRequests = () => {
               <Input placeholder="Search requests..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="max-w-sm" />
             </div>
 
-            {loading ? <div className="text-center py-8">Loading requests...</div> : filteredRequests.length === 0 ? <div className="text-center py-8 text-muted-foreground">
-              No partner requests found.
-            </div> : <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Request Type</TableHead>
-                    <TableHead>Partner/Advertiser</TableHead>
-                    <TableHead>Your Store</TableHead>
-                    <TableHead>Distance</TableHead>
-                    <TableHead>Their Ad</TableHead>
-                    <TableHead>Your Ad</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRequests.map(request => {
+            {loading ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Request Type</TableHead>
+                      <TableHead>Partner/Advertiser</TableHead>
+                      <TableHead>Your Store</TableHead>
+                      <TableHead>Distance</TableHead>
+                      <TableHead>Their Ad</TableHead>
+                      <TableHead>Your Ad</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {[...Array(5)].map((_, index) => (
+                      <TableRow key={index}>
+                        <TableCell><Skeleton className="h-4 w-4" /></TableCell>
+                        <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                        <TableCell><Skeleton className="h-16 w-16 rounded-lg" /></TableCell>
+                        <TableCell><Skeleton className="h-16 w-16 rounded-lg" /></TableCell>
+                        <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-8 w-24" /></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : filteredRequests.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No partner requests found.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Request Type</TableHead>
+                      <TableHead>Partner/Advertiser</TableHead>
+                      <TableHead>Your Store</TableHead>
+                      <TableHead>Distance</TableHead>
+                      <TableHead>Their Ad</TableHead>
+                      <TableHead>Your Ad</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRequests.map(request => {
                     const requestType = getRequestType(request);
                     const partnerStore = requestType === 'outgoing' ? request.recipient_profile?.store_name : request.sender_profile?.store_name;
 
@@ -1336,8 +1317,23 @@ const PartnerRequests = () => {
                       return distances[Math.floor(Math.random() * distances.length)];
                     };
 
-                    // Get offer images based on store type
-                    const getOfferImage = (storeName: string) => {
+                    // Get offer images - use actual offer image if available, otherwise fallback to store type
+                    const getPartnerOfferImage = (request: any) => {
+                      // For outgoing requests, show recipient's offer image
+                      // For incoming requests, show sender's offer image
+                      const offerImage = requestType === 'outgoing' 
+                        ? request.recipient_offer_image 
+                        : request.sender_offer_image;
+                      
+                      if (offerImage) {
+                        return offerImage;
+                      }
+                      
+                      // Fallback to store type-based image
+                      const storeName = requestType === 'outgoing' 
+                        ? request.recipient_profile?.store_name 
+                        : request.sender_profile?.store_name;
+                      
                       if (storeName?.toLowerCase().includes('coffee')) {
                         return posCoffeeImage;
                       } else if (storeName?.toLowerCase().includes('salon')) {
@@ -1348,6 +1344,7 @@ const PartnerRequests = () => {
                         return posSubsImage;
                       }
                     };
+                    
                     return <TableRow key={request.id}>
                       <TableCell>
                         {getRequestTypeIcon(request)}
@@ -1371,19 +1368,28 @@ const PartnerRequests = () => {
                       </TableCell>
                       <TableCell>
                         <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted cursor-pointer hover:ring-2 hover:ring-primary transition-all" onClick={() => setEnlargedImage({
-                          src: getOfferImage(partnerStore || ''),
+                          src: getPartnerOfferImage(request),
                           title: `${partnerStore} offer`
                         })}>
-                          <img src={getOfferImage(partnerStore || '')} alt={`${partnerStore} offer`} className="w-full h-full object-cover" />
+                          <img src={getPartnerOfferImage(request)} alt={`${partnerStore} offer`} className="w-full h-full object-cover" />
                         </div>
                       </TableCell>
                       <TableCell>
-                        {isAdRequest ? <div className="text-muted-foreground">N/A</div> : <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted cursor-pointer hover:ring-2 hover:ring-primary transition-all" onClick={() => setEnlargedImage({
-                          src: posSalonImage,
-                          title: "Your offer"
-                        })}>
-                          <img src={posSalonImage} alt="Your offer" className="w-full h-full object-cover" />
-                        </div>}
+                        {isAdRequest ? <div className="text-muted-foreground">N/A</div> : (() => {
+                          // Get your offer image - for outgoing requests, show sender's offer; for incoming, show recipient's offer
+                          const yourOfferImage = requestType === 'outgoing' 
+                            ? (request.sender_offer_image || posSalonImage)
+                            : (request.recipient_offer_image || posSalonImage);
+                          
+                          return (
+                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted cursor-pointer hover:ring-2 hover:ring-primary transition-all" onClick={() => setEnlargedImage({
+                              src: yourOfferImage,
+                              title: "Your offer"
+                            })}>
+                              <img src={yourOfferImage} alt="Your offer" className="w-full h-full object-cover" />
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         {getStatusBadge(request.status)}
@@ -1429,7 +1435,8 @@ const PartnerRequests = () => {
                   })}
                 </TableBody>
               </Table>
-            </div>}
+            </div>
+            )}
           </div>
         </CardContent>
       </Card>
