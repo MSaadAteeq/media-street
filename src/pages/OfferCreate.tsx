@@ -123,9 +123,12 @@ const OfferCreate = () => {
         });
       }
 
-      // Generate QR code URL - use redemption code for now, will be updated after offer creation
-      // Note: The Redeem page will look up the offer by redemption code if offer ID is not found
-      const qrCodeUrl = `${window.location.origin}/redeem/${redemptionCode}`;
+      // Generate QR code URL with location ID (use first selected location)
+      // Each location will have a unique QR code to track which location the redemption belongs to
+      const locationId = selectedLocations.length > 0 ? selectedLocations[0] : '';
+      const qrCodeUrl = locationId 
+        ? `${window.location.origin}/redeem/${redemptionCode}/${locationId}`
+        : `${window.location.origin}/redeem/${redemptionCode}`;
       
       // Generate QR code and overlay it on top right
       try {
@@ -168,7 +171,7 @@ const OfferCreate = () => {
     };
     
     img.src = URL.createObjectURL(adImage);
-  }, [adImage, callToAction, redemptionCode]);
+  }, [adImage, callToAction, redemptionCode, selectedLocations]);
 
   useEffect(() => {
     fetchLocations();

@@ -1,7 +1,7 @@
 import { Provider } from "react-redux"
 import { PersistGate } from "redux-persist/integration/react";
 import { store, persistor } from "./store";
-// import { Toaster } from "@/components/ui/toaster";
+import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -41,7 +41,7 @@ const App = () => (
     <PersistGate loading={null} persistor={persistor}>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          {/* <Toaster /> */}
+          <Toaster />
           <Sonner />
           <BrowserRouter>
             <Routes>
@@ -53,7 +53,7 @@ const App = () => (
               <Route path="/terms-of-service" element={<TermsOfService />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/faq" element={<FAQ />} />
-              <Route path="/redeem/:offerCode" element={<Redeem />} />
+              <Route path="/redeem/:offerCode/:locationId?" element={<Redeem />} />
               <Route path="/redeem/:offerCode/confirm" element={<RedeemConfirm />} />
               <Route path="/locations/:locationId/qr" element={<LocationQR />} />
               <Route path="/carousel/:locationId" element={<Carousel />} />

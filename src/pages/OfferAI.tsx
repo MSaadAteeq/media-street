@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 // Supabase removed - will use Node.js API
@@ -22,6 +23,7 @@ interface Location {
   currentOffer?: string;
   offerXActive?: boolean;
   openOfferActive?: boolean;
+  canToggleOpenOffer?: boolean; // Only show toggle if no non-open offer exists
   activePartnerships: number;
   maxPartnerships: number;
   posConnected?: boolean;
@@ -38,6 +40,8 @@ const OfferAI = () => {
   const [authorized, setAuthorized] = useState(false);
   const [allOpenOffers, setAllOpenOffers] = useState<any[]>([]);
   const [loadingOpenOffers, setLoadingOpenOffers] = useState(false);
+  const [selectedOpenOffer, setSelectedOpenOffer] = useState<any>(null);
+  const [isOpenOfferDialogOpen, setIsOpenOfferDialogOpen] = useState(false);
 
   // Load locations and offers from API
   useEffect(() => {
@@ -103,6 +107,15 @@ const OfferAI = () => {
             offer.is_open_offer || offer.isOpenOffer
           );
           
+          // Check if location has a non-open offer (regular offer)
+          const hasNonOpenOffer = locationOffers.some((offer: any) => 
+            !(offer.is_open_offer || offer.isOpenOffer)
+          );
+          
+          // Show toggle only if: no offer exists OR offer is already an open offer
+          // Hide toggle if there's a non-open offer
+          const canToggleOpenOffer = !hasNonOpenOffer;
+          
           // Count active partnerships for this location
           const locationPartnerships = partnerships.filter((p: any) => {
             const pLocationId = p.location_id?._id?.toString() || p.location_id?.toString() || p.location_id;
@@ -116,6 +129,7 @@ const OfferAI = () => {
             currentOffer: currentOffer || undefined,
             offerXActive: false, // TODO: Implement OfferX feature
             openOfferActive: hasOpenOffer,
+            canToggleOpenOffer: canToggleOpenOffer, // Only show toggle if no non-open offer exists
             activePartnerships: locationPartnerships.length,
             maxPartnerships: 5,
             posConnected: false // TODO: Implement POS connection check
@@ -301,29 +315,16 @@ const OfferAI = () => {
   const fetchAllOpenOffers = async () => {
     try {
       setLoadingOpenOffers(true);
-      // Fetch all open offers from all retailers (public endpoint)
+      // Fetch all open offers from all retailers (optionally authenticated to exclude own offers)
       const response = await get({ 
         end_point: 'offers/open',
-        token: false // Public endpoint - no auth required
+        token: true // Send token so backend can exclude own offers and set subscription status
       });
       
       if (response.success && response.data) {
-        // Get current user ID to exclude own offers
-        const currentUserResponse = await get({ 
-          end_point: 'users/me',
-          token: true
-        });
-        const currentUserId = currentUserResponse.success && currentUserResponse.data 
-          ? (currentUserResponse.data._id?.toString() || currentUserResponse.data.id?.toString())
-          : null;
-
-        // Format open offers data and exclude current user's offers
+        // Backend already excludes current user's offers when token is sent, so no need to filter again
+        // Format open offers data
         const formattedOpenOffers = response.data
-          .filter((offer: any) => {
-            // Exclude current user's own offers
-            const offerUserId = offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
-            return offerUserId !== currentUserId;
-          })
           .map((offer: any) => {
             // Handle locations - could be in locations array or locationIds
             const offerLocations = Array.isArray(offer.locations) 
@@ -357,7 +358,12 @@ const OfferAI = () => {
               redemption_count: offer.redemptionCount || offer.redemption_count || 0,
               is_open_offer: true,
               retailer_name: offer.user?.fullName || 'Unknown Retailer',
-              retailer_email: offer.user?.email || ''
+              retailer_email: offer.user?.email || '',
+              offer_image: offer.offerImage || offer.offer_image || null,
+              is_subscribed: offer.isSubscribed || offer.is_subscribed || false,
+              isSubscribed: offer.isSubscribed || offer.is_subscribed || false,
+              is_subscribed_by_anyone: offer.isSubscribedByAnyone || offer.is_subscribed_by_anyone || false,
+              isSubscribedByAnyone: offer.isSubscribedByAnyone || offer.is_subscribed_by_anyone || false
             };
           });
         
@@ -434,13 +440,22 @@ const OfferAI = () => {
                       </div>
                     </div>}
 
-                  {/* Open Offer Toggle */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium text-muted-foreground">Open Offer</div>
-                      <Switch checked={location.openOfferActive} onCheckedChange={checked => handleOpenOfferToggle(location.id, checked)} />
+                  {/* Open Offer Toggle - Only show if no non-open offer exists */}
+                  {location.canToggleOpenOffer && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-medium text-muted-foreground">Open Offer</div>
+                        <Switch checked={location.openOfferActive} onCheckedChange={checked => handleOpenOfferToggle(location.id, checked)} />
+                      </div>
                     </div>
-                  </div>
+                  )}
+                  {!location.canToggleOpenOffer && location.currentOffer && (
+                    <div className="space-y-3">
+                      <div className="text-sm text-muted-foreground">
+                        <p className="text-xs">This location has a regular offer. To make it an open offer, please create a new offer and select "Open Offer" during creation.</p>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>;
         })}
@@ -554,13 +569,10 @@ const OfferAI = () => {
                               variant="ghost" 
                               size="icon"
                               onClick={() => {
-                                // View offer details - could open a dialog or navigate
-                                toast({
-                                  title: "Offer Details",
-                                  description: offer.call_to_action,
-                                });
+                                setSelectedOpenOffer(offer);
+                                setIsOpenOfferDialogOpen(true);
                               }}
-                              title="View Details"
+                              title="View Offer Details"
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
@@ -656,6 +668,112 @@ const OfferAI = () => {
             </AlertDialogFooter>
         </AlertDialogContent>
         </AlertDialog>
+
+        {/* Open Offer Details Dialog */}
+        <Dialog open={isOpenOfferDialogOpen} onOpenChange={setIsOpenOfferDialogOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5 text-primary" />
+                Open Offer Details
+              </DialogTitle>
+              <DialogDescription>
+                View details of this open offer from {selectedOpenOffer?.retailer_name || 'Unknown Retailer'}
+              </DialogDescription>
+            </DialogHeader>
+            
+            {selectedOpenOffer && (
+              <div className="space-y-6 py-4">
+                {/* Offer Image */}
+                {selectedOpenOffer.offer_image && (
+                  <div className="w-full rounded-lg overflow-hidden border">
+                    <img 
+                      src={selectedOpenOffer.offer_image} 
+                      alt={selectedOpenOffer.call_to_action}
+                      className="w-full h-auto object-contain"
+                    />
+                  </div>
+                )}
+                
+                {/* Offer Details */}
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-sm font-medium text-muted-foreground">Offer</Label>
+                    <p className="text-lg font-semibold mt-1">{selectedOpenOffer.call_to_action}</p>
+                  </div>
+                  
+                  <div>
+                    <Label className="text-sm font-medium text-muted-foreground">Retailer</Label>
+                    <div className="mt-1">
+                      <p className="font-medium">{selectedOpenOffer.retailer_name}</p>
+                      <p className="text-sm text-muted-foreground">{selectedOpenOffer.retailer_email}</p>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Label className="text-sm font-medium text-muted-foreground">Offer Type</Label>
+                    <div className="mt-1">
+                      <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
+                        Open Offer
+                      </Badge>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Label className="text-sm font-medium text-muted-foreground">Locations</Label>
+                    <div className="mt-2 space-y-2">
+                      {selectedOpenOffer.locations && selectedOpenOffer.locations.length > 0 ? (
+                        selectedOpenOffer.locations.map((location: any, index: number) => (
+                          <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                            <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="font-medium">{location.name}</p>
+                              <p className="text-sm text-muted-foreground">{location.address}</p>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No locations specified</p>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Label className="text-sm font-medium text-muted-foreground">Subscription Status</Label>
+                    <div className="mt-1">
+                      {selectedOpenOffer.is_subscribed || selectedOpenOffer.isSubscribed ? (
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          You are subscribed
+                        </Badge>
+                      ) : selectedOpenOffer.is_subscribed_by_anyone || selectedOpenOffer.isSubscribedByAnyone ? (
+                        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                          Already subscribed by another retailer
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
+                          Available for subscription
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Redemptions</Label>
+                      <p className="text-lg font-semibold mt-1">{selectedOpenOffer.redemption_count || 0}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Created</Label>
+                      <p className="text-sm mt-1">
+                        {new Date(selectedOpenOffer.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </AppLayout>;
 };
 export default OfferAI;

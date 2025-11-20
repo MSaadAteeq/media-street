@@ -41,7 +41,6 @@ const Dashboard = () => {
   const [pauseAdsDialogOpen, setPauseAdsDialogOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
-  const [selectedLocationForCoupon, setSelectedLocationForCoupon] = useState<string>(""); // Location ID for coupon redemption
   const [couponCode, setCouponCode] = useState("");
   const [couponVerification, setCouponVerification] = useState<any>(null); // Store verification result
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -564,23 +563,14 @@ const Dashboard = () => {
       return;
     }
 
-    if (!selectedLocationForCoupon) {
-      toast({
-        title: "Location Required",
-        description: "Please select a location to verify the coupon",
-        variant: "destructive"
-      });
-      return;
-    }
-
     setIsLoading(true);
     try {
-      // Verify coupon code for the selected location
+      // Verify coupon code - location will be automatically determined from the redemption record
       const response = await post({
         end_point: 'redemptions/verify-coupon',
         body: {
-          couponCode: couponCode.trim(),
-          locationId: selectedLocationForCoupon
+          couponCode: couponCode.trim()
+          // locationId is optional - backend will use location from redemption record
         },
         token: true
       });
@@ -625,23 +615,14 @@ const Dashboard = () => {
       return;
     }
 
-    if (!selectedLocationForCoupon) {
-      toast({
-        title: "Location Required",
-        description: "Please select a location to redeem the coupon",
-        variant: "destructive"
-      });
-      return;
-    }
-
     setIsLoading(true);
     try {
-      // Redeem coupon code at the selected location
+      // Redeem coupon code - location will be automatically determined from the redemption record
       const response = await post({
         end_point: 'redemptions/redeem-coupon',
         body: {
-          couponCode: couponCode.trim(),
-          locationId: selectedLocationForCoupon
+          couponCode: couponCode.trim()
+          // locationId is optional - backend will use location from redemption record
         },
         token: true
       });
@@ -923,31 +904,11 @@ const Dashboard = () => {
                       <Info className="h-4 w-4 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent className="max-w-sm">
-                      <p>Enter the 6-digit coupon code from the customer's coupon. The system will verify that the coupon is valid for your selected location before allowing redemption. This ensures coupons can only be redeemed at the correct store where the offer is active.</p>
+                      <p>Enter the 6-digit coupon code from the customer's coupon. The system will automatically determine the location from the QR code and verify that the coupon is valid before allowing redemption. This ensures coupons can only be redeemed at the correct store where the offer is active.</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
                 <div className="flex flex-col gap-3">
-                  {/* Location Selection */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground whitespace-nowrap">Location:</span>
-                    <Select
-                      value={selectedLocationForCoupon}
-                      onValueChange={setSelectedLocationForCoupon}
-                    >
-                      <SelectTrigger className="w-64">
-                        <SelectValue placeholder="Select location" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {locations.map((loc) => (
-                          <SelectItem key={loc._id || loc.id} value={loc._id || loc.id}>
-                            {loc.name} - {loc.address}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
                   {/* Coupon Code Input and Actions */}
                   <div className="flex gap-2">
                     <Input
@@ -965,14 +926,14 @@ const Dashboard = () => {
                       size="sm"
                       variant="outline"
                       onClick={handleVerifyCoupon}
-                      disabled={!couponCode.trim() || couponCode.length !== 6 || !selectedLocationForCoupon || isLoading}
+                      disabled={!couponCode.trim() || couponCode.length !== 6 || isLoading}
                     >
                       Verify
                     </Button>
                     <Button
                       size="sm"
                       onClick={handleLogRedemption}
-                      disabled={!couponCode.trim() || couponCode.length !== 6 || !selectedLocationForCoupon || isLoading || !couponVerification?.valid}
+                      disabled={!couponCode.trim() || couponCode.length !== 6 || isLoading || !couponVerification?.valid}
                     >
                       {isLoading ? "Processing..." : "Redeem"}
                     </Button>

@@ -53,7 +53,7 @@ const sampleLocations: any = {
 };
 
 const Redeem = () => {
-  const { offerCode } = useParams();
+  const { offerCode, locationId } = useParams(); // locationId from URL
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -64,6 +64,7 @@ const Redeem = () => {
   const [couponCode, setCouponCode] = useState(""); // 6-digit coupon code
   const [isRedeemed, setIsRedeemed] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
+  const [qrLocationId, setQrLocationId] = useState<string | null>(locationId || null); // Location ID from QR code
 
   useEffect(() => {
     fetchOfferDetails();

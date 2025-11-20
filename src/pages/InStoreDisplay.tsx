@@ -256,38 +256,28 @@ const InStoreDisplay = () => {
         console.error('Error fetching partner offers:', error);
       }
 
-      // Load open offers from backend API (available to all retailers)
+      // Load subscribed open offers from backend API (only offers the location owner has subscribed to)
       let nearbyOpenOffers: any[] = [];
       try {
         const response = await get({ 
-          end_point: 'offers/open',
+          end_point: `offers/location/${selectedLocationId}/subscribed-open`,
           token: false
         });
         
         if (response.success && response.data) {
-          // Filter: Only show active, non-expired open offers
-          const now = new Date();
-          nearbyOpenOffers = response.data
-            .filter((offer: any) => {
-              const isOpenOffer = offer.is_open_offer || offer.isOpenOffer;
-              const isActive = offer.is_active !== false && offer.isActive !== false;
-              const isNotExpired = !offer.expires_at && !offer.expiresAt || 
-                (offer.expires_at && new Date(offer.expires_at) > now) ||
-                (offer.expiresAt && new Date(offer.expiresAt) > now);
-              return isOpenOffer && isActive && isNotExpired;
-            })
-            .map((offer: any) => ({
-              id: offer._id?.toString() || offer.id?.toString() || '',
-              type: "offer" as const,
-              title: offer.callToAction || offer.call_to_action || '',
-              description: "Open Offer",
-              image: offer.offer_image || offer.offerImage || posFlowersImage, // Use different image for open offers
-              partner: offer.user?.fullName || offer.userId?.fullName || null,
-              validUntil: offer.expires_at || offer.expiresAt || "7 days"
-            }));
+          // Backend already filters for active, non-expired, subscribed open offers
+          nearbyOpenOffers = response.data.map((offer: any) => ({
+            id: offer._id?.toString() || offer.id?.toString() || '',
+            type: "offer" as const,
+            title: offer.callToAction || offer.call_to_action || '',
+            description: "Open Offer",
+            image: offer.offer_image || offer.offerImage || posFlowersImage, // Use different image for open offers
+            partner: offer.user?.fullName || offer.userId?.fullName || null,
+            validUntil: offer.expires_at || offer.expiresAt || "7 days"
+          }));
         }
       } catch (error) {
-        console.error('Error fetching open offers:', error);
+        console.error('Error fetching subscribed open offers:', error);
       }
       
       // Combine: Partner offers first, then open offers, then back to partner offers (rotation)
@@ -332,27 +322,6 @@ const InStoreDisplay = () => {
   return (
     <AppLayout pageTitle="Partner Carousel" pageIcon={<Monitor className="h-6 w-6 text-primary" />}>
       <div className="space-y-6">
-        {/* Location Selector */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <label className="text-sm font-medium">Select Location:</label>
-              <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
-                <SelectTrigger className="w-[400px]">
-                  <SelectValue placeholder="Choose a location" />
-                </SelectTrigger>
-                <SelectContent>
-                  {locations.map((location) => (
-                    <SelectItem key={location.id} value={location.id}>
-                      {location.name} - {location.address}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Instructions */}
         <Card className="bg-muted/50">
           <CardContent className="pt-6">

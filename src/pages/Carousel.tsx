@@ -175,27 +175,17 @@ const Carousel = () => {
         partnerOffers = [];
       }
 
-      // Load open offers from backend API (available to all retailers - no partnership needed)
+      // Load subscribed open offers from backend API (only offers the location owner has subscribed to)
       let nearbyOpenOffers: Offer[] = [];
       try {
         const response = await get({ 
-          end_point: 'offers/open',
+          end_point: `offers/location/${selectedLocationId}/subscribed-open`,
           token: false // Public endpoint
         });
         
         if (response.success && response.data) {
-          // Filter: Only show active, non-expired open offers
-          const now = new Date();
-          nearbyOpenOffers = response.data
-            .filter((offer: any) => {
-              const isOpenOffer = offer.is_open_offer || offer.isOpenOffer;
-              const isActive = offer.is_active !== false && offer.isActive !== false;
-              const isNotExpired = !offer.expires_at && !offer.expiresAt || 
-                (offer.expires_at && new Date(offer.expires_at) > now) ||
-                (offer.expiresAt && new Date(offer.expiresAt) > now);
-              return isOpenOffer && isActive && isNotExpired;
-            })
-            .map((offer: any) => ({
+          // Backend already filters for active, non-expired, subscribed open offers
+          nearbyOpenOffers = response.data.map((offer: any) => ({
               id: offer._id?.toString() || offer.id?.toString() || '',
               call_to_action: offer.callToAction || offer.call_to_action || '',
               location_id: offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() || offer.location_ids?.[0] || '',
