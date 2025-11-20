@@ -288,11 +288,9 @@ const Locations = () => {
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
-                          {location.open_offer_active ? (
-                            <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5 sm:px-2">Open Offer</Badge>
-                          ) : (
-                            <span className="text-primary font-semibold text-sm sm:text-lg">0</span>
-                          )}
+                          <span className="text-primary font-semibold text-sm sm:text-lg">
+                            {location.partner_count || location.partners || 0}
+                          </span>
                         </TableCell>
                         <TableCell className="text-center">
                           <Button 

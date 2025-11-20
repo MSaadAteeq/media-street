@@ -5,6 +5,7 @@ import LocationQRDisplay from "@/components/LocationQRDisplay";
 import { Card } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
 
 interface Location {
   id: string;
@@ -14,6 +15,7 @@ interface Location {
 
 const LocationQR = () => {
   const { locationId } = useParams<{ locationId: string }>();
+  const { toast } = useToast();
   const [location, setLocation] = useState<Location | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -25,19 +27,29 @@ const LocationQR = () => {
 
   const loadLocation = async () => {
     try {
-      // TODO: Replace with Node.js API call
-      // const response = await get({ end_point: `locations/${locationId}` });
-      // setLocation(response.data);
+      setLoading(true);
+      const { get } = await import("@/services/apis");
+      const response = await get({ 
+        end_point: `locations/${locationId}`,
+        token: true
+      });
       
-      // Mock data for now
-      const mockLocation = {
-        id: locationId || 'loc-1',
-        name: "Sample Location",
-        address: "123 Main St"
-      };
-      setLocation(mockLocation);
+      if (response.success && response.data) {
+        setLocation({
+          id: response.data.id || response.data._id,
+          name: response.data.name || '',
+          address: response.data.address || ''
+        });
+      } else {
+        throw new Error(response.message || 'Location not found');
+      }
     } catch (error) {
       console.error('Error loading location:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load location. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }

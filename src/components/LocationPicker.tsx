@@ -57,7 +57,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
 
   // Geocode search query
   const searchLocation = useCallback(async (query: string) => {
-    if (!query.trim()) {
+    if (!query.trim() || query.length < 2) {
       setSearchResults([]);
       setShowResults(false);
       return;
@@ -65,15 +65,29 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
 
     setIsSearching(true);
     try {
+      // Use Mapbox Geocoding API with better parameters for location search
+      // Mapbox API maximum limit is 10, so we'll request the maximum
       const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&limit=5&types=place,locality,neighborhood,address,poi,postcode,country&worldview=all`
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}&limit=10&types=place,locality,neighborhood,address,poi,postcode,country,region&autocomplete=true`
       );
+      
+      if (!response.ok) {
+        throw new Error(`Geocoding API error: ${response.status}`);
+      }
+      
       const data = await response.json();
-      setSearchResults(data.features || []);
-      setShowResults(true);
+      
+      if (data.features && data.features.length > 0) {
+        setSearchResults(data.features);
+        setShowResults(true);
+      } else {
+        setSearchResults([]);
+        setShowResults(false);
+      }
     } catch (error) {
       console.error('Geocoding error:', error);
       setSearchResults([]);
+      setShowResults(false);
     } finally {
       setIsSearching(false);
     }
@@ -111,14 +125,15 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
       clearTimeout(searchTimeoutRef.current);
     }
 
-    searchTimeoutRef.current = setTimeout(() => {
-      if (searchQuery) {
-        searchLocation(searchQuery);
-      } else {
-        setSearchResults([]);
-        setShowResults(false);
-      }
-    }, 300);
+    // Only search if query is at least 2 characters
+    if (searchQuery && searchQuery.trim().length >= 2) {
+      searchTimeoutRef.current = setTimeout(() => {
+        searchLocation(searchQuery.trim());
+      }, 300);
+    } else {
+      setSearchResults([]);
+      setShowResults(false);
+    }
 
     return () => {
       if (searchTimeoutRef.current) {
@@ -126,6 +141,20 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
       }
     };
   }, [searchQuery, searchLocation]);
+
+  // Handle ESC key to close dropdown
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showResults) {
+        setShowResults(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showResults]);
 
   // Handle selecting a search result
   const handleSelectResult = async (result: GeocodingResult) => {
@@ -264,6 +293,20 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
             onFocus={() => {
               if (searchResults.length > 0) {
                 setShowResults(true);
+              } else if (searchQuery && searchQuery.trim().length >= 2) {
+                // Trigger search if there's a query when focused
+                searchLocation(searchQuery.trim());
+              }
+            }}
+            onBlur={() => {
+              // Delay hiding results to allow click on results
+              setTimeout(() => {
+                setShowResults(false);
+              }, 200);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setShowResults(false);
               }
             }}
             className="pl-10 pr-10"
@@ -294,18 +337,25 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
 
         {/* Search Results Dropdown */}
         {showResults && searchResults.length > 0 && (
-          <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-y-auto">
+          <div className="absolute z-50 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-y-auto">
             {searchResults.map((result) => (
               <button
                 key={result.id}
                 type="button"
-                onClick={() => handleSelectResult(result)}
-                className="w-full text-left px-4 py-2 hover:bg-accent transition-colors border-b last:border-b-0"
+                onMouseDown={(e) => {
+                  // Prevent blur from hiding results before click
+                  e.preventDefault();
+                }}
+                onClick={() => {
+                  handleSelectResult(result);
+                  setShowResults(false);
+                }}
+                className="w-full text-left px-4 py-2 hover:bg-accent transition-colors border-b border-border last:border-b-0 cursor-pointer"
               >
                 <div className="flex items-start gap-2">
                   <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{result.text}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{result.text}</p>
                     {result.context && result.context.length > 0 && (
                       <p className="text-xs text-muted-foreground truncate">
                         {result.context.map((ctx) => ctx.text).join(', ')}
@@ -315,6 +365,23 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
                 </div>
               </button>
             ))}
+          </div>
+        )}
+        
+        {/* Show message when searching */}
+        {isSearching && searchQuery && searchQuery.trim().length >= 2 && (
+          <div className="absolute z-50 w-full mt-1 bg-background border border-border rounded-md shadow-lg p-4">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <p className="text-sm">Searching for locations...</p>
+            </div>
+          </div>
+        )}
+        
+        {/* Show message when no results */}
+        {!isSearching && searchQuery && searchQuery.trim().length >= 2 && showResults && searchResults.length === 0 && (
+          <div className="absolute z-50 w-full mt-1 bg-background border border-border rounded-md shadow-lg p-4">
+            <p className="text-sm text-muted-foreground">No locations found. Try a different search term.</p>
           </div>
         )}
       </div>
