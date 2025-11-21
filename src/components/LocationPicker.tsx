@@ -39,6 +39,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   const [searchResults, setSearchResults] = useState<GeocodingResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [hasSelectedLocation, setHasSelectedLocation] = useState(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Popular worldwide locations for quick search
@@ -79,7 +80,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
       
       if (data.features && data.features.length > 0) {
         setSearchResults(data.features);
-        setShowResults(true);
+        setShowResults(!hasSelectedLocation);
       } else {
         setSearchResults([]);
         setShowResults(false);
@@ -91,7 +92,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
     } finally {
       setIsSearching(false);
     }
-  }, []);
+  }, [hasSelectedLocation]);
 
   // Reverse geocode coordinates to get address
   const reverseGeocode = useCallback(async (lng: number, lat: number) => {
@@ -110,12 +111,17 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   }, []);
 
   // Update location when marker is dragged
-  const updateLocationFromMarker = useCallback(async (lng: number, lat: number) => {
+  const updateLocationFromMarker = useCallback(async (lng: number, lat: number, userInitiated = false) => {
     const locationName = await reverseGeocode(lng, lat);
     setSelectedLocation({ lat, lng, name: locationName || undefined });
     onLocationSelect(lat, lng, locationName || undefined);
     if (locationName) {
       setSearchQuery(locationName);
+    }
+    if (userInitiated) {
+      setHasSelectedLocation(true);
+      setShowResults(false);
+      setSearchResults([]);
     }
   }, [reverseGeocode, onLocationSelect]);
 
@@ -163,8 +169,10 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
 
     setSelectedLocation({ lat, lng, name: locationName });
     setSearchQuery(locationName);
-    setShowResults(false);
     onLocationSelect(lat, lng, locationName);
+    setHasSelectedLocation(true);
+    setSearchResults([]);
+    setShowResults(false);
 
     // Update map
     if (map.current) {
@@ -202,6 +210,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
   // Handle quick location click
   const handleQuickLocationClick = (query: string) => {
     setSearchQuery(query);
+    setHasSelectedLocation(false);
     searchLocation(query);
   };
 
@@ -243,7 +252,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
     // Listen to drag events
     markerRef.current.on('dragend', () => {
       const lngLat = markerRef.current!.getLngLat();
-      updateLocationFromMarker(lngLat.lng, lngLat.lat);
+      updateLocationFromMarker(lngLat.lng, lngLat.lat, true);
     });
 
     // Initial location update
@@ -261,7 +270,7 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
       // Move marker to clicked location
       if (markerRef.current) {
         markerRef.current.setLngLat([lng, lat]);
-        await updateLocationFromMarker(lng, lat);
+        await updateLocationFromMarker(lng, lat, true);
       }
     };
 
@@ -289,13 +298,12 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
+              setHasSelectedLocation(false);
             }}
             onFocus={() => {
-              if (searchResults.length > 0) {
+              if (hasSelectedLocation) return;
+              if (searchResults.length > 0 && searchQuery.trim().length >= 2) {
                 setShowResults(true);
-              } else if (searchQuery && searchQuery.trim().length >= 2) {
-                // Trigger search if there's a query when focused
-                searchLocation(searchQuery.trim());
               }
             }}
             onBlur={() => {

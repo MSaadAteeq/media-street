@@ -94,10 +94,6 @@ const Dashboard = () => {
         const locationsResponse = await get({ end_point: 'locations', token: true });
         if (locationsResponse.success && locationsResponse.data) {
           setLocations(locationsResponse.data);
-          // Auto-select first location for coupon redemption if only one location
-          if (locationsResponse.data.length === 1) {
-            setSelectedLocationForCoupon(locationsResponse.data[0]._id || locationsResponse.data[0].id);
-          }
         }
       } catch (error) {
         console.error('Error fetching locations:', error);
@@ -209,11 +205,15 @@ const Dashboard = () => {
 
       // Fetch leaderboard data
       try {
-        // TODO: Replace with actual leaderboard API endpoint
-        // For now, set empty array - will be populated when backend endpoint is ready
-        setLeaderboardData([]);
+        const leaderboardResponse = await get({ end_point: 'leaderboard/referral', token: true });
+        if (leaderboardResponse.success && leaderboardResponse.data) {
+          setLeaderboardData(leaderboardResponse.data);
+        } else {
+          setLeaderboardData(processLeaderboardData(staticLeaderboardData));
+        }
       } catch (error) {
         console.error('Error fetching leaderboard:', error);
+        setLeaderboardData(processLeaderboardData(staticLeaderboardData));
       }
 
     } catch (error) {
@@ -500,6 +500,15 @@ const Dashboard = () => {
       isCurrentUser: true
     }
   ];
+
+  const processLeaderboardData = (data: any[] = []) => {
+    return [...data]
+      .sort((a, b) => (b.points || 0) - (a.points || 0))
+      .map((item, index) => ({
+        ...item,
+        rank: index + 1
+      }));
+  };
 
   const handlePausePartnership = () => {
     toast({
