@@ -143,40 +143,39 @@ const Redeem = () => {
         }
       }
 
-      // Generate or fetch coupon code by creating a redemption
+      // Generate or fetch coupon code by creating a redemption (public endpoint - works for both logged in and anonymous users)
       try {
+        const { post } = await import('@/services/apis');
         const token = localStorage.getItem('token');
-        if (token) {
-          // User is logged in, create redemption to get 6-digit coupon code
-          const { post } = await import('@/services/apis');
-          const redemptionResponse = await post({
-            end_point: 'redemptions',
-            body: {
-              offerId: offerCode,
-              redemptionCode: offerData.redemptionCode || offerData.redemption_code || 'SCAN'
-            },
-            token: true
-          });
+        
+        // Use public endpoint - it works for both authenticated and anonymous users
+        const redemptionResponse = await post({
+          end_point: 'redemptions/public',
+          body: {
+            offerId: offerCode,
+            redemptionCode: offerData.redemptionCode || offerData.redemption_code || 'SCAN',
+            locationId: qrLocationId || locationId // Include locationId from URL if available
+          },
+          token: token ? true : false // Send token if available, but endpoint works without it
+        });
 
-          if (redemptionResponse.success && redemptionResponse.data) {
-            const coupon = redemptionResponse.data.couponCode || redemptionResponse.data.coupon_code;
-            if (coupon) {
-              setCouponCode(coupon);
-              setRedemptionCode(redemptionResponse.data.redemptionCode || redemptionResponse.data.redemption_code || '');
-            }
+        if (redemptionResponse.success && redemptionResponse.data) {
+          const coupon = redemptionResponse.data.couponCode || redemptionResponse.data.coupon_code;
+          if (coupon) {
+            setCouponCode(coupon);
+            setRedemptionCode(redemptionResponse.data.redemptionCode || redemptionResponse.data.redemption_code || '');
           }
         } else {
-          // User not logged in, generate a temporary 6-digit code
-          const tempCode = Math.floor(100000 + Math.random() * 900000).toString();
-          setCouponCode(tempCode);
-          setRedemptionCode(`TEMP-${tempCode}`);
+          throw new Error(redemptionResponse.message || 'Failed to generate coupon code');
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error generating coupon code:', error);
-        // Generate a temporary code if API fails
-        const tempCode = Math.floor(100000 + Math.random() * 900000).toString();
-        setCouponCode(tempCode);
-        setRedemptionCode(`TEMP-${tempCode}`);
+        toast({
+          title: "Error",
+          description: error?.response?.data?.message || error?.message || "Failed to generate coupon code. Please try again.",
+          variant: "destructive",
+        });
+        // Don't set temporary codes - let the user retry
       }
 
       setLoading(false);
