@@ -522,7 +522,7 @@ const Offers = () => {
                     </div>
                     
                     {/* Current Offer or Selection */}
-                    <div>
+                    {/* <div>
                       {location.current_offer ? (
                         <div>
                           <p className="text-xs text-muted-foreground mb-1">Current offer:</p>
@@ -560,7 +560,7 @@ const Offers = () => {
                           </Select>
                         </div>
                       )}
-                    </div>
+                    </div> */}
                   </div>
                 </Card>
               ))}

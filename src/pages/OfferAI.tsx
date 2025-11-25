@@ -389,7 +389,7 @@ const OfferAI = () => {
         <div className="space-y-6">
           {/* Header */}
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight">Open Offer</h1>
+            <h1 className="text-3xl font-bold tracking-tight">My Offer</h1>
             <p className="text-muted-foreground">Open Offer uses AI to optimize display of your current offer at nearby retail locations to maximize conversions. When turned on, your offer will start showing at nearby retailers also in the Open Offer network and vice versa ensuring maximum reach and conversion optimization for your offer. </p>
           </div>
 
@@ -402,7 +402,6 @@ const OfferAI = () => {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
-                      <div className="text-3xl font-bold tracking-tight">My offer</div>
                       <CardTitle className="text-lg flex items-center gap-2">
                         <MapPin className="h-4 w-4 text-primary" />
                         {location.name}
