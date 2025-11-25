@@ -29,27 +29,59 @@ const LocationQR = () => {
     try {
       setLoading(true);
       const { get } = await import("@/services/apis");
-      const response = await get({ 
-        end_point: `locations/${locationId}`,
-        token: true
-      });
       
-      if (response.success && response.data) {
+      console.log('Loading location with ID:', locationId);
+      
+      // Try authenticated endpoint first (for users viewing their own locations)
+      let response;
+      try {
+        response = await get({ 
+          end_point: `locations/${locationId}`,
+          token: true
+        });
+        console.log('Authenticated endpoint response:', response);
+      } catch (authError: any) {
+        console.error('Authenticated endpoint error:', authError);
+        // If authenticated endpoint fails (401/403), try public endpoint as fallback
+        if (authError?.response?.status === 401 || authError?.response?.status === 403 || authError?.response?.status === 404) {
+          console.log('Trying public endpoint as fallback...');
+          try {
+            response = await get({ 
+              end_point: `locations/public/${locationId}`,
+              token: false
+            });
+            console.log('Public endpoint response:', response);
+          } catch (publicError: any) {
+            console.error('Public endpoint also failed:', publicError);
+            throw publicError;
+          }
+        } else {
+          throw authError;
+        }
+      }
+      
+      if (response && response.success && response.data) {
+        const locationData = response.data;
+        console.log('Location data received:', locationData);
         setLocation({
-          id: response.data.id || response.data._id,
-          name: response.data.name || '',
-          address: response.data.address || ''
+          id: locationData.id || locationData._id?.toString() || locationId,
+          name: locationData.name || '',
+          address: locationData.address || ''
         });
       } else {
-        throw new Error(response.message || 'Location not found');
+        const errorMsg = response?.message || 'Location not found';
+        console.error('Location not found in response:', response);
+        throw new Error(errorMsg);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading location:', error);
+      const errorMessage = error?.response?.data?.message || error?.message || "Failed to load location. Please try again.";
       toast({
         title: "Error",
-        description: "Failed to load location. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
+      setLocation(null);
     } finally {
       setLoading(false);
     }
