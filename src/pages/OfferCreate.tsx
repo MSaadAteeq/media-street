@@ -40,6 +40,7 @@ const OfferCreate = () => {
   const [adImage, setAdImage] = useState<File | null>(null);
   const [expirationDuration, setExpirationDuration] = useState("1day");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isCreating, setIsCreating] = useState(false); // Track if offer is being created
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [redemptionCode, setRedemptionCode] = useState("");
   const [brandColors, setBrandColors] = useState<{ primary: string; secondary: string } | null>(null);
@@ -403,6 +404,11 @@ const OfferCreate = () => {
   };
 
   const handleCreateOffer = async () => {
+    // Prevent multiple clicks
+    if (isCreating) {
+      return;
+    }
+
     if (!callToAction) {
       toast({
         title: "Missing Information",
@@ -422,6 +428,7 @@ const OfferCreate = () => {
       return;
     }
 
+    setIsCreating(true); // Disable button immediately
     try {
       // TODO: Replace with Node.js API call
       // const userResponse = await get({ end_point: 'auth/me' });
@@ -563,6 +570,8 @@ const OfferCreate = () => {
         description: "Failed to create offer",
         variant: "destructive",
       });
+    } finally {
+      setIsCreating(false); // Re-enable button after request completes
     }
   };
 
@@ -856,9 +865,9 @@ const OfferCreate = () => {
                   <Button 
                     className="w-full" 
                     onClick={handleCreateOffer}
-                    disabled={!callToAction || selectedLocations.length === 0}
+                    disabled={!callToAction || selectedLocations.length === 0 || isCreating}
                   >
-                    Create {isOpenOffer ? 'Open ' : ''}Offer
+                    {isCreating ? 'Creating Offer...' : `Create ${isOpenOffer ? 'Open ' : ''}Offer`}
                   </Button>
                 </div>
               </CardContent>
