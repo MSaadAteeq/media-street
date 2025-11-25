@@ -148,7 +148,8 @@ const Redeem = () => {
         const { post } = await import('@/services/apis');
         const token = localStorage.getItem('token');
         
-        // Use public endpoint - it works for both authenticated and anonymous users
+        // Use public endpoint - explicitly set token to false to ensure no auth header is sent
+        // This endpoint works for both authenticated and anonymous users
         const redemptionResponse = await post({
           end_point: 'redemptions/public',
           body: {
@@ -156,7 +157,7 @@ const Redeem = () => {
             redemptionCode: offerData.redemptionCode || offerData.redemption_code || 'SCAN',
             locationId: qrLocationId || locationId // Include locationId from URL if available
           },
-          token: token ? true : false // Send token if available, but endpoint works without it
+          token: false // Explicitly set to false - public endpoint doesn't require auth
         });
 
         if (redemptionResponse.success && redemptionResponse.data) {
