@@ -2,54 +2,74 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Copy, Check, Gift } from "lucide-react";
+import { Copy, Check, Gift, Trophy } from "lucide-react";
 // Supabase removed - will use Node.js API
 import { toast } from "@/hooks/use-toast";
+import { get } from "@/services/apis";
 
 const ReferralCodeCard = () => {
   const [referralCode, setReferralCode] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [weeklyPoints, setWeeklyPoints] = useState<number>(0);
+  const [points, setPoints] = useState<number>(0);
+  const [rank, setRank] = useState<number | null>(null);
 
   useEffect(() => {
-    fetchReferralCode();
-    fetchWeeklyPoints();
+    fetchReferralData();
   }, []);
 
-  const fetchReferralCode = async () => {
+  const fetchReferralData = async () => {
     try {
-      // TODO: Replace with Node.js API call
-      // const response = await get({ end_point: 'profile/referral-code' });
-      // setReferralCode(response.data.referral_code || '');
+      setLoading(true);
       
-      // Mock implementation
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setLoading(false);
-        return;
+      // Fetch user profile to get referral code
+      try {
+        const userResponse = await get({ end_point: 'users/me', token: true });
+        if (userResponse.success && userResponse.data) {
+          setReferralCode(userResponse.data.referralCode || userResponse.data.referral_code || '');
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error);
       }
-      setReferralCode('REF12345');
+
+      // Fetch leaderboard data to get current user's points and rank
+      try {
+        const leaderboardResponse = await get({ end_point: 'leaderboard/referral', token: true });
+        if (leaderboardResponse.success && leaderboardResponse.data) {
+          // Find current user's entry in leaderboard
+          const currentUserEntry = leaderboardResponse.data.find((entry: any) => entry.isCurrentUser);
+          if (currentUserEntry) {
+            setPoints(currentUserEntry.points || 0);
+            setRank(currentUserEntry.rank || null);
+          } else {
+            // If user not in top 50, fetch their profile to get points
+            try {
+              const userResponse = await get({ end_point: 'users/me', token: true });
+              if (userResponse.success && userResponse.data) {
+                setPoints(userResponse.data.points || 0);
+                setRank(null); // Not in top 50
+              }
+            } catch (error) {
+              console.error('Error fetching user points:', error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching leaderboard:', error);
+        // Fallback: try to get points from user profile
+        try {
+          const userResponse = await get({ end_point: 'users/me', token: true });
+          if (userResponse.success && userResponse.data) {
+            setPoints(userResponse.data.points || 0);
+          }
+        } catch (err) {
+          console.error('Error fetching user points:', err);
+        }
+      }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error fetching referral data:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchWeeklyPoints = async () => {
-    try {
-      // TODO: Replace with Node.js API call
-      // const response = await get({ end_point: 'leaderboard/weekly' });
-      // const currentUserEntry = response.data.find((entry: any) => entry.user_id === currentUserId);
-      // if (currentUserEntry) {
-      //   setWeeklyPoints(currentUserEntry.points || 0);
-      // }
-      
-      // Mock implementation
-      setWeeklyPoints(0);
-    } catch (error) {
-      console.error('Error:', error);
     }
   };
 
@@ -104,8 +124,16 @@ const ReferralCodeCard = () => {
             </p>
           </div>
           <div className="text-right">
-            <div className="text-2xl font-bold text-primary">{weeklyPoints}</div>
-            <div className="text-xs text-muted-foreground">Weekly Points</div>
+            <div className="flex items-center gap-2 justify-end">
+              {rank !== null && (
+                <div className="flex items-center gap-1 text-primary">
+                  <Trophy className="h-5 w-5" />
+                  <span className="text-lg font-bold">#{rank}</span>
+                </div>
+              )}
+            </div>
+            <div className="text-2xl font-bold text-primary mt-1">{points}</div>
+            <div className="text-xs text-muted-foreground">Points</div>
           </div>
         </div>
       </CardHeader>
