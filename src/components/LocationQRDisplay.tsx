@@ -4,7 +4,7 @@ import mediaStreetLogo from "@/assets/media-street-logo.png";
 import { Download, Mail, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-// Supabase removed - will use Node.js API
+import { post } from "@/services/apis";
 
 interface LocationQRDisplayProps {
   locationId: string;
@@ -128,32 +128,36 @@ const LocationQRDisplay = ({ locationId, locationName, locationAddress, onEmailS
           description: "Failed to generate QR code",
           variant: "destructive",
         });
+        setIsSendingEmail(false);
         return;
       }
 
-      // TODO: Replace with Node.js API call
-      // await post({ 
-      //   end_point: 'locations/send-qr', 
-      //   body: {
-      //     locationId,
-      //     locationName,
-      //     locationAddress,
-      //     qrCodeDataUrl: dataUrl,
-      //     requestSticker: false,
-      //   }
-      // });
-
-      toast({
-        title: "Email Sent!",
-        description: "Check your inbox for the QR code",
+      const response = await post({ 
+        end_point: 'locations/send-qr', 
+        body: {
+          locationId,
+          locationName,
+          locationAddress,
+          qrCodeDataUrl: dataUrl,
+          requestSticker: false,
+        },
+        token: true
       });
-      
-      onEmailSent?.();
+
+      if (response.success) {
+        toast({
+          title: "Email Sent!",
+          description: "Check your inbox for the QR code",
+        });
+        onEmailSent?.();
+      } else {
+        throw new Error(response.message || "Failed to send email");
+      }
     } catch (error: any) {
       console.error('Error sending email:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to send email",
+        description: error?.response?.data?.message || error.message || "Failed to send email",
         variant: "destructive",
       });
     } finally {
@@ -171,30 +175,35 @@ const LocationQRDisplay = ({ locationId, locationName, locationAddress, onEmailS
           description: "Failed to generate QR code",
           variant: "destructive",
         });
+        setIsRequestingSticker(false);
         return;
       }
 
-      // TODO: Replace with Node.js API call
-      // await post({ 
-      //   end_point: 'locations/send-qr', 
-      //   body: {
-      //     locationId,
-      //     locationName,
-      //     locationAddress,
-      //     qrCodeDataUrl: dataUrl,
-      //     requestSticker: true,
-      //   }
-      // });
-
-      toast({
-        title: "Sticker Requested!",
-        description: "We'll mail a glossy sticker to your store location",
+      const response = await post({ 
+        end_point: 'locations/send-qr', 
+        body: {
+          locationId,
+          locationName,
+          locationAddress,
+          qrCodeDataUrl: dataUrl,
+          requestSticker: true,
+        },
+        token: true
       });
+
+      if (response.success) {
+        toast({
+          title: "Sticker Requested!",
+          description: "We'll mail a glossy sticker to your store location",
+        });
+      } else {
+        throw new Error(response.message || "Failed to request sticker");
+      }
     } catch (error: any) {
       console.error('Error requesting sticker:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to request sticker",
+        description: error?.response?.data?.message || error.message || "Failed to request sticker",
         variant: "destructive",
       });
     } finally {

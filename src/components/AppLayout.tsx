@@ -29,11 +29,6 @@ import {
   TooltipTrigger 
 } from "@/components/ui/tooltip";
 import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -276,14 +271,14 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
           </div>
           
           <div className="flex items-center space-x-2 sm:space-x-4">
-            {/* Referral Code Tooltip */}
-            <Tooltip>
-              <TooltipTrigger asChild>
+            {/* Referral Code Popover */}
+            <Popover>
+              <PopoverTrigger asChild>
                 <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-7 w-7 sm:h-8 sm:w-8">
                   <Gift className="h-4 w-4 sm:h-5 sm:w-5" />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[280px] sm:max-w-sm">
+              </PopoverTrigger>
+              <PopoverContent align="end" side="bottom" className="max-w-[280px] sm:max-w-sm">
                 <div className="space-y-2">
                   <p className="font-medium text-xs sm:text-sm">Your Referral Code</p>
                   <div className="bg-muted p-2 rounded font-mono text-xs sm:text-sm">
@@ -291,8 +286,8 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                   </div>
                   <p className="text-[10px] sm:text-xs text-muted-foreground">Share this code with other retailers. You'll get 3 points when they sign up!</p>
                 </div>
-              </TooltipContent>
-            </Tooltip>
+              </PopoverContent>
+            </Popover>
 
             {/* Notifications */}
             <Popover>
@@ -361,8 +356,8 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
             </Popover>
 
             {/* User Profile */}
-            <HoverCard>
-              <HoverCardTrigger asChild>
+            <Popover>
+              <PopoverTrigger asChild>
                 <div 
                   className="w-8 h-8 bg-gradient-to-r from-primary to-accent-green rounded-full cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center relative z-50"
                 >
@@ -380,8 +375,8 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                     )}
                   </div>
                 </div>
-              </HoverCardTrigger>
-              <HoverCardContent 
+              </PopoverTrigger>
+              <PopoverContent 
                 align="end" 
                 sideOffset={8}
                 className="w-80 p-0 bg-card border-border shadow-lg z-[100]"
@@ -500,8 +495,8 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                     </div>
                   </div>
                 </div>
-              </HoverCardContent>
-            </HoverCard>
+              </PopoverContent>
+            </Popover>
           </div>
         </header>
 

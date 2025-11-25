@@ -28,8 +28,9 @@ import {
 import { useNavigate } from "react-router-dom";
 // Supabase removed - will use Node.js API
 import { useToast } from "@/hooks/use-toast";
-import { get, deleteApi } from "@/services/apis";
+import { get, deleteApi, patch } from "@/services/apis";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -62,6 +63,7 @@ interface Location {
     call_to_action: string;
   };
   total_redemptions: number;
+  open_offer_only?: boolean;
 }
 
 interface Redemption {
@@ -81,16 +83,11 @@ const Offers = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [offers, setOffers] = useState<Offer[]>([]);
-  const [allOpenOffers, setAllOpenOffers] = useState<any[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingOpenOffers, setLoadingOpenOffers] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
-  const [selectedOpenOffer, setSelectedOpenOffer] = useState<any>(null);
-  const [isOpenOfferDialogOpen, setIsOpenOfferDialogOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("your-offers");
 
   useEffect(() => {
     // Fetch locations first, then offers (so locations are available for mapping)
@@ -98,64 +95,7 @@ const Offers = () => {
       fetchOffers();
     });
     fetchRedemptions();
-    fetchAllOpenOffers();
   }, []);
-
-  const fetchAllOpenOffers = async () => {
-    try {
-      setLoadingOpenOffers(true);
-      // Fetch all open offers from all retailers (optionally authenticated to exclude own offers)
-      const response = await get({ 
-        end_point: 'offers/open',
-        token: true // Send token so backend can exclude own offers and set subscription status
-      });
-      
-      if (response.success && response.data) {
-        // Backend already excludes current user's offers when token is sent, so no need to filter again
-        // Format open offers data
-        const formattedOpenOffers = response.data
-          .map((offer: any) => {
-            const offerLocations = Array.isArray(offer.locations) 
-              ? offer.locations.map((loc: any) => {
-                  if (loc && typeof loc === 'object' && loc._id) {
-                    return {
-                      name: loc.name || '',
-                      address: loc.address || ''
-                    };
-                  }
-                  return { name: 'Unknown', address: '' };
-                })
-              : [];
-
-            return {
-              id: offer._id?.toString() || offer.id?.toString(),
-              call_to_action: offer.callToAction || offer.call_to_action || '',
-              locations: offerLocations,
-              created_at: offer.createdAt || offer.created_at || new Date().toISOString(),
-              is_active: offer.isActive !== undefined ? offer.isActive : (offer.is_active !== undefined ? offer.is_active : true),
-              redemption_count: offer.redemptionCount || offer.redemption_count || 0,
-              is_open_offer: true,
-              retailer_name: offer.user?.fullName || 'Unknown Retailer',
-              retailer_email: offer.user?.email || '',
-              offer_image: offer.offerImage || offer.offer_image || null,
-              is_subscribed: offer.isSubscribed || offer.is_subscribed || false,
-              isSubscribed: offer.isSubscribed || offer.is_subscribed || false,
-              is_subscribed_by_anyone: offer.isSubscribedByAnyone || offer.is_subscribed_by_anyone || false,
-              isSubscribedByAnyone: offer.isSubscribedByAnyone || offer.is_subscribed_by_anyone || false
-            };
-          });
-        
-        setAllOpenOffers(formattedOpenOffers);
-      } else {
-        setAllOpenOffers([]);
-      }
-    } catch (error) {
-      console.error('Error fetching all open offers:', error);
-      setAllOpenOffers([]);
-    } finally {
-      setLoadingOpenOffers(false);
-    }
-  };
 
   const fetchLocations = async () => {
     try {
@@ -166,7 +106,12 @@ const Offers = () => {
       });
       
       if (response.success && response.data) {
-        setLocations(response.data);
+        const mappedLocations = response.data.map((location: any) => ({
+          ...location,
+          id: location._id?.toString() || location.id?.toString() || location.id,
+          open_offer_only: location.open_offer_only ?? location.openOfferOnly ?? false
+        }));
+        setLocations(mappedLocations);
         return;
       }
     } catch (error) {
@@ -382,6 +327,45 @@ const Offers = () => {
     });
   };
 
+  const handleToggleOpenOfferOnly = async (locationId: string, checked: boolean) => {
+    try {
+      const response = await patch({
+        end_point: `locations/${locationId}`,
+        body: { open_offer_only: checked },
+        token: true
+      });
+
+      if (!response.success) {
+        throw new Error(response.message || "Failed to update location");
+      }
+
+      setLocations(prev =>
+        prev.map(location =>
+          location.id === locationId
+            ? { ...location, open_offer_only: checked }
+            : location
+        )
+      );
+
+      toast({
+        title: "Location Updated",
+        description: checked
+          ? "This location is now dedicated to Open Offers."
+          : "This location can now be used for regular offers.",
+      });
+    } catch (error: any) {
+      console.error("Error updating location:", error);
+      toast({
+        title: "Error",
+        description:
+          error?.response?.data?.message ||
+          error?.message ||
+          "Failed to update location eligibility",
+        variant: "destructive",
+      });
+    }
+  };
+
   const fetchRedemptions = async () => {
     try {
       // Fetch redemptions from backend API
@@ -449,26 +433,23 @@ const Offers = () => {
   return (
     <AppLayout pageTitle="Your Offers" pageIcon={<Zap className="h-5 w-5 text-primary" />}>
       <div className="space-y-8">
-         {/* Header */}
-         <div className="flex items-center justify-between">
-           <div>
-             <p className="text-muted-foreground">Manage your promotional offers and track redemptions</p>
-           </div>
-           <Button onClick={() => navigate("/offers/create")} className="flex items-center gap-2">
-             <Plus className="h-4 w-4" />
-             Create New Offer
-           </Button>
-         </div>
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-muted-foreground">Manage your promotional offers and track redemptions</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={() => navigate("/openoffer")}>
+              Browse Open Offers
+            </Button>
+            <Button onClick={() => navigate("/offers/create")} className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Create New Offer
+            </Button>
+          </div>
+        </div>
 
-         {/* Main Tabs - Your Offers and Open Offers */}
-         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-           <TabsList className="grid w-full grid-cols-2 max-w-md">
-             <TabsTrigger value="your-offers">Your Offers</TabsTrigger>
-             <TabsTrigger value="open-offers">Open Offers</TabsTrigger>
-           </TabsList>
-
-           {/* Your Offers Tab */}
-           <TabsContent value="your-offers" className="space-y-8 mt-6">
+        <div className="space-y-8 mt-6">
 
              {/* Location Management */}
              <Card>
@@ -513,6 +494,31 @@ const Offers = () => {
                     <div className="bg-muted/30 rounded-lg p-3">
                       <div className="text-2xl font-bold text-primary">{location.total_redemptions}</div>
                       <p className="text-xs text-muted-foreground">Total Redemptions</p>
+                    </div>
+
+                    {/* Open Offer Eligibility */}
+                    <div className="flex items-start gap-2 p-3 border rounded-lg bg-muted/20">
+                      <Checkbox
+                        id={`open-offer-only-${location.id}`}
+                        checked={!!location.open_offer_only}
+                        onCheckedChange={(checked) =>
+                          handleToggleOpenOfferOnly(location.id, Boolean(checked))
+                        }
+                        className="mt-1"
+                      />
+                      <div>
+                        <Label
+                          htmlFor={`open-offer-only-${location.id}`}
+                          className="text-sm font-medium cursor-pointer"
+                        >
+                          Dedicate this location to Open Offers
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {location.open_offer_only
+                            ? "This location will only appear when creating Open Offers."
+                            : "This location can be used for regular offers. Enable to reserve it for Open Offers only."}
+                        </p>
+                      </div>
                     </div>
                     
                     {/* Current Offer or Selection */}
@@ -835,287 +841,7 @@ const Offers = () => {
              </DialogContent>
              </Dialog>
 
-             {/* Open Offer Details Dialog */}
-             <Dialog open={isOpenOfferDialogOpen} onOpenChange={setIsOpenOfferDialogOpen}>
-          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Zap className="h-5 w-5 text-primary" />
-                Open Offer Details
-              </DialogTitle>
-              <DialogDescription>
-                View details of this open offer from {selectedOpenOffer?.retailer_name || 'Unknown Retailer'}
-              </DialogDescription>
-            </DialogHeader>
-            
-            {selectedOpenOffer && (
-              <div className="space-y-6 py-4">
-                {/* Offer Image */}
-                {selectedOpenOffer.offer_image && (
-                  <div className="w-full rounded-lg overflow-hidden border">
-                    <img 
-                      src={selectedOpenOffer.offer_image} 
-                      alt={selectedOpenOffer.call_to_action}
-                      className="w-full h-auto object-contain"
-                    />
-                  </div>
-                )}
-                
-                {/* Offer Details */}
-                <div className="space-y-4">
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Offer</Label>
-                    <p className="text-lg font-semibold mt-1">{selectedOpenOffer.call_to_action}</p>
-                  </div>
-                  
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Retailer</Label>
-                    <div className="mt-1">
-                      <p className="font-medium">{selectedOpenOffer.retailer_name}</p>
-                      <p className="text-sm text-muted-foreground">{selectedOpenOffer.retailer_email}</p>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Offer Type</Label>
-                    <div className="mt-1">
-                      <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
-                        Open Offer
-                      </Badge>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Locations</Label>
-                    <div className="mt-2 space-y-2">
-                      {selectedOpenOffer.locations && selectedOpenOffer.locations.length > 0 ? (
-                        selectedOpenOffer.locations.map((location: any, index: number) => (
-                          <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-                            <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <div>
-                              <p className="font-medium">{location.name}</p>
-                              <p className="text-sm text-muted-foreground">{location.address}</p>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No locations specified</p>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Subscription Status</Label>
-                    <div className="mt-1">
-                      {selectedOpenOffer.is_subscribed || selectedOpenOffer.isSubscribed ? (
-                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                          You are subscribed
-                        </Badge>
-                      ) : selectedOpenOffer.is_subscribed_by_anyone || selectedOpenOffer.isSubscribedByAnyone ? (
-                        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                          Already subscribed by another retailer
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
-                          Available for subscription
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium text-muted-foreground">Redemptions</Label>
-                      <p className="text-lg font-semibold mt-1">{selectedOpenOffer.redemption_count || 0}</p>
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium text-muted-foreground">Created</Label>
-                      <p className="text-sm mt-1">
-                        {new Date(selectedOpenOffer.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-           </TabsContent>
-
-           {/* Open Offers Tab - All Retailers' Open Offers */}
-           <TabsContent value="open-offers" className="space-y-8 mt-6">
-             <Card>
-               <CardHeader>
-                 <CardTitle className="flex items-center gap-2">
-                   <Zap className="h-5 w-5 text-primary" />
-                   All Retailers' Open Offers
-                 </CardTitle>
-                 <p className="text-muted-foreground">
-                   Browse open offers from all retailers. These offers are available to all retailers and can be displayed at your locations.
-                 </p>
-               </CardHeader>
-               <CardContent>
-                 {loadingOpenOffers ? (
-                   <div className="text-center py-8">
-                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                     <p className="mt-2 text-muted-foreground">Loading open offers...</p>
-                   </div>
-                 ) : allOpenOffers.length === 0 ? (
-                   <div className="text-center py-8">
-                     <p className="text-muted-foreground mb-4">No open offers available from other retailers yet.</p>
-                     <p className="text-sm text-muted-foreground">
-                       Open offers will appear here when retailers enable them for their stores.
-                     </p>
-                   </div>
-                 ) : (
-                   <Table>
-                     <TableHeader>
-                       <TableRow>
-                         <TableHead>Offer</TableHead>
-                         <TableHead>Retailer</TableHead>
-                         <TableHead>Locations</TableHead>
-                         <TableHead>Status</TableHead>
-                         <TableHead>Redemptions</TableHead>
-                         <TableHead>Created</TableHead>
-                         <TableHead>Actions</TableHead>
-                       </TableRow>
-                     </TableHeader>
-                     <TableBody>
-                       {allOpenOffers.map((offer) => (
-                         <TableRow key={offer.id}>
-                           <TableCell className="font-medium">
-                             {offer.call_to_action}
-                           </TableCell>
-                           <TableCell>
-                             <div>
-                               <p className="font-medium">{offer.retailer_name}</p>
-                               <p className="text-xs text-muted-foreground">{offer.retailer_email}</p>
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             <div className="space-y-2">
-                               {offer.locations.length === 0 ? (
-                                 <p className="text-sm text-muted-foreground">No locations</p>
-                               ) : offer.locations.length === 1 ? (
-                                 <div>
-                                   <p className="font-medium">{offer.locations[0].name}</p>
-                                   <p className="text-sm text-muted-foreground">{offer.locations[0].address}</p>
-                                 </div>
-                               ) : (
-                                 <div>
-                                   <button
-                                     onClick={() => {
-                                       setSelectedOffer(offer);
-                                       setIsLocationDialogOpen(true);
-                                     }}
-                                     className="font-medium text-primary hover:text-primary/80 text-left"
-                                   >
-                                     {offer.locations.length} locations
-                                   </button>
-                                   <div className="mt-1 space-y-1">
-                                     {offer.locations.slice(0, 2).map((location: any, index: number) => (
-                                       <p key={index} className="text-xs text-muted-foreground">
-                                         {location.name}
-                                       </p>
-                                     ))}
-                                     {offer.locations.length > 2 && (
-                                       <p className="text-xs text-muted-foreground">
-                                         +{offer.locations.length - 2} more
-                                       </p>
-                                     )}
-                                   </div>
-                                 </div>
-                               )}
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
-                               Open Offer
-                             </Badge>
-                           </TableCell>
-                           <TableCell>
-                             <span className="font-bold text-primary">{offer.redemption_count}</span>
-                           </TableCell>
-                           <TableCell>
-                             {new Date(offer.created_at).toLocaleDateString()}
-                           </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                onClick={() => {
-                                  setSelectedOpenOffer(offer);
-                                  setIsOpenOfferDialogOpen(true);
-                                }}
-                                title="View Offer Details"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              {offer.is_subscribed || offer.isSubscribed ? (
-                                <Button 
-                                  variant="outline" 
-                                  size="sm"
-                                  disabled
-                                >
-                                  Subscribed
-                                </Button>
-                              ) : (offer.is_subscribed_by_anyone || offer.isSubscribedByAnyone) ? (
-                                <Button 
-                                  variant="outline" 
-                                  size="sm"
-                                  disabled
-                                  title="This offer has already been subscribed by another retailer"
-                                >
-                                  Already Subscribed
-                                </Button>
-                              ) : (
-                                <Button 
-                                  variant="default" 
-                                  size="sm"
-                                  onClick={async () => {
-                                    // Subscribe to this open offer
-                                    try {
-                                      const { post } = await import("@/services/apis");
-                                      const response = await post({
-                                        end_point: 'partners/subscribe-open-offer',
-                                        body: { offer_id: offer.id },
-                                        token: true
-                                      });
-                                      
-                                      if (response.success) {
-                                        toast({
-                                          title: "Subscribed!",
-                                          description: `You've subscribed to ${offer.retailer_name}'s open offer. It will now appear in your carousel.`,
-                                        });
-                                        // Refresh the offers list
-                                        window.location.reload();
-                                      } else {
-                                        throw new Error(response.message || 'Failed to subscribe');
-                                      }
-                                    } catch (error: any) {
-                                      toast({
-                                        title: "Error",
-                                        description: error?.response?.data?.message || error?.message || "Failed to subscribe to offer",
-                                        variant: "destructive",
-                                      });
-                                    }
-                                  }}
-                                >
-                                  Subscribe
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                         </TableRow>
-                       ))}
-                     </TableBody>
-                   </Table>
-                 )}
-               </CardContent>
-             </Card>
-           </TabsContent>
-         </Tabs>
+        </div>
       </div>
     </AppLayout>
   );

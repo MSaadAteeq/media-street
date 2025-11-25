@@ -21,6 +21,7 @@ interface Location {
   id: string;
   name: string;
   address: string;
+  openOfferOnly?: boolean;
 }
 
 const OfferCreate = () => {
@@ -177,6 +178,16 @@ const OfferCreate = () => {
     fetchLocations();
   }, []);
 
+  useEffect(() => {
+    setSelectedLocations((prev) =>
+      prev.filter((id) => {
+        const location = locations.find((loc) => loc.id === id);
+        if (!location) return false;
+        return isOpenOffer ? location.openOfferOnly : !location.openOfferOnly;
+      })
+    );
+  }, [isOpenOffer, locations]);
+
   const fetchLocations = async () => {
     try {
       // Fetch locations from backend API
@@ -186,7 +197,13 @@ const OfferCreate = () => {
       });
       
       if (response.success && response.data) {
-        setLocations(response.data);
+        const mappedLocations = response.data.map((location: any) => ({
+          id: location._id?.toString() || location.id?.toString() || location.id,
+          name: location.name,
+          address: location.address,
+          openOfferOnly: location.open_offer_only ?? location.openOfferOnly ?? false
+        }));
+        setLocations(mappedLocations);
         setLoading(false);
         return;
       }
@@ -560,6 +577,10 @@ const OfferCreate = () => {
     );
   }
 
+  const availableLocations = isOpenOffer
+    ? locations.filter((location) => location.openOfferOnly)
+    : locations.filter((location) => !location.openOfferOnly);
+
   return (
     <AppLayout pageTitle="Create Offer" pageIcon={<Zap className="h-5 w-5 text-primary" />}>
       <div className="max-w-6xl mx-auto">
@@ -733,8 +754,8 @@ const OfferCreate = () => {
                   <Label htmlFor="location">Select Your Retail Locations *</Label>
                   <p className="text-sm text-muted-foreground">
                     {isOpenOffer 
-                      ? "Choose which of your retail locations will display this open offer. The offer will also be available to all other retailers."
-                      : "Choose which retail locations this offer is for. This offer will be available for partnership with other retailers."}
+                      ? "Only locations marked as 'Open Offer only' are displayed. You can configure this in the Offers screen."
+                      : "Choose which retail locations this offer is for. Locations reserved for Open Offers are hidden."}
                   </p>
                   
                   <Popover>
@@ -743,7 +764,7 @@ const OfferCreate = () => {
                         variant="outline"
                         role="combobox"
                         className="w-full justify-between"
-                        disabled={loading}
+                        disabled={loading || availableLocations.length === 0}
                       >
                         {loading
                           ? "Loading locations..."
@@ -755,17 +776,24 @@ const OfferCreate = () => {
                     </PopoverTrigger>
                     <PopoverContent className="w-[400px] p-0 bg-background border border-border shadow-lg z-50" align="start">
                       <div className="p-4">
-                        {locations.length === 0 ? (
-                          <div className="text-center py-4 text-sm text-muted-foreground">
-                            No locations available
+                        {availableLocations.length === 0 ? (
+                          <div className="text-center py-4 text-sm text-muted-foreground space-y-2">
+                            <p>
+                              {isOpenOffer
+                                ? "No locations are currently marked as Open Offer only."
+                                : "All of your locations are currently dedicated to Open Offers."}
+                            </p>
+                            <p className="text-xs">
+                              Visit the <Button variant="link" className="p-0 h-auto text-primary" onClick={() => navigate("/offers")}>Offers</Button> screen to adjust location eligibility.
+                            </p>
                           </div>
                         ) : (
                           <>
                             <div className="mb-2 text-xs font-medium text-muted-foreground">
-                              {locations.length} location{locations.length !== 1 ? 's' : ''} available
+                              {availableLocations.length} location{availableLocations.length !== 1 ? 's' : ''} available
                             </div>
                             <div className="space-y-2 max-h-64 overflow-y-auto">
-                              {locations.map((location) => (
+                              {availableLocations.map((location) => (
                                 <div key={location.id} className="flex items-start space-x-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
                                   <Checkbox
                                     id={location.id}

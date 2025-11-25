@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 // import { Toaster } from "@/components/ui/toaster";
@@ -750,25 +750,37 @@ const Dashboard = () => {
               <span className="text-foreground font-medium">Dashboard</span>
             </div>
             <div className="flex items-center space-x-4">
-              <Tooltip>
-                <TooltipTrigger asChild>
+              <Popover>
+                <PopoverTrigger asChild>
                   <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8">
                     <Gift className="h-5 w-5" />
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-sm">
+                </PopoverTrigger>
+                <PopoverContent align="end" side="bottom" className="max-w-sm">
                   <div className="space-y-2">
                     <p className="font-medium">Your Retailer Referral Code</p>
                     <div className="bg-muted p-2 rounded font-mono text-sm">{currentUser?.referralCode || "Loading..."}</div>
                     <p className="text-xs text-muted-foreground">Share this code with retailers. You'll get 3 points when they sign up using your code!</p>
                   </div>
-                </TooltipContent>
-              </Tooltip>
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8">
-                <Bell className="h-5 w-5" />
-              </Button>
-              <HoverCard>
-                <HoverCardTrigger asChild>
+                </PopoverContent>
+              </Popover>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 relative">
+                    <Bell className="h-5 w-5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-96 p-0">
+                  <div className="p-4 border-b border-border">
+                    <h3 className="font-semibold text-foreground">Notifications</h3>
+                  </div>
+                  <div className="p-8 text-center text-muted-foreground">
+                    No notifications yet
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Popover>
+                <PopoverTrigger asChild>
                   <div className="w-8 h-8 bg-gradient-to-r from-primary to-accent-green rounded-full cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center relative z-50">
                     <div className="w-6 h-6 bg-gradient-to-r from-primary to-accent-green rounded-full border-2 border-background">
                       {currentUser?.fullName ? (
@@ -780,8 +792,8 @@ const Dashboard = () => {
                       )}
                     </div>
                   </div>
-                </HoverCardTrigger>
-                <HoverCardContent align="end" sideOffset={8} className="w-80 p-0 bg-card border-border shadow-lg z-[100]">
+                </PopoverTrigger>
+                <PopoverContent align="end" sideOffset={8} className="w-80 p-0 bg-card border-border shadow-lg z-[100]">
                   <div className="p-4 space-y-4">
                     {/* Account Section */}
                     <div className="space-y-3">
@@ -839,8 +851,8 @@ const Dashboard = () => {
                       </button>
                     </div>
                   </div>
-                </HoverCardContent>
-              </HoverCard>
+                </PopoverContent>
+              </Popover>
             </div>
           </header>
 
