@@ -55,12 +55,12 @@ const Carousel = () => {
     try {
       setLoading(true);
 
-      // Fetch location from backend API
+      // Fetch location from backend API (public endpoint for QR codes)
       const { get } = await import("@/services/apis");
       let locationData: Location | null = null;
       try {
         const locationResponse = await get({ 
-          end_point: `locations/${locationId}`,
+          end_point: `locations/public/${locationId}`,
           token: false // Public endpoint for QR codes
         });
         
