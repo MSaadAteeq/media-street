@@ -13,7 +13,7 @@ const HowItWorks = () => {
     },
     {
       icon: Store,
-      step: "02", 
+      step: "02",
       title: "Find Partners",
       description: "Search for other nearby retailers and send a partner request. When accepted, you'll begin running their offer and they'll begin running yours!",
       highlight: "Strategic placement"
@@ -21,7 +21,7 @@ const HowItWorks = () => {
     {
       icon: TrendingUp,
       step: "03",
-      title: "Track Performance", 
+      title: "Track Performance",
       description: "See how your offers are performing in real-time by views, scans and offer redemptions. Renew partnerships performing the best.",
       highlight: "Performance driven"
     },
@@ -62,7 +62,7 @@ const HowItWorks = () => {
                     {step.step}
                   </Badge>
                 </div>
-                
+
                 <div className="space-y-3">
                   <h3 className="text-xl font-semibold text-foreground">
                     {step.title}
@@ -75,7 +75,7 @@ const HowItWorks = () => {
                   </Badge>
                 </div>
               </CardContent>
-              
+
               {/* Connection Line */}
               {index < steps.length - 1 && (
                 <div className="hidden lg:block absolute top-1/2 -right-4 w-8 h-px bg-border"></div>

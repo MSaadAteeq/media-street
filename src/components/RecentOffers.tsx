@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { MapPin, Sparkles, QrCode } from "lucide-react";
-// Supabase removed - will use Node.js API
+import { get } from "@/services/apis";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { QRCodeSVG } from "qrcode.react";
 import coffeeCampaign from "@/assets/pos-campaign-coffee.jpg";
@@ -93,18 +93,22 @@ const RecentOffers = () => {
   const fetchRecentOffers = async (location?: string) => {
     try {
       setLoading(true);
-      // TODO: Replace with Node.js API call
-      // const response = await get({ end_point: 'offers/recent' });
-      // let filteredData = response.data || [];
+      const response = await get({ end_point: 'offers/recent', token: false });
       
-      // Use sample data for now
-      let filteredData = sampleCampaigns;
-      if (location) {
-        filteredData = sampleCampaigns.filter((offer: any) => {
+      let filteredData = response.success && response.data ? response.data : [];
+      
+      // Filter by location if search is provided
+      if (location && filteredData.length > 0) {
+        filteredData = filteredData.filter((offer: any) => {
           const searchLower = location.toLowerCase();
-          return offer.locations.name?.toLowerCase().includes(searchLower) || 
-                 offer.locations.address?.toLowerCase().includes(searchLower);
+          return offer.locations?.name?.toLowerCase().includes(searchLower) || 
+                 offer.locations?.address?.toLowerCase().includes(searchLower);
         });
+      }
+      
+      // Fallback to sample data if API fails or returns empty
+      if (filteredData.length === 0) {
+        filteredData = sampleCampaigns;
       }
       
       setOffers(filteredData);

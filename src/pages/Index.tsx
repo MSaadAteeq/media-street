@@ -1,5 +1,5 @@
 import Hero from "@/components/Hero";
-import HowItWorks from "@/components/HowItWorks"; 
+import HowItWorks from "@/components/HowItWorks";
 import Benefits from "@/components/Benefits";
 import POSAdvertising from "@/components/QRPlacement";
 import OfferBuilderDemo from "@/components/OfferBuilderDemo";
@@ -12,6 +12,7 @@ import RecentOffers from "@/components/RecentOffers";
 import Footer from "@/components/Footer";
 import CalendlyWidget from "@/components/CalendlyWidget";
 import CookieConsent from "@/components/CookieConsent";
+import PartnershipAccountability from "@/components/PartnershipAccountability";
 
 const Index = () => {
   return (
@@ -21,6 +22,7 @@ const Index = () => {
       <RecentOffers />
       <HowItWorks />
       <OfferBuilderDemo />
+      <PartnershipAccountability />
       <Benefits />
       <POSAdvertising />
       <EventSponsorshipCallout />

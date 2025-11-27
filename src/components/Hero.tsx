@@ -6,99 +6,78 @@ import RequestInviteForm from "@/components/RequestInviteForm";
 import { Link } from "react-router-dom";
 const Hero = () => {
   return <section className="min-h-screen gradient-subtle flex flex-col">
-      {/* Navigation Header */}
-      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-6">
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-nowrap justify-between items-center gap-2 sm:gap-4">
-            <Logo size="xl" showText={true} />
-            <div className="flex items-center gap-2 sm:gap-3">
-              <Link to="/advertiser/signup?tab=signup">
-                <Button variant="default" size="sm" className="gap-1 sm:gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-xs sm:text-sm px-2 sm:px-4">
-                  <Megaphone className="h-3 w-3 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline">Advertise</span>
-                </Button>
-              </Link>
-              <Link to="/login">
-                <Button variant="outline" size="sm" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
-                  <LogIn className="h-3 w-3 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline">Login</span>
-                </Button>
-              </Link>
-            </div>
-          </div>
-          
-          {/* Quick Links */}
-          <div className="flex flex-wrap justify-center gap-3 sm:gap-4 text-sm sm:text-base">
-            <a href="#build-offer" className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors">
-              <QrCode className="h-4 w-4" />
-              <span><span className="font-semibold">Retailer:</span> Build your offer</span>
-            </a>
-            <span className="text-muted-foreground/50">|</span>
-            <a href="#search-offers" className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors">
-              <Heart className="h-4 w-4" />
-              <span><span className="font-semibold">Consumers:</span> Search nearby offers</span>
-            </a>
-          </div>
+    {/* Navigation Header */}
+    <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-6">
+      <div className="flex flex-nowrap justify-between items-center gap-2 sm:gap-4">
+        <Logo size="xl" showText={true} />
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link to="/login">
+            <Button variant="outline" size="sm" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
+              <LogIn className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Login</span>
+            </Button>
+          </Link>
         </div>
       </div>
-      <div className="flex-1 flex items-center">
-        <div className="container mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-20">
-          <div className="max-w-6xl mx-auto space-y-8 sm:space-y-10 md:space-y-12">
-            {/* Centered Text Content */}
-            <div className="text-center space-y-6 sm:space-y-8 animate-fade-in">
-              <div className="space-y-3 sm:space-y-4">
-                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold leading-tight text-gray-900 dark:text-foreground px-2">
-                  <span className="bg-gradient-to-r from-blue-600 to-purple-700 bg-clip-text text-transparent font-extrabold">Partner with nearby retailers to get <span className="font-black">new customers</span>.</span>
-                </h1>
-                <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed px-4">
-                  <span className="inline-flex items-center gap-2">
-                    <span className="relative inline-block animate-scale-in">
-                      <span className="text-4xl sm:text-5xl md:text-6xl font-black bg-gradient-to-r from-accent-green via-primary to-accent-green bg-clip-text text-transparent animate-pulse">
-                        85%
-                      </span>
-                      <span className="absolute -inset-1 bg-gradient-to-r from-accent-green/20 to-primary/20 blur-xl -z-10 animate-pulse"></span>
+    </div>
+    <div className="flex-1 flex items-center">
+      <div className="container mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-20">
+        <div className="max-w-6xl mx-auto space-y-8 sm:space-y-10 md:space-y-12">
+          {/* Centered Text Content */}
+          <div className="text-center space-y-6 sm:space-y-8 animate-fade-in">
+            <div className="space-y-3 sm:space-y-4">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold leading-tight text-gray-900 dark:text-foreground px-2">
+                <span className="bg-gradient-to-r from-blue-600 to-purple-700 bg-clip-text text-transparent font-extrabold">Partner with nearby retailers to get <span className="font-black">new customers</span>.</span>
+              </h1>
+              <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed px-4">
+                <span className="inline-flex items-center gap-2">
+                  <span className="relative inline-block animate-scale-in">
+                    <span className="text-4xl sm:text-5xl md:text-6xl font-black bg-gradient-to-r from-accent-green via-primary to-accent-green bg-clip-text text-transparent animate-pulse">
+                      85%
                     </span>
+                    <span className="absolute -inset-1 bg-gradient-to-r from-accent-green/20 to-primary/20 blur-xl -z-10 animate-pulse"></span>
                   </span>
-                  {" "}of transactions still happen in real, live stores. We help physical retailers work together with easy and honest x-promos.
-                </p>
-              </div>
-              
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <RequestInviteForm>
-                  <Button variant="hero" size="xl" className="group">
-                    Join as Retailer
-                    <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
-                  </Button>
-                </RequestInviteForm>
-                <a href="https://youtube.com/@media-street-ads" target="_blank" rel="noopener noreferrer">
-                  <Button variant="cta-outline" size="xl">
-                    View Demo
-                  </Button>
-                </a>
-              </div>
+                </span>
+                {" "}of transactions still happen in real, live stores. We help physical retailers work together with easy and honest x-promos.
+              </p>
             </div>
-            
-            {/* Image Below */}
-            <div className="relative animate-scale-in">
-              <div className="relative rounded-2xl overflow-hidden shadow-strong">
-                <img src={heroImage} alt="Customer checking out at a Clover Station Duo POS terminal in a modern retail shop" className="w-full h-auto" />
-                <div className="absolute inset-0 gradient-hero opacity-40"></div>
-              </div>
-              
-              {/* Floating Stats Cards */}
-              <div className="absolute -top-2 sm:-top-4 -right-2 sm:-right-4 bg-card p-2 sm:p-3 md:p-4 rounded-lg shadow-medium border animate-slide-up">
-                <div className="text-lg sm:text-xl md:text-2xl font-bold text-accent-green">2,847</div>
-                <div className="text-xs sm:text-sm text-muted-foreground">Referrals Made</div>
-              </div>
-              
-              <div className="absolute -bottom-2 sm:-bottom-4 -left-2 sm:-left-4 bg-card p-2 sm:p-3 md:p-4 rounded-lg shadow-medium border animate-slide-up">
-                <div className="text-lg sm:text-xl md:text-2xl font-bold text-primary">126</div>
-                <div className="text-xs sm:text-sm text-muted-foreground">Participating Stores</div>
-              </div>
+
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <RequestInviteForm>
+                <Button variant="hero" size="xl" className="group">
+                  Build Your Offer
+                  <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
+                </Button>
+              </RequestInviteForm>
+              <a href="https://youtube.com/@media-street-ads" target="_blank" rel="noopener noreferrer">
+                <Button variant="cta-outline" size="xl">
+                  View Demo
+                </Button>
+              </a>
+            </div>
+          </div>
+
+          {/* Image Below */}
+          <div className="relative animate-scale-in">
+            <div className="relative rounded-2xl overflow-hidden shadow-strong">
+              <img src={heroImage} alt="Customer checking out at a Clover Station Duo POS terminal in a modern retail shop" className="w-full h-auto" />
+              <div className="absolute inset-0 gradient-hero opacity-40"></div>
+            </div>
+
+            {/* Floating Stats Cards */}
+            <div className="absolute -top-2 sm:-top-4 -right-2 sm:-right-4 bg-card p-2 sm:p-3 md:p-4 rounded-lg shadow-medium border animate-slide-up">
+              <div className="text-lg sm:text-xl md:text-2xl font-bold text-accent-green">2,847</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">Referrals Made</div>
+            </div>
+
+            <div className="absolute -bottom-2 sm:-bottom-4 -left-2 sm:-left-4 bg-card p-2 sm:p-3 md:p-4 rounded-lg shadow-medium border animate-slide-up">
+              <div className="text-lg sm:text-xl md:text-2xl font-bold text-primary">126</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">Participating Stores</div>
             </div>
           </div>
         </div>
       </div>
-    </section>;
+    </div>
+  </section>;
 };
 export default Hero;
