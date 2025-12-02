@@ -9,14 +9,14 @@ const Pricing = () => {
       <div className="container mx-auto px-4 sm:px-6">
         <div className="text-center mb-10 sm:mb-12 md:mb-16 space-y-3 sm:space-y-4">
           <Badge variant="secondary" className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium">
-            Transparent Pricing
+            The Network
           </Badge>
           <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground px-2">
-            Simple,
-            <span className="gradient-hero bg-clip-text text-transparent"> Honest Pricing</span>
+            Join
+            <span className="gradient-hero bg-clip-text text-transparent"> The Network</span>
           </h2>
           <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto px-4">
-            Pay for active partnerships that drive results
+            Connect with retailers and businesses in your area
           </p>
         </div>
 
@@ -26,16 +26,16 @@ const Pricing = () => {
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
               <Badge variant="default" className="bg-accent-green text-accent-green-foreground px-4 py-2">
                 <Star className="h-4 w-4 mr-1" />
-                Open Offer
+                Individual Partnerships
               </Badge>
             </div>
             
             <CardContent className="p-8 text-center space-y-6">
-              <div className="space-y-2">
+              {/* <div className="space-y-2">
                 <div className="text-4xl font-bold text-foreground">
                   $7<span className="text-lg text-muted-foreground"> per partnership / mo</span>
                 </div>
-              </div>
+              </div> */}
 
               <div className="space-y-4">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent-green/10 border border-accent-green/30">
@@ -45,23 +45,27 @@ const Pricing = () => {
                 <ul className="space-y-3 text-left">
                   <li className="flex items-center gap-3">
                     <Check className="h-5 w-5 text-accent-green" />
-                    <span className="text-muted-foreground">Build an offer and partner with retailers </span>
+                    <span className="text-muted-foreground">Build your offer with AI</span>
                   </li>
                   <li className="flex items-center gap-3">
                     <Check className="h-5 w-5 text-accent-green" />
-                    <span className="text-muted-foreground">Real-time partner performance tracking </span>
+                    <span className="text-muted-foreground">Team up with other nearby retailers</span>
                   </li>
                   <li className="flex items-center gap-3">
                     <Check className="h-5 w-5 text-accent-green" />
-                    <span className="text-muted-foreground">Proprietary AI for partner discovery</span>
+                    <span className="text-muted-foreground">Real-time partner performance tracking</span>
                   </li>
                   <li className="flex items-center gap-3">
                     <Check className="h-5 w-5 text-accent-green" />
-                    <span className="text-muted-foreground">Pay only for active partnerships</span>
+                    <span className="text-muted-foreground">Partner messaging</span>
                   </li>
                   <li className="flex items-center gap-3">
                     <Check className="h-5 w-5 text-accent-green" />
-                    <span className="text-muted-foreground">Cancel anytime</span>
+                    <span className="text-muted-foreground">Estimated ROI calculation</span>
+                  </li>
+                  <li className="flex items-center gap-3">
+                    <Check className="h-5 w-5 text-accent-green" />
+                    <span className="text-muted-foreground">Cancel partnerships any time</span>
                   </li>
                 </ul>
               </div>
@@ -73,7 +77,7 @@ const Pricing = () => {
                   </Button>
                 </RequestInviteForm>
                 <p className="text-sm text-muted-foreground mt-3">
-                  No setup fees • No contracts • Free trial partnership
+                  Minimal setup required • No contracts • Free
                 </p>
               </div>
             </CardContent>
@@ -84,16 +88,16 @@ const Pricing = () => {
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
               <Badge variant="default" className="bg-accent-green text-accent-green-foreground px-4 py-2">
                 <Star className="h-4 w-4 mr-1" />
-                OpenOffer
+                Open Offer
               </Badge>
             </div>
             
             <CardContent className="p-8 text-center space-y-6">
-              <div className="space-y-2">
+              {/* <div className="space-y-2">
                 <div className="text-4xl font-bold text-foreground">
                   $20<span className="text-lg text-muted-foreground"> / mo</span>
                 </div>
-              </div>
+              </div> */}
 
               <div className="space-y-4">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent-green/10 border border-accent-green/30">
@@ -111,7 +115,7 @@ const Pricing = () => {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="text-muted-foreground inline-flex items-center gap-1.5 cursor-help">
-                            AI custom optimization
+                            AI offer schedulling optimization
                             <Info className="h-4 w-4" />
                           </span>
                         </TooltipTrigger>
@@ -123,7 +127,7 @@ const Pricing = () => {
                   </li>
                   <li className="flex items-center gap-3">
                     <Check className="h-5 w-5 text-accent-green" />
-                    <span className="text-muted-foreground">Your offer automatically at nearby retailers</span>
+                    <span className="text-muted-foreground">Your offer in nearby retailers</span>
                   </li>
                   <li className="flex items-center gap-3">
                     <Check className="h-5 w-5 text-accent-green" />
@@ -133,13 +137,17 @@ const Pricing = () => {
                     <Check className="h-5 w-5 text-accent-green" />
                     <span className="text-muted-foreground">Cancel anytime</span>
                   </li>
+                  <li className="flex items-center gap-3">
+                    <Check className="h-5 w-5 text-accent-green" />
+                    <span className="text-muted-foreground">Free if you promote the network in-store</span>
+                  </li>
                 </ul>
               </div>
 
               <div className="pt-4">
                 <RequestInviteForm>
                   <Button variant="cta" size="xl" className="w-full">
-                    Subscribe to OpenOffer
+                    Join Open Offer by Media Street
                   </Button>
                 </RequestInviteForm>
                 <p className="text-sm text-muted-foreground mt-3">

@@ -23,9 +23,9 @@ const Footer = () => {
             <ul className="space-y-2 text-sm">
               <li><a href="#how-it-works" className="text-muted-foreground hover:text-primary transition-colors">How It Works</a></li>
               <li><a href="#benefits" className="text-muted-foreground hover:text-primary transition-colors">Benefits</a></li>
-              <li><a href="#pricing" className="text-muted-foreground hover:text-primary transition-colors">Transparent Pricing</a></li>
               <li><a href="https://youtube.com/@media-street-ads" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">View Demo</a></li>
               <li><a href="https://app.mediastreet.ai" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">POS App</a></li>
+              <li><a href="#pricing" className="text-muted-foreground hover:text-primary transition-colors">Transparent Pricing</a></li>
             </ul>
           </div>
 

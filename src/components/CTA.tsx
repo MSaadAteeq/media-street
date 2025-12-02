@@ -15,11 +15,11 @@ import {
 const CTA = () => {
   const features = [
     "Free account setup and onboarding",
-    "OfferAI optimizes partnerships for you",
-    "Real-time analytics dashboard", 
-    "Up to 5 active campaigns simultaneously",
-    "Local retailer network access",
-    "AI offer builder to quickly create ads"
+    "Real-time analytics dashboard",
+    "Local retailer network access", 
+    "Offer distribution to real live humans at hundreds of actual retailers",
+    "Weekly prizes and incentives",
+    "AI suggestions to improve offers and conversions"
   ];
 
   const stats = [

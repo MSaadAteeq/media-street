@@ -14,22 +14,22 @@ const PartnershipAccountability = () => {
 
             {/* Sample Partnership */}
             <div className="mb-8 flex items-center justify-center gap-6">
-                <Card className="p-4 flex items-center gap-3 flex-1 max-w-xs">
+                <Card className="p-4 flex items-center gap-3 flex-1 max-w-[20vw]">
                     <Coffee className="w-8 h-8 text-primary" />
                     <div>
                         <div className="font-semibold">Downtown Coffee</div>
-                        <div className="text-sm text-muted-foreground">Received 20+ customers</div>
+                        <div className="text-sm text-muted-foreground">Sent Bloom Flowers 12 new customers</div>
                     </div>
                 </Card>
                 <div className="flex items-center gap-2">
                     <TrendingUp className="w-6 h-6 text-primary" />
                     <div className="text-sm font-medium">Partnership</div>
                 </div>
-                <Card className="p-4 flex items-center gap-3 flex-1 max-w-xs">
+                <Card className="p-4 flex items-center gap-3 flex-1 max-w-[20vw]">
                     <Flower className="w-8 h-8 text-emerald-500" />
                     <div>
                         <div className="font-semibold">Bloom Flowers</div>
-                        <div className="text-sm text-muted-foreground">Sent 20+ customers</div>
+                        <div className="text-sm text-muted-foreground">Sent Downtown Coffee 32 new customers.</div>
                     </div>
                 </Card>
             </div>
@@ -65,7 +65,7 @@ const PartnershipAccountability = () => {
                         <div className="text-sm text-muted-foreground">Bloom Flowers Views This Month</div>
                         <Eye className="w-5 h-5 text-emerald-500" />
                     </div>
-                    <div className="text-4xl font-bold text-emerald-500 mb-2">328</div>
+                    <div className="text-4xl font-bold text-emerald-500 mb-2">56</div>
                     <div className="text-sm text-emerald-500 flex items-center gap-1">
                         <TrendingUp className="w-4 h-4" />
                         11% vs last month
@@ -77,7 +77,7 @@ const PartnershipAccountability = () => {
                         <div className="text-sm text-muted-foreground">Bloom Flowers Redemptions This Month</div>
                         <Ticket className="w-5 h-5 text-emerald-500" />
                     </div>
-                    <div className="text-4xl font-bold text-emerald-500 mb-2">32</div>
+                    <div className="text-4xl font-bold text-emerald-500 mb-2">12</div>
                     <div className="text-sm text-emerald-500 flex items-center gap-1">
                         <TrendingUp className="w-4 h-4" />
                         14% vs last month
@@ -92,7 +92,7 @@ const PartnershipAccountability = () => {
                         <Store className="w-6 h-6 text-primary" />
                         <div>
                             <div className="font-semibold text-lg">Downtown Coffee</div>
-                            <div className="text-sm text-muted-foreground">Estimated ROI This Month</div>
+                            <div className="text-sm text-muted-foreground">Partnership ROI This Month</div>
                         </div>
                     </div>
                     <div className="text-3xl font-bold text-primary mb-1">
@@ -104,7 +104,7 @@ const PartnershipAccountability = () => {
                 </Card>
 
                 {/* Connector with Total ROI */}
-                <div className="flex flex-col items-center gap-2 px-4 animate-fade-in">
+                {/* <div className="flex flex-col items-center gap-2 px-4 animate-fade-in">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-emerald-500/20 border-2 border-primary/30 flex items-center justify-center">
                         <TrendingUp className="w-6 h-6 text-primary" />
                     </div>
@@ -114,14 +114,14 @@ const PartnershipAccountability = () => {
                             ${((32 * 8) + (12 * 45)).toFixed(2)}
                         </div>
                     </div>
-                </div>
+                </div> */}
 
                 <Card className="p-6 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/20 flex-1">
                     <div className="flex items-center gap-3 mb-4">
                         <Store className="w-6 h-6 text-emerald-500" />
                         <div>
                             <div className="font-semibold text-lg">Bloom Flowers</div>
-                            <div className="text-sm text-muted-foreground">Estimated ROI This Month</div>
+                            <div className="text-sm text-muted-foreground">Partnership ROI This Month</div>
                         </div>
                     </div>
                     <div className="text-3xl font-bold text-emerald-500 mb-1">

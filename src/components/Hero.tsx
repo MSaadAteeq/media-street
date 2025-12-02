@@ -14,7 +14,7 @@ const Hero = () => {
           <Link to="/login">
             <Button variant="outline" size="sm" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
               <LogIn className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="hidden sm:inline">Login</span>
+              <span className="hidden sm:inline">Retailer Login</span>
             </Button>
           </Link>
         </div>
@@ -27,7 +27,7 @@ const Hero = () => {
           <div className="text-center space-y-6 sm:space-y-8 animate-fade-in">
             <div className="space-y-3 sm:space-y-4">
               <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold leading-tight text-gray-900 dark:text-foreground px-2">
-                <span className="bg-gradient-to-r from-blue-600 to-purple-700 bg-clip-text text-transparent font-extrabold">Partner with nearby retailers to get <span className="font-black">new customers</span>.</span>
+                <span className="bg-gradient-to-r from-blue-600 to-purple-700 bg-clip-text text-transparent font-extrabold">Partner with other nearby retailers to get <span className="font-black">new customers</span>.</span>
               </h1>
               <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed px-4">
                 <span className="inline-flex items-center gap-2">
@@ -38,7 +38,7 @@ const Hero = () => {
                     <span className="absolute -inset-1 bg-gradient-to-r from-accent-green/20 to-primary/20 blur-xl -z-10 animate-pulse"></span>
                   </span>
                 </span>
-                {" "}of transactions still happen in real, live stores. We help physical retailers work together with easy and honest x-promos.
+                {" "}of transactions still happen in local stores. We help physical retailers grow together with easy and honest x-promos.
               </p>
             </div>
 
