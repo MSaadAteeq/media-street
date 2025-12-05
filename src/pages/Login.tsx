@@ -104,22 +104,56 @@ export default function Login() {
       });
 
       if (response.success && response.data) {
+        // Get role from response, or decode from token as fallback
+        let userRole = response.data.user?.role || 'retailer';
+        
+        // Fallback: Try to decode role from JWT token if not in response
+        if (!userRole || userRole === 'retailer') {
+          try {
+            const token = response.data.token;
+            if (token) {
+              const payload = JSON.parse(atob(token.split('.')[1]));
+              if (payload.role) {
+                userRole = payload.role;
+              }
+            }
+          } catch (e) {
+            console.warn('Could not decode role from token:', e);
+          }
+        }
+        
+        // Debug logging
+        console.log('🔐 Login Response:', response);
+        console.log('👤 User Role:', userRole);
+        console.log('📦 Full User Data:', response.data.user);
+        
         dispatch(authActions.login({ 
           email: response.data.user?.email || data.email, 
           fullName: response.data.user?.fullName || 'User' 
         }));
-        dispatch(authActions.role({ role: response.data.user?.role || 'retailer' }));
+        dispatch(authActions.role({ role: userRole }));
         
         // Store token
         if (response.data.token) {
           localStorage.setItem('token', response.data.token);
         }
         
+        // Store role in localStorage for immediate access
+        localStorage.setItem('userRole', userRole);
+        
         toast({
           title: "Welcome!",
           description: response.message || "You've been signed in successfully",
         });
-        navigate("/dashboard");
+        
+        // Redirect based on user role immediately
+        if (userRole.toLowerCase() === 'admin') {
+          console.log('✅ Redirecting admin to /admin');
+          navigate("/admin", { replace: true });
+        } else {
+          console.log('✅ Redirecting retailer to /dashboard');
+          navigate("/dashboard", { replace: true });
+        }
       } else {
         toast({
           title: "Sign In Failed",

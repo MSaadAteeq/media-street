@@ -13,6 +13,7 @@ import {
   Ticket,
   Monitor
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import LocationPicker from "@/components/LocationPicker";
 import { 
   Table,
@@ -71,6 +72,8 @@ const Locations = () => {
   const [locationToDelete, setLocationToDelete] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
   const [addLocationOpen, setAddLocationOpen] = useState(false);
+  const [openOfferConfirmOpen, setOpenOfferConfirmOpen] = useState(false);
+  const [pendingLocationToggle, setPendingLocationToggle] = useState<{ id: string; checked: boolean } | null>(null);
   const [storeName, setStoreName] = useState("");
   const [retailChannel, setRetailChannel] = useState("");
   const [selectedLatitude, setSelectedLatitude] = useState<number | undefined>(undefined);
@@ -175,6 +178,72 @@ const Locations = () => {
     }
   };
 
+  const handleToggleOpenOfferOnly = (locationId: string, checked: boolean) => {
+    // If turning ON, show confirmation dialog
+    if (checked) {
+      setPendingLocationToggle({ id: locationId, checked });
+      setOpenOfferConfirmOpen(true);
+    } else {
+      // If turning OFF, proceed directly without confirmation
+      proceedWithToggle(locationId, checked);
+    }
+  };
+
+  const proceedWithToggle = async (locationId: string, checked: boolean) => {
+    // Optimistically update UI first
+    setLocations(prev => prev.map(loc => 
+      loc.id === locationId 
+        ? { ...loc, openOfferOnly: checked, open_offer_only: checked }
+        : loc
+    ));
+
+    // Close dialog
+    setOpenOfferConfirmOpen(false);
+    setPendingLocationToggle(null);
+
+    try {
+      const { patch } = await import("@/services/apis");
+      
+      const response = await patch({ 
+        end_point: `locations/${locationId}`, 
+        body: { 
+          open_offer_only: checked
+        },
+        token: true
+      });
+      
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: checked 
+            ? "Location is now dedicated to Open Offers only" 
+            : "Location is now available for regular offers",
+        });
+      } else {
+        throw new Error(response.message || 'Failed to update location');
+      }
+    } catch (error) {
+      console.error('Error toggling open offer only:', error);
+      toast({
+        title: "Error", 
+        description: "Failed to update location setting",
+        variant: "destructive",
+      });
+      // Revert UI state on error
+      setLocations(prev => prev.map(loc => 
+        loc.id === locationId 
+          ? { ...loc, openOfferOnly: !checked, open_offer_only: !checked }
+          : loc
+      ));
+    }
+  };
+
+  const cancelToggle = () => {
+    setOpenOfferConfirmOpen(false);
+    setPendingLocationToggle(null);
+    // No need to reload - the toggle was never actually changed in the UI
+  };
+
   const handleDeleteLocation = async () => {
     if (!locationToDelete) return;
     
@@ -241,7 +310,7 @@ const Locations = () => {
                     <TableHead className="text-muted-foreground font-medium text-xs sm:text-sm whitespace-nowrap">Store Name</TableHead>
                     <TableHead className="text-muted-foreground font-medium text-xs sm:text-sm hidden md:table-cell">City</TableHead>
                     <TableHead className="text-muted-foreground font-medium text-xs sm:text-sm hidden lg:table-cell">Address</TableHead>
-                    <TableHead className="text-muted-foreground font-medium text-center text-xs sm:text-sm whitespace-nowrap">Redemptions</TableHead>
+                    <TableHead className="text-muted-foreground font-medium text-center text-xs sm:text-sm whitespace-nowrap">Open Offer</TableHead>
                     <TableHead className="text-muted-foreground font-medium text-center text-xs sm:text-sm">Partners</TableHead>
                     <TableHead className="text-muted-foreground font-medium text-center text-xs sm:text-sm">Display QR Code</TableHead>
                     <TableHead className="text-muted-foreground font-medium text-center text-xs sm:text-sm hidden sm:table-cell whitespace-nowrap">Carousel</TableHead>
@@ -280,11 +349,12 @@ const Locations = () => {
                           {location.address}
                         </TableCell>
                         <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <Ticket className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
-                            <span className="text-foreground font-semibold text-xs sm:text-sm">
-                              {location.redemption_count || 0}
-                            </span>
+                          <div className="flex items-center justify-center">
+                            <Switch
+                              checked={location.openOfferOnly || location.open_offer_only || false}
+                              onCheckedChange={(checked) => handleToggleOpenOfferOnly(location.id, checked)}
+                              disabled={loading}
+                            />
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
@@ -329,9 +399,6 @@ const Locations = () => {
                               className="w-40 p-1 bg-card border-border shadow-lg z-50"
                             >
                               <div className="space-y-1">
-                                <button className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-secondary rounded-md transition-colors">
-                                  Edit
-                                </button>
                                 <button 
                                   className="w-full text-left px-3 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-md transition-colors"
                                   onClick={() => {
@@ -430,6 +497,42 @@ const Locations = () => {
           </DialogContent>
         </Dialog>
 
+        {/* Open Offer Confirmation Dialog */}
+        <AlertDialog open={openOfferConfirmOpen} onOpenChange={(open) => {
+          if (!open) {
+            cancelToggle();
+          }
+        }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Enable Open Offer for This Location?</AlertDialogTitle>
+              <AlertDialogDescription>
+                <p className="mb-4">
+                  You're enrolling this location in Open Offer which means:
+                </p>
+                <ul className="list-disc list-inside space-y-2 text-sm mb-4">
+                  <li>Your offer for this location will automatically show at other nearby stores for maximum visibility</li>
+                  <li>Offers for nearby stores will show on your partner carousel</li>
+                </ul>
+                <p className="font-medium">Do you want to proceed?</p>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={cancelToggle}>No thanks</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => {
+                  if (pendingLocationToggle) {
+                    proceedWithToggle(pendingLocationToggle.id, pendingLocationToggle.checked);
+                  }
+                }}
+                className="bg-primary hover:bg-primary/90"
+              >
+                Yes, proceed
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         {/* Delete Confirmation Dialog */}
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <AlertDialogContent>
@@ -438,8 +541,8 @@ const Locations = () => {
               <AlertDialogDescription>
                 Are you sure you want to delete "{locationToDelete?.name}"? This will:
                 <ul className="mt-2 list-disc list-inside space-y-1 text-sm">
-                  <li>Remove all OfferX subscriptions for this location</li>
-                  <li>Remove all OfferAI subscriptions for this location</li>
+                  <li>End all active partnerships</li>
+                  <li>Cancel your Open Offer subscription for this location</li>
                   <li>Delete all offers associated with this location</li>
                   <li>Remove this location from partner search results</li>
                 </ul>

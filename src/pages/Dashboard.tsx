@@ -78,7 +78,7 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      
+
       // Fetch user profile
       try {
         const userResponse = await get({ end_point: 'users/me', token: true });
@@ -89,118 +89,228 @@ const Dashboard = () => {
         console.error('Error fetching user profile:', error);
       }
 
-      // Fetch locations
-      try {
-        const locationsResponse = await get({ end_point: 'locations', token: true });
-        if (locationsResponse.success && locationsResponse.data) {
-          setLocations(locationsResponse.data);
-        }
-      } catch (error) {
-        console.error('Error fetching locations:', error);
-      }
+      // Fetch all data in parallel for better performance
+      const [locationsResponse, offersResponse, partnersResponse, redemptionsResponse] = await Promise.all([
+        get({ end_point: 'locations', token: true }).catch(() => ({ success: false, data: [] })),
+        get({ end_point: 'offers', token: true }).catch(() => ({ success: false, data: [] })),
+        get({ end_point: 'partners', token: true }).catch(() => ({ success: false, data: [] })),
+        get({ end_point: 'redemptions', token: true }).catch(() => ({ success: false, data: [] }))
+      ]);
 
-      // Fetch offers
-      try {
-        const offersResponse = await get({ end_point: 'offers', token: true });
-        if (offersResponse.success && offersResponse.data) {
-          setOffers(offersResponse.data);
-          const activeOffers = offersResponse.data.filter((o: any) => o.is_active);
-          setHasOpenOffer(activeOffers.some((o: any) => o.is_open_offer));
-          
-          // Calculate stats
-          const totalRedemptions = offersResponse.data.reduce((sum: number, o: any) => sum + (o.redemption_count || 0), 0);
-          setStats(prev => ({
-            ...prev,
-            activeOffers: activeOffers.length,
-            totalRedemptions
-          }));
-        }
-      } catch (error) {
-        console.error('Error fetching offers:', error);
-      }
+      // Set locations state
+      const locationsData = locationsResponse.success && locationsResponse.data ? locationsResponse.data : [];
+      setLocations(locationsData);
 
-      // Fetch partnerships
-      try {
-        const partnersResponse = await get({ end_point: 'partners', token: true });
-        if (partnersResponse.success && partnersResponse.data) {
-          setPartnerships(partnersResponse.data);
-        }
-      } catch (error) {
-        console.error('Error fetching partnerships:', error);
-      }
+      // Set offers state
+      const offersData = offersResponse.success && offersResponse.data ? offersResponse.data : [];
+      setOffers(offersData);
+      const activeOffers = offersData.filter((o: any) => o.is_active);
+      setHasOpenOffer(activeOffers.some((o: any) => o.is_open_offer));
 
-      // Fetch redemptions for stats
-      try {
-        const redemptionsResponse = await get({ end_point: 'redemptions', token: true });
-        if (redemptionsResponse.success && redemptionsResponse.data) {
-          const redemptions = redemptionsResponse.data || [];
-          const totalRedemptions = redemptions.length;
-          
-          // Calculate stats from redemptions
-          // Inbound views = redemptions at partner locations (where user's offer was redeemed)
-          // Outbound views = redemptions at user's locations (where partner offers were redeemed)
-          const inboundViews = redemptions.filter((r: any) => r.offer?.userId && r.location?.userId !== r.offer?.userId).length;
-          const outboundViews = redemptions.filter((r: any) => r.location?.userId && r.offer?.userId !== r.location?.userId).length;
-          
-          // Calculate QR scans (approximation - can be improved with dedicated analytics endpoint)
-          const qrScans = redemptions.length * 2; // Rough estimate
-          
-          // Calculate impressions (approximation)
-          const impressions = qrScans * 3; // Rough estimate
-          
-          // Calculate conversion rate
-          const conversionRate = qrScans > 0 ? (totalRedemptions / qrScans) * 100 : 0;
-          
-          setStats(prev => ({
-            ...prev,
-            inboundViews,
-            outboundViews,
-            totalRedemptions,
-            qrScans,
-            impressions,
-            conversionRate: Math.round(conversionRate * 10) / 10
-          }));
-        }
-      } catch (error) {
-        console.error('Error fetching redemptions:', error);
-      }
+      // Set partnerships state
+      const partnershipsData = partnersResponse.success && partnersResponse.data ? partnersResponse.data : [];
+      setPartnerships(partnershipsData);
 
-      // Fetch analytics for locations
+      // Set redemptions data
+      const redemptionsData = redemptionsResponse.success && redemptionsResponse.data ? redemptionsResponse.data : [];
+
+      // Calculate stats from redemptions
+      const totalRedemptions = redemptionsData.length;
+      const inboundViews = redemptionsData.filter((r: any) => r.offer?.userId && r.location?.userId !== r.offer?.userId).length;
+      const outboundViews = redemptionsData.filter((r: any) => r.location?.userId && r.offer?.userId !== r.location?.userId).length;
+      const qrScans = redemptionsData.length * 2; // Rough estimate
+      const impressions = qrScans * 3; // Rough estimate
+      const conversionRate = qrScans > 0 ? (totalRedemptions / qrScans) * 100 : 0;
+
+      setStats(prev => ({
+        ...prev,
+        inboundViews,
+        outboundViews,
+        totalRedemptions,
+        activeOffers: activeOffers.length,
+        qrScans,
+        impressions,
+        conversionRate: Math.round(conversionRate * 10) / 10
+      }));
+
+      // Calculate location analytics using fetched data directly (not state)
       try {
+        console.log('📍 Calculating location analytics...');
+        console.log('📍 Locations count:', locationsData.length);
+        console.log('📍 Offers count:', offersData.length);
+        console.log('📍 Partnerships count:', partnershipsData.length);
+        console.log('📍 Redemptions count:', redemptionsData.length);
+
         // Map locations with their analytics
-        const locationAnalyticsData = locations.map((loc: any) => {
-          const locationOffers = offers.filter((o: any) => {
+        const locationAnalyticsData = locationsData.map((loc: any) => {
+          const locationId = loc._id?.toString() || loc.id?.toString();
+          
+          // Filter offers that belong to THIS specific location
+          // IMPORTANT: Each offer should only have ONE location in locationIds array (after our fix)
+          const locationOffers = offersData.filter((o: any) => {
             const offerLocationIds = o.locationIds || o.location_ids || [];
-            return offerLocationIds.some((lid: any) => {
+            // Convert to array if it's not already
+            const locationIdsArray = Array.isArray(offerLocationIds) ? offerLocationIds : [offerLocationIds];
+            
+            // Check if this location ID matches any of the offer's location IDs
+            const matches = locationIdsArray.some((lid: any) => {
+              // Handle both populated objects and plain IDs
               const lidStr = lid?._id?.toString() || lid?.toString() || lid;
-              return lidStr === (loc._id?.toString() || loc.id?.toString());
+              const locationIdStr = locationId.toString();
+              return lidStr === locationIdStr;
             });
+            
+            return matches;
           });
           
-          const activeOffer = locationOffers.find((o: any) => o.is_active) || locationOffers[0];
-          const locationPartnerships = partnerships.filter((p: any) => {
-            const pLocationId = p.location_id?._id?.toString() || p.location_id?.toString() || p.location_id;
-            return pLocationId === (loc._id?.toString() || loc.id?.toString());
+          // Debug: Log offers for this location with detailed info
+          console.log(`\n📍 ===== Location "${loc.name}" (${locationId}) =====`);
+          console.log(`   Total offers in database: ${offersData.length}`);
+          console.log(`   Offers filtered for this location: ${locationOffers.length}`);
+          
+          if (locationOffers.length > 0) {
+            locationOffers.forEach((o: any, idx: number) => {
+              const offerId = o._id || o.id;
+              const offerLocationIds = o.locationIds || o.location_ids || [];
+              const offerImage = o.offerImage || o.offer_image || null;
+              const imagePreview = offerImage ? offerImage.substring(0, 50) + '...' : 'No image';
+              const isActive = o.isActive !== false && o.is_active !== false;
+              
+              console.log(`   Offer ${idx + 1}:`);
+              console.log(`     - ID: ${offerId}`);
+              console.log(`     - Location IDs: ${JSON.stringify(offerLocationIds)}`);
+              console.log(`     - Is Active: ${isActive}`);
+              console.log(`     - Has Image: ${!!offerImage}`);
+              if (offerImage) {
+                console.log(`     - Image Preview: ${imagePreview}`);
+                console.log(`     - Image Length: ${offerImage.length}`);
+              }
+            });
+          } else {
+            console.log(`   ⚠️ No offers found for this location`);
+          }
+
+          // Use partner_count from the location data (already calculated on backend)
+          // The backend getLocations endpoint already calculates partner_count for each location
+          const partnerCount = loc.partner_count || loc.partners || 0;
+          
+          console.log(`📍 Location ${loc.name} (${locationId}): partner_count=${partnerCount}`);
+
+          // Calculate inbound metrics (offers from this location shown at partner locations)
+          // Inbound Impressions = QR scans of this location's offers at partner locations
+          // Inbound Redemptions = Redemptions of this location's offers at partner locations
+          const inboundRedemptions = redemptionsData.filter((r: any) => {
+            const redemptionLocationId = r.redeemedAtLocationId?._id?.toString() || r.redeemedAtLocationId?.toString() || r.redeemedAtLocationId;
+            const offerLocationIds = r.offer?.locationIds || r.offer?.location_ids || [];
+            const offerBelongsToLocation = offerLocationIds.some((lid: any) => {
+              const lidStr = lid?._id?.toString() || lid?.toString() || lid;
+              return lidStr === locationId;
+            });
+            // Redemption happened at a different location (partner location)
+            return offerBelongsToLocation && redemptionLocationId && redemptionLocationId !== locationId;
           });
+          
+          const inboundRedemptionsCount = inboundRedemptions.length;
+          // Estimate impressions (typically 3-5x redemptions)
+          const inboundImpressions = inboundRedemptionsCount * 4;
+
+          // Calculate outbound metrics (partner offers shown at this location)
+          // Outbound Impressions = QR scans of partner offers at this location
+          // Outbound Redemptions = Redemptions of partner offers at this location
+          const outboundRedemptions = redemptionsData.filter((r: any) => {
+            const redemptionLocationId = r.redeemedAtLocationId?._id?.toString() || r.redeemedAtLocationId?.toString() || r.redeemedAtLocationId;
+            const offerLocationIds = r.offer?.locationIds || r.offer?.location_ids || [];
+            const offerBelongsToLocation = offerLocationIds.some((lid: any) => {
+              const lidStr = lid?._id?.toString() || lid?.toString() || lid;
+              return lidStr === locationId;
+            });
+            // Redemption happened at this location but offer is from a different location (partner offer)
+            return redemptionLocationId === locationId && !offerBelongsToLocation;
+          });
+          
+          const outboundRedemptionsCount = outboundRedemptions.length;
+          // Estimate impressions (typically 3-5x redemptions)
+          const outboundImpressions = outboundRedemptionsCount * 4;
+
+          // Get current offer for this location
+          // IMPORTANT: Filter to only active offers for THIS specific location
+          // Sort by creation date (newest first) to get the most recent active offer
+          const activeOffersForLocation = locationOffers.filter((o: any) => {
+            const isActive = o.isActive !== false && o.is_active !== false;
+            // Also check if offer hasn't expired
+            const now = new Date();
+            const expiresAt = o.expiresAt || o.expires_at;
+            const notExpired = !expiresAt || new Date(expiresAt) > now;
+            return isActive && notExpired;
+          });
+          
+          // Sort by creation date (newest first) and get the most recent one
+          const sortedActiveOffers = activeOffersForLocation.sort((a: any, b: any) => {
+            const dateA = new Date(a.createdAt || a.created_at || 0);
+            const dateB = new Date(b.createdAt || b.created_at || 0);
+            return dateB.getTime() - dateA.getTime(); // Newest first
+          });
+          
+          const currentOffer = sortedActiveOffers[0] || locationOffers[0]; // Fallback to first offer if no active
+          
+          // Extract offer image from various possible field names
+          let offerImage = null;
+          if (currentOffer) {
+            offerImage = currentOffer.offerImage || 
+                        currentOffer.offer_image || 
+                        currentOffer.image ||
+                        currentOffer.offerImageUrl ||
+                        currentOffer.offer_image_url ||
+                        null;
+            
+            // Debug logging with location and offer IDs for verification
+            if (offerImage) {
+              const offerId = currentOffer._id || currentOffer.id;
+              const imagePreview = offerImage.substring(0, 50);
+              console.log(`✅ Location "${loc.name}" (${locationId}) -> Offer ${offerId}:`, imagePreview + '...');
+              console.log(`   - Total offers for this location: ${locationOffers.length}`);
+              console.log(`   - Active offers: ${activeOffersForLocation.length}`);
+              console.log(`   - Selected offer ID: ${offerId}`);
+            } else {
+              console.log(`⚠️ No offer image found for location ${loc.name}. Available fields:`, Object.keys(currentOffer));
+            }
+          } else {
+            console.log(`⚠️ No offer found for location ${loc.name} (${locationId})`);
+          }
           
           return {
-            id: loc._id?.toString() || loc.id?.toString(),
+            id: locationId,
             name: loc.name,
             address: loc.address,
-            currentOffer: activeOffer,
-            impressions: Math.floor(Math.random() * 50), // TODO: Replace with actual analytics
-            qrScans: Math.floor(Math.random() * 20), // TODO: Replace with actual analytics
-            redemptions: activeOffer?.redemption_count || 0,
-            partners: locationPartnerships.length,
-            isOpenOffer: activeOffer?.is_open_offer || false,
-            startDate: activeOffer?.created_at ? new Date(activeOffer.created_at).toLocaleDateString() : '-',
-            endDate: activeOffer?.expires_at ? new Date(activeOffer.expires_at).toLocaleDateString() : 'Ongoing'
+            createdAt: loc.createdAt || loc.created_at,
+            inboundImpressions,
+            inboundRedemptions: inboundRedemptionsCount,
+            outboundImpressions,
+            outboundRedemptions: outboundRedemptionsCount,
+            partners: partnerCount,
+            isOpenOffer: loc.openOfferOnly || loc.open_offer_only || false,
+            currentOffer: currentOffer ? {
+              image: offerImage,
+              createdAt: currentOffer.createdAt || currentOffer.created_at,
+              expiresAt: currentOffer.expiresAt || currentOffer.expires_at
+            } : null
           };
         });
+
+        // Filter: Only show locations that have at least one offer
+        const locationsWithOffers = locationAnalyticsData.filter((loc: any) => {
+          return loc.currentOffer !== null && loc.currentOffer !== undefined;
+        });
         
-        setLocationAnalytics(locationAnalyticsData);
+        console.log('📍 Total locations:', locationAnalyticsData.length);
+        console.log('📍 Locations with offers:', locationsWithOffers.length);
+        console.log('📍 Location analytics data (filtered):', locationsWithOffers);
+        console.log('📍 Setting locationAnalytics with', locationsWithOffers.length, 'locations (only those with offers)');
+        setLocationAnalytics(locationsWithOffers);
       } catch (error) {
         console.error('Error calculating location analytics:', error);
+        // Even if there's an error, set empty array to show "No locations" message
+        setLocationAnalytics([]);
       }
 
       // Fetch leaderboard data
@@ -233,8 +343,8 @@ const Dashboard = () => {
 
     try {
       // Verify redemption code via API
-      const response = await post({ 
-        end_point: 'redemptions/verify', 
+      const response = await post({
+        end_point: 'redemptions/verify',
         body: { code },
         token: true
       });
@@ -543,13 +653,32 @@ const Dashboard = () => {
   };
 
   const handleSort = (key: string) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({
-      key,
-      direction
+    setSortConfig((prevConfig) => {
+      if (prevConfig.key === key) {
+        return {
+          key,
+          direction: prevConfig.direction === 'asc' ? 'desc' : 'asc'
+        };
+      }
+      return {
+        key,
+        direction: 'asc'
+      };
+    });
+
+    // Sort locationAnalytics
+    setLocationAnalytics((prev) => {
+      const sorted = [...prev].sort((a, b) => {
+        const aValue = a[key as keyof typeof a] || 0;
+        const bValue = b[key as keyof typeof b] || 0;
+        const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? -1 : 1;
+        
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return (aValue - bValue) * direction;
+        }
+        return String(aValue).localeCompare(String(bValue)) * direction;
+      });
+      return sorted;
     });
   };
 
@@ -685,16 +814,7 @@ const Dashboard = () => {
             </TooltipContent>
           </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-secondary" onClick={() => navigate('/requests')}>
-                <Store className="h-5 w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <p>Partner Requests</p>
-            </TooltipContent>
-          </Tooltip>
+
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -717,6 +837,18 @@ const Dashboard = () => {
               <p>Your Offers</p>
             </TooltipContent>
           </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-secondary" onClick={() => navigate('/requests')}>
+                <Store className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Partner Requests</p>
+            </TooltipContent>
+          </Tooltip>
+
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -959,14 +1091,13 @@ const Dashboard = () => {
                       {isLoading ? "Processing..." : "Redeem"}
                     </Button>
                   </div>
-                  
+
                   {/* Verification Status */}
                   {couponVerification && (
-                    <div className={`p-3 rounded-lg border ${
-                      couponVerification.valid 
-                        ? 'bg-green-50 border-green-200' 
-                        : 'bg-red-50 border-red-200'
-                    }`}>
+                    <div className={`p-3 rounded-lg border ${couponVerification.valid
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-red-50 border-red-200'
+                      }`}>
                       <div className="flex items-center gap-2">
                         {couponVerification.valid ? (
                           <>
@@ -1125,7 +1256,7 @@ const Dashboard = () => {
             </Card>
 
             {/* Time Period Filters */}
-            <div className="flex items-center space-x-2">
+            {/* <div className="flex items-center space-x-2">
               {periods.map(period => (
                 <Button
                   key={period}
@@ -1140,10 +1271,10 @@ const Dashboard = () => {
               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-secondary">
                 <Calendar className="h-4 w-4" />
               </Button>
-            </div>
+            </div> */}
 
-            {/* Metrics Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            
+            {/* <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <Card className="bg-card border-border shadow-soft">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
@@ -1163,7 +1294,6 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {/* Active Partnerships */}
                     <div
                       className="cursor-pointer hover:opacity-80 transition-opacity"
                       onClick={() => navigate('/requests')}
@@ -1177,7 +1307,6 @@ const Dashboard = () => {
                       </div>
                     </div>
 
-                    {/* Open Offer Status */}
                     <div
                       className="cursor-pointer hover:opacity-80 transition-opacity pt-3 border-t border-border"
                       onClick={() => navigate('/openoffer')}
@@ -1279,7 +1408,7 @@ const Dashboard = () => {
                   </div>
                 </CardContent>
               </Card>
-            </div>
+            </div> */}
 
             {/* Weekly Referral Leaderboard */}
             <Card className="bg-card border-border shadow-soft">
@@ -1314,18 +1443,18 @@ const Dashboard = () => {
                     {/* Top 10 or first 3 retailers */}
                     {leaderboardData.length > 0 ? (
                       (showLeaderboard ? leaderboardData.slice(0, 10) : leaderboardData.slice(0, 3)).map((retailer, index) => (
-                      <div key={retailer.user_id} className={`flex items-center space-x-2 transition-colors rounded-lg px-3 py-2 relative ${retailer.isCurrentUser ? 'bg-primary/10 border-2 border-primary/30 shadow-md' : 'bg-secondary/50 hover:bg-secondary/70'}`}>
-                        <div className={`flex items-center justify-center w-5 h-5 rounded-full text-xs font-semibold ${retailer.isCurrentUser ? 'bg-primary text-primary-foreground' : 'bg-primary text-primary-foreground'}`}>
-                          {retailer.rank}
+                        <div key={retailer.user_id} className={`flex items-center space-x-2 transition-colors rounded-lg px-3 py-2 relative ${retailer.isCurrentUser ? 'bg-primary/10 border-2 border-primary/30 shadow-md' : 'bg-secondary/50 hover:bg-secondary/70'}`}>
+                          <div className={`flex items-center justify-center w-5 h-5 rounded-full text-xs font-semibold ${retailer.isCurrentUser ? 'bg-primary text-primary-foreground' : 'bg-primary text-primary-foreground'}`}>
+                            {retailer.rank}
+                          </div>
+                          <span className={`text-sm font-medium ${retailer.isCurrentUser ? 'text-primary font-semibold' : 'text-foreground'}`}>
+                            {retailer.store_name}
+                          </span>
+                          <Badge variant="secondary" className={`text-xs ${retailer.isCurrentUser ? 'bg-primary/20 text-primary border-primary/30' : 'bg-accent-green/10 text-accent-green border-accent-green/20'}`}>
+                            {retailer.points} pts
+                          </Badge>
                         </div>
-                        <span className={`text-sm font-medium ${retailer.isCurrentUser ? 'text-primary font-semibold' : 'text-foreground'}`}>
-                          {retailer.store_name}
-                        </span>
-                        <Badge variant="secondary" className={`text-xs ${retailer.isCurrentUser ? 'bg-primary/20 text-primary border-primary/30' : 'bg-accent-green/10 text-accent-green border-accent-green/20'}`}>
-                          {retailer.points} pts
-                        </Badge>
-                      </div>
-                    ))
+                      ))
                     ) : (
                       <div className="text-center py-4 text-muted-foreground text-sm">
                         Leaderboard data will appear here once available
@@ -1387,30 +1516,8 @@ const Dashboard = () => {
                       <TableRow className="border-border hover:bg-transparent">
                         <TableHead className="text-muted-foreground font-medium">Your Location</TableHead>
                         <TableHead className="text-muted-foreground font-medium">Current Offer</TableHead>
-                        <TableHead className="text-muted-foreground font-medium">
-                          <div className="flex items-center gap-1">
-                            Impressions
-                            <Button variant="ghost" size="icon" className="h-4 w-4 p-0 text-muted-foreground/60 hover:text-muted-foreground hover:bg-secondary" onClick={() => handleSort('impressions')}>
-                              <ArrowUpDown className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableHead>
-                        <TableHead className="text-muted-foreground font-medium">
-                          <div className="flex items-center gap-1">
-                            QR Scans
-                            <Button variant="ghost" size="icon" className="h-4 w-4 p-0 text-muted-foreground/60 hover:text-muted-foreground hover:bg-secondary" onClick={() => handleSort('qrScans')}>
-                              <ArrowUpDown className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableHead>
-                        <TableHead className="text-muted-foreground font-medium">
-                          <div className="flex items-center gap-1">
-                            Redemptions
-                            <Button variant="ghost" size="icon" className="h-4 w-4 p-0 text-muted-foreground/60 hover:text-muted-foreground hover:bg-secondary" onClick={() => handleSort('redemptions')}>
-                              <ArrowUpDown className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </TableHead>
+                        <TableHead className="text-muted-foreground font-medium">Impressions</TableHead>
+                        <TableHead className="text-muted-foreground font-medium">Redemptions</TableHead>
                         <TableHead className="text-muted-foreground font-medium">Dates</TableHead>
                         <TableHead className="text-muted-foreground font-medium">Partners</TableHead>
                         <TableHead className="text-muted-foreground font-medium text-center">Open Offer</TableHead>
@@ -1419,58 +1526,97 @@ const Dashboard = () => {
                     <TableBody>
                       {locationAnalytics.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                            No locations found. Add your first location to get started.
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                            No offers found. Create an offer to show offer details.
                           </TableCell>
                         </TableRow>
                       ) : (
-                        locationAnalytics.map((row, index) => (
-                          <TableRow key={row.id} className="border-border hover:bg-secondary/50">
-                            <TableCell className="text-foreground">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="font-semibold cursor-help">{row.name}</span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>{row.address}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TableCell>
-                            <TableCell className="text-foreground relative">
-                              {row.currentOffer ? (
-                                <>
-                                  <button onClick={() => setExpandedOffer(expandedOffer === `your-${index}` ? null : `your-${index}`)} className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 hover:opacity-80 transition-opacity cursor-pointer bg-muted">
-                                    <span className="text-xs p-2 line-clamp-2">{row.currentOffer.call_to_action || row.currentOffer.callToAction || 'No offer'}</span>
-                                  </button>
-                                  {expandedOffer === `your-${index}` && (
-                                    <div className="absolute z-50 top-full left-0 bg-background border border-border rounded-lg p-4 shadow-lg mt-2 min-w-64">
-                                      <p className="font-medium mb-2">{row.currentOffer.call_to_action || row.currentOffer.callToAction}</p>
-                                      <p className="text-sm text-muted-foreground">Redemptions: {row.currentOffer.redemption_count || 0}</p>
-                                    </div>
-                                  )}
-                                </>
-                              ) : (
-                                <span className="text-sm text-muted-foreground">No active offer</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-foreground font-medium text-center">{row.impressions}</TableCell>
-                            <TableCell className="text-foreground font-medium text-center">{row.qrScans}</TableCell>
-                            <TableCell className="text-foreground font-medium text-center">{row.redemptions}</TableCell>
-                            <TableCell className="text-muted-foreground">
-                              <div>
-                                <div>{row.startDate} - {row.endDate}</div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <span className="text-primary font-semibold text-lg">{row.partners}</span>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant="secondary">
-                                {row.isOpenOffer ? "On" : "Off"}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        locationAnalytics.map((row, index) => {
+                          // Get offer image from row data (already calculated)
+                          // IMPORTANT: Each location should have its own unique offer image
+                          const offerImage = row.currentOffer?.image || null;
+                          
+                          // Debug: Log which image is being used for which location
+                          if (offerImage) {
+                            const imagePreview = offerImage.substring(0, 50);
+                            console.log(`🖼️ Dashboard Table - Location "${row.name}" (${row.id}):`, imagePreview + '...');
+                          }
+                          
+                          // Calculate total impressions (inbound + outbound)
+                          const totalImpressions = (row.inboundImpressions || 0) + (row.outboundImpressions || 0);
+                          
+                          // Calculate total redemptions (inbound + outbound)
+                          const totalRedemptions = (row.inboundRedemptions || 0) + (row.outboundRedemptions || 0);
+                          
+                          // Format dates as "start date - end date"
+                          let offerDates = 'N/A';
+                          if (row.currentOffer?.expiresAt && row.currentOffer?.createdAt) {
+                            const startDate = new Date(row.currentOffer.createdAt).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric', 
+                              year: 'numeric' 
+                            });
+                            const endDate = new Date(row.currentOffer.expiresAt).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric', 
+                              year: 'numeric' 
+                            });
+                            offerDates = `${startDate} - ${endDate}`;
+                          } else if (row.currentOffer?.createdAt) {
+                            const startDate = new Date(row.currentOffer.createdAt).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric', 
+                              year: 'numeric' 
+                            });
+                            offerDates = `${startDate} - N/A`;
+                          } else if (row.createdAt) {
+                            const startDate = new Date(row.createdAt).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric', 
+                              year: 'numeric' 
+                            });
+                            offerDates = `${startDate} - N/A`;
+                          }
+                          
+                          return (
+                            <TableRow key={row.id} className="border-border hover:bg-secondary/50">
+                              <TableCell className="text-foreground">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="font-semibold cursor-help">{row.name}</span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{row.address}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TableCell>
+                              <TableCell>
+                                {offerImage ? (
+                                  <img 
+                                    src={offerImage} 
+                                    alt="Current Offer" 
+                                    className="w-20 h-20 object-cover rounded-md border border-border"
+                                  />
+                                ) : (
+                                  <div className="w-20 h-20 flex items-center justify-center bg-muted rounded-md border border-border">
+                                    <span className="text-muted-foreground text-xs">No offer</span>
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-foreground font-medium text-center">{totalImpressions}</TableCell>
+                              <TableCell className="text-foreground font-medium text-center">{totalRedemptions}</TableCell>
+                              <TableCell className="text-foreground text-sm whitespace-nowrap">{offerDates}</TableCell>
+                              <TableCell className="text-center">
+                                <span className="text-primary font-semibold text-lg">{row.partners || 0}</span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Badge variant="secondary">
+                                  {row.isOpenOffer ? "On" : "Off"}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       )}
                     </TableBody>
                   </Table>
@@ -1587,3 +1733,13 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
+
+
+
+
+
+
+
+
+

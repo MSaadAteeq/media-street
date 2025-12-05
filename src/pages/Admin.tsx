@@ -1,14 +1,17 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-// Supabase removed - will use Node.js API
+import { useDispatch } from "react-redux";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, MapPin, Handshake, Eye, ScanLine, TicketCheck, DollarSign, TrendingUp } from "lucide-react";
+import { Users, MapPin, Handshake, Eye, ScanLine, TicketCheck, DollarSign, TrendingUp, LogOut } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from "recharts";
+import { get } from "@/services/apis";
+import { authActions } from "@/store/auth/auth";
+import type { AppDispatch } from "@/store";
 
 interface Analytics {
   total_users: number;
@@ -98,6 +101,7 @@ const Admin = () => {
   const [locationDetails, setLocationDetails] = useState<LocationDetail[]>([]);
   const [partnershipDetails, setPartnershipDetails] = useState<PartnershipDetail[]>([]);
   const navigate = useNavigate();
+  const dispatch = useDispatch<AppDispatch>();
 
   useEffect(() => {
     checkAdminAccess();
@@ -105,10 +109,6 @@ const Admin = () => {
 
   const checkAdminAccess = async () => {
     try {
-      // TODO: Replace with Node.js API call
-      // const response = await get({ end_point: 'auth/me' });
-      // const roleResponse = await get({ end_point: 'auth/check-role?role=admin' });
-      
       const token = localStorage.getItem('token');
       if (!token) {
         toast.error("Please log in to access admin panel");
@@ -116,21 +116,34 @@ const Admin = () => {
         return;
       }
 
+      // Check user role via API
+      const { get } = await import("@/services/apis");
+      const response = await get({ 
+        end_point: 'users/me',
+        token: true
+      });
+
+      if (!response.success || !response.data) {
+        toast.error("Error verifying access");
+        navigate('/login');
+        return;
+      }
+
+      const userRole = response.data.role?.toLowerCase() || 'retailer';
+      
+      if (userRole !== 'admin') {
+        toast.error("Access denied: Admin privileges required");
+        navigate('/dashboard');
+        return;
+      }
+
       setIsAuthenticated(true);
-
-      // TODO: Check admin role via API
-      // if (!roleResponse.data.hasRole) {
-      //   toast.error("Access denied: Admin privileges required");
-      //   navigate('/');
-      //   return;
-      // }
-
       setIsAdmin(true);
       await loadAdminData();
     } catch (error: any) {
       console.error('Error checking admin access:', error);
       toast.error("Error verifying access");
-      navigate('/');
+      navigate('/login');
     } finally {
       setLoading(false);
     }
@@ -138,25 +151,32 @@ const Admin = () => {
 
   const loadAdminData = async () => {
     try {
-      // TODO: Replace with Node.js API calls
-      // const analyticsResponse = await get({ end_point: 'admin/analytics' });
-      // const usersResponse = await get({ end_point: 'admin/users' });
-      // const locationsResponse = await get({ end_point: 'admin/locations' });
-      // const revenueResponse = await get({ end_point: 'admin/revenue' });
-      
-      // Mock data for now
-      const analyticsData = { total_users: 0, total_locations: 0, total_revenue: 0 };
-      const usersData: any[] = [];
-      const locationsData: any[] = [];
-      const revenueDataResponse: any[] = [];
-      
-      setAnalytics(analyticsData as any);
-      setUsers(usersData);
-      setLocations(locationsData);
-      setRevenueData(revenueDataResponse);
+      // Fetch analytics
+      const analyticsResponse = await get({ end_point: 'admin/analytics', token: true });
+      if (analyticsResponse.success && analyticsResponse.data) {
+        setAnalytics(analyticsResponse.data);
+      }
 
-      // Process monthly trends
-      processMonthlyTrends(usersData, locationsData, revenueDataResponse);
+      // Fetch users
+      const usersResponse = await get({ end_point: 'admin/users', token: true });
+      if (usersResponse.success && usersResponse.data) {
+        setUsers(usersResponse.data);
+      }
+
+      // Fetch locations
+      const locationsResponse = await get({ end_point: 'admin/locations', token: true });
+      if (locationsResponse.success && locationsResponse.data) {
+        setLocations(locationsResponse.data);
+      }
+
+      // Fetch monthly trends
+      const trendsResponse = await get({ end_point: 'admin/monthly-trends', token: true });
+      if (trendsResponse.success && trendsResponse.data) {
+        setMonthlyTrends(trendsResponse.data);
+      }
+
+      // Revenue data (placeholder - would need payment integration)
+      setRevenueData([]);
 
       // Load detailed data
       await loadDetailedData();
@@ -169,80 +189,41 @@ const Admin = () => {
 
   const loadDetailedData = async () => {
     try {
-      // TODO: Replace with Node.js API calls
-      // const userDetailsResponse = await get({ end_point: 'admin/user-details' });
-      // const locationDetailsResponse = await get({ end_point: 'admin/location-details' });
-      
-      // Mock data for now
-      const userDetailsData: any[] = [];
-      const locationDetailsData: any[] = [];
-      
-      if (userDetailsData.length > 0) {
-        const formattedUsers: UserDetail[] = await Promise.all(
-          userDetailsData.map(async (user: any) => {
-            // Get Stripe revenue for this user (placeholder - would need Stripe integration)
-            const totalRevenue = 0;
-            
-            return {
-              id: user.id,
-              name: user.full_name || 'N/A',
-              email: user.users?.email || 'N/A',
-              date_joined: user.users?.created_at || '',
-              location_count: user.locations?.length || 0,
-              total_revenue: totalRevenue
-            };
-          })
-        );
-        setUserDetails(formattedUsers);
-      }
-      
-      if (locationDetailsData && locationDetailsData.length > 0) {
-        const formattedLocations: LocationDetail[] = locationDetailsData.map((location: any) => {
-          const activePartnerships = [
-            ...(location.partnerships_requesting || []).filter((p: any) => p.status === 'active'),
-            ...(location.partnerships_accepting || []).filter((p: any) => p.status === 'active')
-          ];
-          
-          return {
-            id: location.id,
-            store_name: location.name,
-            store_address: `${location.address || ''}, ${location.city || ''}, ${location.state || ''} ${location.zip || ''}`.trim(),
-            affiliated_user: location.profiles?.users?.email || 'N/A',
-            active_partnerships: activePartnerships.length,
-            subscribed_to_offerx: location.offerx_subscription_status === 'active',
-            display_option: location.display_option || 'N/A'
-          };
-        });
-        setLocationDetails(formattedLocations);
+      // Fetch user details
+      const userDetailsResponse = await get({ end_point: 'admin/user-details', token: true });
+      if (userDetailsResponse.success && userDetailsResponse.data) {
+        setUserDetails(userDetailsResponse.data);
       }
 
-      // TODO: Load detailed partnership data
-      // const partnershipResponse = await get({ end_point: 'admin/partnership-details' });
-      const partnershipDetailsData: any[] = [];
-      
-      if (partnershipDetailsData && partnershipDetailsData.length > 0) {
-        const formattedPartnerships: PartnershipDetail[] = partnershipDetailsData.map((partnership: any) => {
-          const analytics = partnership.analytics?.[0] || {};
-          
-          return {
-            id: partnership.id,
-            requesting_retailer: partnership.requesting_location?.name || 'N/A',
-            accepting_retailer: partnership.accepting_location?.name || 'N/A',
-            date_accepted: partnership.created_at,
-            date_cancelled: partnership.cancelled_at,
-            requesting_impressions: analytics.requesting_impressions || 0,
-            accepting_impressions: analytics.accepting_impressions || 0,
-            requesting_scans: analytics.requesting_scans || 0,
-            accepting_scans: analytics.accepting_scans || 0,
-            requesting_conversions: analytics.requesting_conversions || 0,
-            accepting_conversions: analytics.accepting_conversions || 0
-          };
-        });
-        setPartnershipDetails(formattedPartnerships);
+      // Fetch location details
+      const locationDetailsResponse = await get({ end_point: 'admin/location-details', token: true });
+      if (locationDetailsResponse.success && locationDetailsResponse.data) {
+        setLocationDetails(locationDetailsResponse.data);
+      }
+
+      // Fetch partnership details
+      const partnershipResponse = await get({ end_point: 'admin/partnerships', token: true });
+      if (partnershipResponse.success && partnershipResponse.data) {
+        setPartnershipDetails(partnershipResponse.data);
       }
     } catch (error: any) {
       console.error('Error loading detailed data:', error);
+      toast.error("Failed to load detailed data");
     }
+  };
+
+  const handleLogout = () => {
+    // Clear Redux state
+    dispatch(authActions.logout());
+    
+    // Clear localStorage
+    localStorage.removeItem('token');
+    localStorage.removeItem('userRole');
+    
+    // Navigate to login
+    navigate('/login');
+    
+    toast.success("Logged out successfully");
   };
 
   const formatCurrency = (amount: number) => {
@@ -311,7 +292,13 @@ const Admin = () => {
       <div className="max-w-7xl mx-auto space-y-8">
         <div className="flex justify-between items-center">
           <h1 className="text-4xl font-bold">Admin Dashboard</h1>
-          <Button variant="outline" onClick={() => navigate('/')}>Back to Home</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('/')}>Back to Home</Button>
+            <Button variant="outline" onClick={handleLogout} className="flex items-center gap-2">
+              <LogOut className="h-4 w-4" />
+              Logout
+            </Button>
+          </div>
         </div>
 
         {/* Top Metrics Row */}

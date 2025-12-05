@@ -4,6 +4,7 @@ import AppLayout from "@/components/AppLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,6 +55,7 @@ const InStoreDisplay = () => {
   const [selectedLocationId, setSelectedLocationId] = useState<string>("");
   const [offersAds, setOffersAds] = useState<OfferAd[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOffers, setLoadingOffers] = useState(false);
   const [api, setApi] = useState<CarouselApi>();
   const carouselRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -167,8 +169,63 @@ const InStoreDisplay = () => {
             address: loc.address || ''
           }));
         setLocations(formattedLocations);
+        
+        // Find the first location with active ads, or default to first location
         if (formattedLocations.length > 0) {
-          setSelectedLocationId(formattedLocations[0].id);
+          let selectedId = formattedLocations[0].id; // Default to first
+          
+          // Check each location for active offers
+          for (const location of formattedLocations) {
+            try {
+              const ownerResponse = await get({ 
+                end_point: `offers/location/${location.id}/owner`,
+                token: false
+              });
+              
+              if (ownerResponse.success && ownerResponse.data && ownerResponse.data.length > 0) {
+                const now = new Date();
+                const activeOwnerOffers = ownerResponse.data.filter((offer: any) => {
+                  const isActive = offer.is_active !== false && offer.isActive !== false;
+                  const isNotExpired = !offer.expires_at && !offer.expiresAt || 
+                    (offer.expires_at && new Date(offer.expires_at) > now) ||
+                    (offer.expiresAt && new Date(offer.expiresAt) > now);
+                  return isActive && isNotExpired;
+                });
+                
+                if (activeOwnerOffers.length > 0) {
+                  // Check if this location has partner offers
+                  try {
+                    const partnerResponse = await get({ 
+                      end_point: `offers/location/${location.id}/partners`,
+                      token: false
+                    });
+                    
+                    if (partnerResponse.success && partnerResponse.data && partnerResponse.data.length > 0) {
+                      const now = new Date();
+                      const activePartnerOffers = partnerResponse.data.filter((offer: any) => {
+                        const isActive = offer.is_active !== false && offer.isActive !== false;
+                        const isNotExpired = !offer.expires_at && !offer.expiresAt || 
+                          (offer.expires_at && new Date(offer.expires_at) > now) ||
+                          (offer.expiresAt && new Date(offer.expiresAt) > now);
+                        return isActive && isNotExpired;
+                      });
+                      
+                      if (activePartnerOffers.length > 0) {
+                        selectedId = location.id;
+                        break; // Found location with ads, use it
+                      }
+                    }
+                  } catch (e) {
+                    // Continue checking other locations
+                  }
+                }
+              }
+            } catch (e) {
+              // Continue checking other locations
+            }
+          }
+          
+          setSelectedLocationId(selectedId);
         }
       } else {
         setLocations([]);
@@ -182,6 +239,12 @@ const InStoreDisplay = () => {
   };
 
   const loadOffersAds = async (locationId: string) => {
+    if (!locationId) {
+      setOffersAds([]);
+      return;
+    }
+    
+    setLoadingOffers(true);
     try {
       const { get } = await import("@/services/apis");
       
@@ -191,47 +254,62 @@ const InStoreDisplay = () => {
       if (!displayCarousel) {
         // If carousel not selected, show empty state or message
         setOffersAds([]);
+        setLoadingOffers(false);
         return;
       }
 
       // First, check if location owner has an active offer - carousel only active if owner has offer
       let locationHasActiveOffer = false;
       try {
+        console.log(`🔍 Checking owner offers for location: ${locationId}`);
         const ownerResponse = await get({ 
           end_point: `offers/location/${locationId}/owner`,
           token: false
         });
         
+        console.log(`📦 Owner offers response:`, ownerResponse);
+        
         if (ownerResponse.success && ownerResponse.data && ownerResponse.data.length > 0) {
+          console.log(`📋 Raw owner offers data:`, ownerResponse.data);
           const now = new Date();
           const activeOwnerOffers = ownerResponse.data.filter((offer: any) => {
             const isActive = offer.is_active !== false && offer.isActive !== false;
             const isNotExpired = !offer.expires_at && !offer.expiresAt || 
               (offer.expires_at && new Date(offer.expires_at) > now) ||
               (offer.expiresAt && new Date(offer.expiresAt) > now);
+            console.log(`  Offer ${offer._id || offer.id}: isActive=${isActive}, isNotExpired=${isNotExpired}, expiresAt=${offer.expires_at || offer.expiresAt}`);
             return isActive && isNotExpired;
           });
           locationHasActiveOffer = activeOwnerOffers.length > 0;
+          console.log(`✅ Location has ${activeOwnerOffers.length} active owner offers (out of ${ownerResponse.data.length} total)`);
+        } else {
+          console.log(`⚠️ No owner offers found for location ${locationId}. Response:`, ownerResponse);
         }
       } catch (error) {
-        console.error('Error fetching location owner offers:', error);
+        console.error('❌ Error fetching location owner offers:', error);
       }
       
       // If location owner doesn't have an active offer, don't show carousel
       if (!locationHasActiveOffer) {
+        console.log(`⚠️ Location owner doesn't have active offer, skipping carousel`);
         setOffersAds([]);
+        setLoadingOffers(false);
         return;
       }
 
       // Load approved partner offers for this location (from retailers with approved partnerships)
       let partnerOffersData: any[] = [];
       try {
+        console.log(`🔍 Fetching partner offers for location: ${locationId}`);
         const partnerResponse = await get({ 
           end_point: `offers/location/${locationId}/partners`,
           token: false
         });
         
+        console.log(`📦 Partner offers API response:`, partnerResponse);
+        
         if (partnerResponse.success && partnerResponse.data) {
+          console.log(`✅ Found ${partnerResponse.data.length} partner offers`);
           // Filter: Only show active, non-expired offers from approved partnerships
           const now = new Date();
           partnerOffersData = partnerResponse.data
@@ -251,16 +329,20 @@ const InStoreDisplay = () => {
               partner: offer.user?.fullName || offer.userId?.fullName || null,
               validUntil: offer.expires_at || offer.expiresAt || "∞"
             }));
+          
+          console.log(`✅ Processed ${partnerOffersData.length} active partner offers`);
+        } else {
+          console.log(`⚠️ No partner offers found in response`);
         }
       } catch (error) {
-        console.error('Error fetching partner offers:', error);
+        console.error('❌ Error fetching partner offers:', error);
       }
 
       // Load subscribed open offers from backend API (only offers the location owner has subscribed to)
       let nearbyOpenOffers: any[] = [];
       try {
         const response = await get({ 
-          end_point: `offers/location/${selectedLocationId}/subscribed-open`,
+          end_point: `offers/location/${locationId}/subscribed-open`,
           token: false
         });
         
@@ -306,6 +388,8 @@ const InStoreDisplay = () => {
     } catch (error) {
       console.error('Error loading offers:', error);
       setOffersAds([]);
+    } finally {
+      setLoadingOffers(false);
     }
   };
 
@@ -355,9 +439,51 @@ const InStoreDisplay = () => {
           </CardContent>
         </Card>
 
+        {/* Location Selector */}
+        {locations.length > 0 && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                <Label htmlFor="location-select" className="text-sm font-medium whitespace-nowrap">
+                  Select Location:
+                </Label>
+                <Select
+                  value={selectedLocationId}
+                  onValueChange={(value) => setSelectedLocationId(value)}
+                >
+                  <SelectTrigger id="location-select" className="w-full max-w-md">
+                    <SelectValue placeholder="Select a location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations.map((location) => (
+                      <SelectItem key={location.id} value={location.id}>
+                        {location.name} - {location.address}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Carousel Display */}
         {localStorage.getItem('displayCarousel') === 'true' ? (
-          offersAds.length > 0 ? (
+          loadingOffers ? (
+            <Card>
+              <CardContent className="p-0">
+                <div className="aspect-video w-full relative overflow-hidden rounded-lg">
+                  <Skeleton className="w-full h-full" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/50">
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                      <p className="text-muted-foreground">Loading offers for this location...</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : offersAds.length > 0 ? (
             <div ref={carouselRef} className={`relative bg-background rounded-lg ${isFullscreen ? 'fixed inset-0 z-50 bg-black' : ''}`}>
               {isFullscreen && (
                 <Button

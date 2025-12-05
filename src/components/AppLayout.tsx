@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
-import { get } from "@/services/apis";
+import { get, patch } from "@/services/apis";
 // Supabase removed - will use Node.js API
 import { 
   Home,
@@ -42,21 +42,30 @@ interface LayoutProps {
   pageIcon?: ReactNode;
 }
 
-interface PartnerNotification {
-  id: string;
-  type: 'new_request' | 'request_approved' | 'request_rejected' | 'partnership_ended' | 'new_message';
-  retailerName: string;
-  timestamp: Date;
-  read: boolean;
+interface Notification {
+  _id: string;
+  id?: string;
+  type: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  read?: boolean;
+  createdAt: string;
+  timestamp?: Date;
+  relatedEntityId?: string;
+  relatedEntityType?: string;
+  metadata?: any;
 }
 
 const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch<AppDispatch>();
-  const [notifications, setNotifications] = useState<PartnerNotification[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
   const [referralCode, setReferralCode] = useState<string>("");
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [loadingNotifications, setLoadingNotifications] = useState<boolean>(false);
 
   // Fetch user profile and referral code
   useEffect(() => {
@@ -86,68 +95,102 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
     fetchUserData();
   }, []);
 
-  // Mock notifications - replace with real data from Supabase
-  useEffect(() => {
-    const mockNotifications: PartnerNotification[] = [
-      {
-        id: '0',
-        type: 'new_message',
-        retailerName: "Joe's Coffee",
-        timestamp: new Date(Date.now() - 1000 * 60 * 5), // 5 minutes ago
-        read: false
-      },
-      {
-        id: '1',
-        type: 'new_request',
-        retailerName: 'Bloom Flower Shop',
-        timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-        read: false
-      },
-      {
-        id: '2',
-        type: 'request_approved',
-        retailerName: 'Java Junction Coffee',
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-        read: false
-      },
-      {
-        id: '3',
-        type: 'request_rejected',
-        retailerName: 'The Clean Scene',
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-        read: true
+  // Fetch notifications from API
+  const fetchNotifications = async () => {
+    try {
+      setLoadingNotifications(true);
+      const response = await get({ end_point: 'notifications', token: true });
+      if (response.success && response.data) {
+        const formattedNotifications: Notification[] = response.data.map((notif: any) => ({
+          _id: notif._id,
+          id: notif._id,
+          type: notif.type,
+          title: notif.title,
+          message: notif.message,
+          isRead: notif.isRead,
+          read: notif.isRead,
+          createdAt: notif.createdAt,
+          timestamp: new Date(notif.createdAt),
+          relatedEntityId: notif.relatedEntityId,
+          relatedEntityType: notif.relatedEntityType,
+          metadata: notif.metadata
+        }));
+        setNotifications(formattedNotifications);
+        setUnreadCount(response.unreadCount || 0);
       }
-    ];
-    setNotifications(mockNotifications);
-  }, []);
-
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const getNotificationMessage = (notification: PartnerNotification) => {
-    switch (notification.type) {
-      case 'new_message':
-        return `You've got a new message from ${notification.retailerName}`;
-      case 'new_request':
-        return `You've received a new partner request from ${notification.retailerName}`;
-      case 'request_approved':
-        return `Your partner request to ${notification.retailerName} was approved`;
-      case 'request_rejected':
-        return `Your partner request to ${notification.retailerName} was rejected`;
-      case 'partnership_ended':
-        return `Your partnership has been ended by ${notification.retailerName}`;
-      default:
-        return '';
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoadingNotifications(false);
     }
   };
 
-  const markAsRead = (notificationId: string) => {
-    setNotifications(prev => 
-      prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
-    );
+  // Fetch unread count
+  const fetchUnreadCount = async () => {
+    try {
+      const response = await get({ end_point: 'notifications/unread-count', token: true });
+      if (response.success) {
+        setUnreadCount(response.count || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+    }
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  // Fetch notifications on mount and when location changes
+  useEffect(() => {
+    fetchNotifications();
+    // Poll for new notifications every 30 seconds
+    const interval = setInterval(() => {
+      fetchUnreadCount();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [location.pathname]);
+
+  const markAsRead = async (notificationId: string) => {
+    try {
+      await patch({ 
+        end_point: `notifications/${notificationId}/read`, 
+        token: true 
+      });
+      setNotifications(prev => 
+        prev.map(n => n._id === notificationId ? { ...n, isRead: true, read: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      await patch({ 
+        end_point: 'notifications/read-all', 
+        token: true 
+      });
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true, read: true })));
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+    }
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
+    // Mark as read
+    if (!notification.isRead) {
+      markAsRead(notification._id);
+    }
+    
+    // Navigate based on notification type
+    if (notification.relatedEntityType === 'partner' && notification.relatedEntityId) {
+      navigate('/requests');
+    } else if (notification.relatedEntityType === 'offer' && notification.relatedEntityId) {
+      navigate('/offers');
+    } else if (notification.relatedEntityType === 'subscription' && notification.relatedEntityId) {
+      navigate('/openoffer');
+    } else {
+      navigate('/dashboard');
+    }
   };
 
   const allNavigationItems = [
@@ -319,7 +362,11 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                   )}
                 </div>
                 <ScrollArea className="h-[400px]">
-                  {notifications.length === 0 ? (
+                  {loadingNotifications ? (
+                    <div className="p-8 text-center text-muted-foreground">
+                      Loading notifications...
+                    </div>
+                  ) : notifications.length === 0 ? (
                     <div className="p-8 text-center text-muted-foreground">
                       No notifications yet
                     </div>
@@ -327,25 +374,29 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                     <div className="divide-y divide-border">
                       {notifications.map((notification) => (
                         <div
-                          key={notification.id}
+                          key={notification._id}
                           className={`p-4 hover:bg-secondary/50 cursor-pointer transition-colors ${
-                            !notification.read ? 'bg-secondary/30' : ''
+                            !notification.isRead ? 'bg-secondary/30' : ''
                           }`}
-                          onClick={() => {
-                            markAsRead(notification.id);
-                            navigate('/requests');
-                          }}
+                          onClick={() => handleNotificationClick(notification)}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm text-foreground flex-1">
-                              {getNotificationMessage(notification)}
-                            </p>
-                            {!notification.read && (
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-foreground">
+                                {notification.title}
+                              </p>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {notification.message}
+                              </p>
+                            </div>
+                            {!notification.isRead && (
                               <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1.5" />
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {notification.timestamp.toLocaleString()}
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {notification.timestamp 
+                              ? notification.timestamp.toLocaleString()
+                              : new Date(notification.createdAt).toLocaleString()}
                           </p>
                         </div>
                       ))}

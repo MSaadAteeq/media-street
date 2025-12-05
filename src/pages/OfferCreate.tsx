@@ -35,8 +35,6 @@ const OfferCreate = () => {
   const [callToAction, setCallToAction] = useState("");
   const [aiGeneratedStoreName, setAiGeneratedStoreName] = useState("");
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
-  const [isOpenOffer, setIsOpenOffer] = useState(false);
-  const [brandLogo, setBrandLogo] = useState<File | null>(null);
   const [adImage, setAdImage] = useState<File | null>(null);
   const [expirationDuration, setExpirationDuration] = useState("1day");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -179,15 +177,93 @@ const OfferCreate = () => {
     fetchLocations();
   }, []);
 
-  useEffect(() => {
-    setSelectedLocations((prev) =>
-      prev.filter((id) => {
-        const location = locations.find((loc) => loc.id === id);
-        if (!location) return false;
-        return isOpenOffer ? location.openOfferOnly : !location.openOfferOnly;
-      })
-    );
-  }, [isOpenOffer, locations]);
+  // Removed useEffect that filtered locations based on isOpenOffer
+  // Now all locations are shown and open offer is determined by selected location's openOfferOnly flag
+
+  const handleGenerateOffer = async () => {
+    if (!website) {
+      toast({
+        title: "Website Required",
+        description: "Please enter your website URL",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsGenerating(true);
+    try {
+      const response = await post({
+        end_point: 'offers/generate-from-website',
+        body: { website },
+        token: false
+      });
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to generate offer');
+      }
+
+      const data = response.data;
+
+      // Populate call to action
+      if (data?.callToAction) {
+        setCallToAction(data.callToAction);
+      }
+
+      // Set business name
+      if (data?.businessName) {
+        setAiGeneratedStoreName(data.businessName);
+      }
+
+      // Set brand colors
+      if (data?.colors) {
+        setBrandColors({
+          primary: data.colors.primary || '#9333EA',
+          secondary: data.colors.secondary || '#7E3AF2'
+        });
+      }
+
+      // Convert offer image URL to File object (handle both data URLs and HTTP URLs)
+      if (data?.offerImageUrl) {
+        try {
+          let imageBlob;
+          if (data.offerImageUrl.startsWith('data:')) {
+            // Handle base64 data URL
+            const response = await fetch(data.offerImageUrl);
+            imageBlob = await response.blob();
+          } else {
+            // Handle HTTP URL
+            const imageResponse = await fetch(data.offerImageUrl);
+            imageBlob = await imageResponse.blob();
+          }
+          const imageFile = new File([imageBlob], 'generated-offer-image.png', { type: imageBlob.type || 'image/png' });
+          setAdImage(imageFile);
+        } catch (imageError) {
+          console.error('Error loading offer image:', imageError);
+          // Continue without image if it fails
+        }
+      }
+
+      // Logo removed - no longer needed
+
+      toast({
+        title: "Offer Generated! 🎉",
+        description: "Your offer has been generated. Review and click 'Create Offer' when ready.",
+        duration: 5000
+      });
+    } catch (error) {
+      console.error("Error generating offer:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast({
+        title: "Error",
+        description: errorMessage.includes('not configured') || errorMessage.includes('503') 
+          ? "The AI feature is currently unavailable. Please try again later." 
+          : "Failed to generate offer. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const fetchLocations = async () => {
     try {
@@ -223,159 +299,10 @@ const OfferCreate = () => {
     setLocations([]);
   };
 
-  const handleGenerateOffer = async () => {
-    if (!website) {
-      toast({
-        title: "Website Required",
-        description: "Please enter your website URL",
-        variant: "destructive",
-      });
-      return;
-    }
+  // Removed searchAndSetLogo function - brand logo is no longer used
 
-    setIsGenerating(true);
-    try {
-      console.log('Calling generate-offer-from-website function...');
-      console.log('⚠️ NOTE: Edge function changes may take a few minutes to deploy');
-      
-      // TODO: Replace with Node.js API call
-      // const response = await post({ end_point: 'offers/generate-from-website', body: { website } });
-      // const data = response.data;
-      
-      // Mock implementation
-      const data = null;
-      toast({
-        title: "Info",
-        description: "Offer generation will be available after API integration",
-      });
-
-      // Check if the response contains an error from the function
-      if (data?.error) {
-        console.error('Function returned error:', data.error);
-        throw new Error(data.error);
-      }
-
-      // Log what we actually received
-      console.log('Received data:', {
-        hasCallToAction: !!data?.callToAction,
-        hasBusinessName: !!data?.businessName,
-        hasColors: !!data?.colors,
-        colors: data?.colors,
-        hasBrandLogo: !!data?.brandLogoUrl,
-        brandLogoUrl: data?.brandLogoUrl?.substring(0, 100) + '...',
-        hasOfferImage: !!data?.offerImageUrl,
-        offerImageType: data?.offerImageUrl?.startsWith('data:') ? 'GENERATED (base64)' : data?.offerImageUrl?.startsWith('http') ? 'ACTUAL WEBSITE IMAGE' : 'NONE'
-      });
-
-      // Set the generated offer text and business name
-      if (data?.callToAction) {
-        setCallToAction(data.callToAction);
-      }
-      
-      let businessName = '';
-      if (data?.businessName) {
-        setAiGeneratedStoreName(data.businessName);
-        businessName = data.businessName;
-      }
-
-      // Store the brand colors
-      if (data?.colors) {
-        setBrandColors(data.colors);
-        console.log('Brand colors set:', data.colors);
-      }
-
-      // Set the generated brand logo OR search for one
-      if (data?.brandLogoUrl) {
-        try {
-          const logoResponse = await fetch(data.brandLogoUrl);
-          const logoBlob = await logoResponse.blob();
-          const logoFile = new File([logoBlob], 'brand-logo.png', { type: logoBlob.type || 'image/png' });
-          setBrandLogo(logoFile);
-          console.log('Brand logo set successfully');
-        } catch (err) {
-          console.error('Error processing generated logo:', err);
-          // Fallback to search if logo processing fails
-          if (businessName) {
-            await searchAndSetLogo(businessName);
-          }
-        }
-      } else if (businessName) {
-        // No logo was generated, search for one
-        console.log('No brand logo generated - searching online...');
-        await searchAndSetLogo(businessName);
-      }
-
-      // Set the generated offer image
-      if (data?.offerImageUrl) {
-        try {
-          const imageResponse = await fetch(data.offerImageUrl);
-          const imageBlob = await imageResponse.blob();
-          const imageFile = new File([imageBlob], 'offer-image.png', { type: imageBlob.type || 'image/png' });
-          setAdImage(imageFile);
-          console.log('Offer image set successfully');
-        } catch (err) {
-          console.error('Error processing generated image:', err);
-        }
-      } else {
-        console.log('No offer image generated - using manual upload option');
-      }
-
-      toast({
-        title: "Success",
-        description: "AI generated your offer! Logo automatically searched and included.",
-      });
-    } catch (error) {
-      console.error("Error generating offer:", error);
-      
-      // Check if it's a deployment issue
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const isDeploymentIssue = errorMessage.includes('Load failed') || 
-                                errorMessage.includes('FunctionsFetchError') ||
-                                errorMessage.includes('Failed to send');
-      
-      toast({
-        title: "Error",
-        description: isDeploymentIssue 
-          ? "The AI generation feature needs to be deployed. Please contact support or try again later."
-          : "Failed to generate offer. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const searchAndSetLogo = async (businessName: string) => {
-    try {
-      console.log('Searching for logo for:', businessName);
-      // TODO: Replace with Node.js API call
-      // const response = await post({ end_point: 'business/search-logo', body: { businessName } });
-      // const logoData = response.data;
-      
-      // Mock implementation
-      const logoData: any = null;
-      
-      if (logoData?.logoUrl) {
-        console.log('Found logo URL:', logoData.logoUrl);
-        const logoResponse = await fetch(logoData.logoUrl);
-        const logoBlob = await logoResponse.blob();
-        const logoFile = new File([logoBlob], 'brand-logo.png', { type: logoBlob.type || 'image/png' });
-        setBrandLogo(logoFile);
-        console.log('Logo from search set successfully');
-      } else {
-        console.log('No logo found in search results');
-      }
-    } catch (err) {
-      console.error('Error in logo search:', err);
-    }
-  };
-
-  const handleFileUpload = (file: File, type: 'logo' | 'ad') => {
-    if (type === 'logo') {
-      setBrandLogo(file);
-    } else {
-      setAdImage(file);
-    }
+  const handleFileUpload = (file: File) => {
+    setAdImage(file);
   };
 
   const getExpirationDate = () => {
@@ -443,33 +370,8 @@ const OfferCreate = () => {
         return;
       }
 
-      // Convert images to base64
-      let brandLogoBase64 = null;
+      // Convert offer image to base64
       let offerImageBase64 = null;
-
-      if (brandLogo) {
-        try {
-          brandLogoBase64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-              if (typeof reader.result === 'string') {
-                resolve(reader.result);
-              } else {
-                reject(new Error('Failed to convert brand logo to base64'));
-              }
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(brandLogo);
-          });
-        } catch (error) {
-          console.error('Error converting brand logo to base64:', error);
-          toast({
-            title: "Warning",
-            description: "Failed to process brand logo. Continuing without it.",
-            variant: "destructive",
-          });
-        }
-      }
 
       if (adImage) {
         try {
@@ -495,28 +397,156 @@ const OfferCreate = () => {
         }
       }
 
-      // Get the final canvas image with QR code overlay
-      let finalOfferImageBase64 = offerImageBase64;
-      if (canvasRef.current && adImage) {
-        try {
-          finalOfferImageBase64 = canvasRef.current.toDataURL('image/png');
-        } catch (error) {
-          console.error('Error converting canvas to image:', error);
-          // Fallback to original image if canvas conversion fails
+      // Generate location-specific images with unique QR codes for each location
+      // Each location needs its own unique image with its own QR code
+      const locationImages: { [key: string]: string } = {};
+      
+      // Generate location-specific images using the same canvas logic as the preview
+      for (const locationId of selectedLocations) {
+        // Generate unique redemption code for this location
+        const timestamp = Date.now().toString(36);
+        const random = Math.random().toString(36).substring(2, 8);
+        const locationCode = `${timestamp}-${random}-${locationId.slice(-4)}`.toUpperCase();
+        
+        // Generate QR code URL for this specific location
+        const qrCodeUrl = `${window.location.origin}/redeem/${locationCode}/${locationId}`;
+        
+        // Create a canvas for this location's offer image
+        const canvas = document.createElement('canvas');
+        const targetWidth = 1280;
+        const targetHeight = 720;
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+        
+        if (ctx && adImage) {
+          const img = new Image();
+          await new Promise((resolve, reject) => {
+            img.onload = async () => {
+              // Calculate scaling to fit image within canvas
+              const scale = Math.max(targetWidth / img.width, targetHeight / img.height);
+              const scaledWidth = img.width * scale;
+              const scaledHeight = img.height * scale;
+              const x = (targetWidth - scaledWidth) / 2;
+              const y = (targetHeight - scaledHeight) / 2;
+              
+              // Draw the image
+              ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+              
+              // Draw the call to action text
+              if (callToAction) {
+                const fontSize = Math.max(32, targetWidth / 28);
+                ctx.font = `bold ${fontSize}px sans-serif`;
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                ctx.shadowBlur = 10;
+                ctx.shadowOffsetX = 2;
+                ctx.shadowOffsetY = 2;
+                ctx.fillStyle = '#ffffff';
+                
+                const maxWidth = targetWidth * 0.6;
+                const words = callToAction.split(' ');
+                let line = '';
+                const lines: string[] = [];
+                
+                for (let i = 0; i < words.length; i++) {
+                  const testLine = line + words[i] + ' ';
+                  const metrics = ctx.measureText(testLine);
+                  if (metrics.width > maxWidth && i > 0) {
+                    lines.push(line);
+                    line = words[i] + ' ';
+                  } else {
+                    line = testLine;
+                  }
+                }
+                lines.push(line);
+                
+                const lineHeight = fontSize * 1.3;
+                const startX = 120;
+                const startY = 40;
+                
+                lines.forEach((line, index) => {
+                  ctx.fillText(line.trim(), startX, startY + (index * lineHeight));
+                });
+              }
+              
+              // Generate QR code for this location
+              try {
+                const qrCanvas = document.createElement('canvas');
+                qrCanvas.width = 200;
+                qrCanvas.height = 200;
+                const qrCtx = qrCanvas.getContext('2d');
+                
+                if (qrCtx) {
+                  qrCtx.fillStyle = '#ffffff';
+                  qrCtx.fillRect(0, 0, qrCanvas.width, qrCanvas.height);
+                  
+                  await QRCode.toCanvas(qrCanvas, qrCodeUrl, {
+                    width: 180,
+                    margin: 2,
+                    color: {
+                      dark: '#000000',
+                      light: '#FFFFFF'
+                    }
+                  });
+                  
+                  // Draw QR code on main canvas in top right
+                  ctx.drawImage(qrCanvas, targetWidth - 220, 20, 200, 200);
+                }
+              } catch (qrError) {
+                console.error('Error generating QR code for location:', locationId, qrError);
+              }
+              
+              resolve(null);
+            };
+            img.onerror = reject;
+            img.src = URL.createObjectURL(adImage);
+          });
+          
+          // Convert canvas to base64
+          locationImages[locationId] = canvas.toDataURL('image/png');
+          console.log(`📸 Generated location-specific image for locationId: "${locationId}" (image length: ${locationImages[locationId].length})`);
+        } else if (offerImageBase64) {
+          // Fallback: use the original image if canvas fails
+          locationImages[locationId] = offerImageBase64;
         }
       }
+      
+      // Verify that each location has a unique image
+      const imageHashes = Object.keys(locationImages).map(locId => {
+        const img = locationImages[locId];
+        return {
+          locationId: locId,
+          imageHash: img ? img.substring(0, 200) : 'null',
+          imageLength: img ? img.length : 0
+        };
+      });
+      
+      console.log(`📦 Sending ${Object.keys(locationImages).length} location-specific images to backend:`);
+      console.log(`📦 Image details:`, imageHashes);
+      console.log(`📦 Full locationImages object:`, locationImages);
+
+      // Determine if offer should be open offer based on selected locations
+      // If any selected location has openOfferOnly = true, make it an open offer
+      const selectedLocationData = locations.filter(loc => selectedLocations.includes(loc.id));
+      const isOpenOffer = selectedLocationData.some(loc => loc.openOfferOnly === true);
 
       // Create offer via backend API
+      // Backend will create a separate offer for each location
       const offerData = {
         call_to_action: callToAction,
         is_open_offer: isOpenOffer,
-        location_ids: selectedLocations, // Always include selected locations
+        location_ids: selectedLocations, // Backend will create separate offers for each
         expiration_duration: expirationDuration,
-        redemption_code: redemptionCode,
+        redemption_code: redemptionCode, // Base redemption code (backend will make unique per location)
         available_for_partnership: !isOpenOffer, // If not open offer, make it available for partnership
-        brand_logo: brandLogoBase64,
-        offer_image: finalOfferImageBase64, // Use canvas image with QR code overlay
+        brand_logo: null, // No longer accepting brand logo
+        offer_image: offerImageBase64, // Fallback image (location-specific images in location_images)
+        location_images: locationImages, // Location-specific images with QR codes
       };
+      
+      console.log(`📤 Sending offer data with location_images keys:`, Object.keys(offerData.location_images || {}));
       
       const response = await post({ 
         end_point: 'offers', 
@@ -525,6 +555,8 @@ const OfferCreate = () => {
       });
       
       if (response.success) {
+        const selectedLocationData = locations.filter(loc => selectedLocations.includes(loc.id));
+        const isOpenOffer = selectedLocationData.some(loc => loc.openOfferOnly === true);
         const offerType = isOpenOffer ? 'Open Offer' : 'Location-based Offer';
         const locationText = `${selectedLocations.length} of your location${selectedLocations.length !== 1 ? 's' : ''}`;
         
@@ -539,6 +571,7 @@ const OfferCreate = () => {
           navigate("/offers");
         }, 1500);
       } else {
+        // Throw error with backend message
         throw new Error(response.message || 'Failed to create offer');
       }
       
@@ -565,9 +598,22 @@ const OfferCreate = () => {
       // navigate("/offers");
     } catch (error) {
       console.error("Error creating offer:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Check if it's a backend error response
+      let displayMessage = "Failed to create offer";
+      if (errorMessage.includes("already has an offer") || errorMessage.includes("cannot be created")) {
+        displayMessage = errorMessage;
+      } else if (typeof error === 'object' && error !== null && 'response' in error) {
+        const apiError = error as any;
+        if (apiError.response?.data?.message) {
+          displayMessage = apiError.response.data.message;
+        }
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to create offer",
+        description: displayMessage,
         variant: "destructive",
       });
     } finally {
@@ -586,9 +632,8 @@ const OfferCreate = () => {
     );
   }
 
-  const availableLocations = isOpenOffer
-    ? locations.filter((location) => location.openOfferOnly)
-    : locations.filter((location) => !location.openOfferOnly);
+  // Show all locations in dropdown
+  const availableLocations = locations;
 
   return (
     <AppLayout pageTitle="Create Offer" pageIcon={<Zap className="h-5 w-5 text-primary" />}>
@@ -681,34 +726,6 @@ const OfferCreate = () => {
                   </RadioGroup>
                 </div>
 
-                {/* Brand Logo Upload */}
-                <div className="space-y-2">
-                  <Label>Brand Logo</Label>
-                  <p className="text-sm text-muted-foreground">Upload your brand logo for better recognition.</p>
-                  <div className="border-2 border-dashed border-input rounded-lg p-8 text-center hover:border-primary/50 transition-colors">
-                    <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-4" />
-                    <div className="space-y-2">
-                      <Button variant="ghost" className="text-primary" asChild>
-                        <label htmlFor="logo-upload" className="cursor-pointer">
-                          Click to upload
-                        </label>
-                      </Button>
-                      <span className="text-muted-foreground"> or drag and drop</span>
-                      <input
-                        id="logo-upload"
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'logo')}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">SVG, PNG, JPG (max. 800x400px)</p>
-                    {brandLogo && (
-                      <p className="text-sm text-primary mt-2">Selected: {brandLogo.name}</p>
-                    )}
-                  </div>
-                </div>
-
                 {/* Offer Image Upload */}
                 <div className="space-y-2">
                   <Label>Offer Image</Label>
@@ -727,7 +744,7 @@ const OfferCreate = () => {
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'ad')}
+                        onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
                       />
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">SVG, PNG, JPG (max. 800x400px)</p>
@@ -737,34 +754,11 @@ const OfferCreate = () => {
                   </div>
                 </div>
 
-                {/* Open Offer Checkbox */}
-                <div className="space-y-3 p-4 border rounded-lg bg-muted/30">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="open-offer"
-                      checked={isOpenOffer}
-                      onCheckedChange={(checked) => {
-                        setIsOpenOffer(checked as boolean);
-                      }}
-                    />
-                    <div className="flex-1">
-                      <Label htmlFor="open-offer" className="text-base font-semibold cursor-pointer">
-                        Open Offer
-                      </Label>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Make this offer available to all retailers. It will appear in the "Open Offers" tab and can be displayed by any retailer.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Location Selection */}
                 <div className="space-y-2">
                   <Label htmlFor="location">Select Your Retail Locations *</Label>
                   <p className="text-sm text-muted-foreground">
-                    {isOpenOffer 
-                      ? "Only locations marked as 'Open Offer only' are displayed. You can configure this in the Offers screen."
-                      : "Choose which retail locations this offer is for. Locations reserved for Open Offers are hidden."}
+                    Choose which retail locations this offer is for. If you select a location with "Open Offer" enabled, this offer will automatically become an open offer.
                   </p>
                   
                   <Popover>
@@ -787,13 +781,9 @@ const OfferCreate = () => {
                       <div className="p-4">
                         {availableLocations.length === 0 ? (
                           <div className="text-center py-4 text-sm text-muted-foreground space-y-2">
-                            <p>
-                              {isOpenOffer
-                                ? "No locations are currently marked as Open Offer only."
-                                : "All of your locations are currently dedicated to Open Offers."}
-                            </p>
+                            <p>No locations available. Please add a location first.</p>
                             <p className="text-xs">
-                              Visit the <Button variant="link" className="p-0 h-auto text-primary" onClick={() => navigate("/offers")}>Offers</Button> screen to adjust location eligibility.
+                              Visit the <Button variant="link" className="p-0 h-auto text-primary" onClick={() => navigate("/locations")}>Locations</Button> screen to add a location.
                             </p>
                           </div>
                         ) : (
@@ -802,31 +792,41 @@ const OfferCreate = () => {
                               {availableLocations.length} location{availableLocations.length !== 1 ? 's' : ''} available
                             </div>
                             <div className="space-y-2 max-h-64 overflow-y-auto">
-                              {availableLocations.map((location) => (
-                                <div key={location.id} className="flex items-start space-x-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
-                                  <Checkbox
-                                    id={location.id}
-                                    checked={selectedLocations.includes(location.id)}
-                                    onCheckedChange={(checked) => {
-                                      if (checked) {
-                                        setSelectedLocations([...selectedLocations, location.id]);
-                                      } else {
-                                        setSelectedLocations(selectedLocations.filter(id => id !== location.id));
-                                      }
-                                    }}
-                                    className="mt-1"
-                                  />
-                                  <Label
-                                    htmlFor={location.id}
-                                    className="text-sm font-normal cursor-pointer flex-1"
-                                  >
-                                    <div>
-                                      <div className="font-medium">{location.name}</div>
-                                      <div className="text-xs text-muted-foreground mt-0.5">{location.address}</div>
-                                    </div>
-                                  </Label>
-                                </div>
-                              ))}
+                              {availableLocations.map((location) => {
+                                const isOpenOfferLocation = location.openOfferOnly === true;
+                                return (
+                                  <div key={location.id} className="flex items-start space-x-2 p-2 rounded-md hover:bg-muted/50 transition-colors">
+                                    <Checkbox
+                                      id={location.id}
+                                      checked={selectedLocations.includes(location.id)}
+                                      onCheckedChange={(checked) => {
+                                        if (checked) {
+                                          setSelectedLocations([...selectedLocations, location.id]);
+                                        } else {
+                                          setSelectedLocations(selectedLocations.filter(id => id !== location.id));
+                                        }
+                                      }}
+                                      className="mt-1"
+                                    />
+                                    <Label
+                                      htmlFor={location.id}
+                                      className="text-sm font-normal cursor-pointer flex-1"
+                                    >
+                                      <div>
+                                        <div className="font-medium flex items-center gap-2">
+                                          {location.name}
+                                          {isOpenOfferLocation && (
+                                            <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+                                              Open Offer
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground mt-0.5">{location.address}</div>
+                                      </div>
+                                    </Label>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </>
                         )}
@@ -852,13 +852,17 @@ const OfferCreate = () => {
                 </div>
 
                 {/* Info message for open offers */}
-                {isOpenOffer && (
-                  <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                    <p className="text-sm text-blue-900 dark:text-blue-100">
-                      <strong>Open Offer:</strong> This offer will be visible to all retailers in the "Open Offers" tab and can be displayed by any retailer without requiring a partnership. You've selected {selectedLocations.length} of your own location{selectedLocations.length !== 1 ? 's' : ''} to display this offer.
-                    </p>
-                  </div>
-                )}
+                {selectedLocations.length > 0 && (() => {
+                  const selectedLocationData = locations.filter(loc => selectedLocations.includes(loc.id));
+                  const hasOpenOfferLocation = selectedLocationData.some(loc => loc.openOfferOnly === true);
+                  return hasOpenOfferLocation ? (
+                    <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <p className="text-sm text-blue-900 dark:text-blue-100">
+                        <strong>Open Offer:</strong> You've selected a location with "Open Offer" enabled. This offer will automatically become an open offer and will be visible to all retailers in the "Open Offers" tab.
+                      </p>
+                    </div>
+                  ) : null;
+                })()}
 
                 {/* Create Offer Button */}
                 <div className="pt-4">
@@ -867,7 +871,7 @@ const OfferCreate = () => {
                     onClick={handleCreateOffer}
                     disabled={!callToAction || selectedLocations.length === 0 || isCreating}
                   >
-                    {isCreating ? 'Creating Offer...' : `Create ${isOpenOffer ? 'Open ' : ''}Offer`}
+                    {isCreating ? 'Creating Offer...' : 'Create Offer'}
                   </Button>
                 </div>
               </CardContent>
@@ -955,7 +959,11 @@ const OfferCreate = () => {
 
                 {/* Offer Type and Location Info */}
                 <div className="mt-4 p-3 bg-muted rounded-lg">
-                  {isOpenOffer ? (
+                  {(() => {
+                    const selectedLocationData = locations.filter(loc => selectedLocations.includes(loc.id));
+                    const isOpenOffer = selectedLocationData.some(loc => loc.openOfferOnly === true);
+                    return isOpenOffer;
+                  })() ? (
                     <div>
                       <p className="text-sm font-medium flex items-center gap-2">
                         <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded text-xs font-semibold">

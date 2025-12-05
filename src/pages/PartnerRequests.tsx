@@ -513,13 +513,17 @@ const PartnerRequests = () => {
   const fetchPartnerRequests = async () => {
     try {
       setLoading(true);
+      console.log('🔍 Fetching partner requests...');
       const { get } = await import("@/services/apis");
       const response = await get({ 
         end_point: 'partners/requests',
         token: true
       });
       
-      if (response.success && response.data) {
+      console.log('📥 Partner requests API response:', response);
+      
+      if (response && response.success && response.data) {
+        console.log(`✅ Received ${response.data.length} partner requests`);
         // Format requests to match interface and include offer images
         const formattedRequests = response.data.map((req: any) => ({
           id: req._id?.toString() || req.id?.toString(),
@@ -548,11 +552,13 @@ const PartnerRequests = () => {
         }));
         
         setRequests(formattedRequests);
+        console.log(`✅ Set ${formattedRequests.length} formatted requests to state`);
       } else {
+        console.warn('⚠️ No data in response or response not successful:', response);
         setRequests([]);
       }
     } catch (error) {
-      console.error('Error fetching partner requests:', error);
+      console.error('❌ Error fetching partner requests:', error);
       toast.error('Failed to load partner requests');
       setRequests([]);
     } finally {

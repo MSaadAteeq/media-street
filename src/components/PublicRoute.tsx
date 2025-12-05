@@ -9,10 +9,19 @@ interface PublicRouteProps {
 
 export const PublicRoute = ({ children, redirectTo = "/dashboard" }: PublicRouteProps) => {
   const isAuthenticated = useSelector((state: RootState) => state.auth.token);
+  const userRole = useSelector((state: RootState) => state.auth.authData.role);
   const token = localStorage.getItem("token");
+  const storedRole = localStorage.getItem("userRole");
 
-  // If user is authenticated, redirect to dashboard (or specified route)
+  // If user is authenticated, redirect based on role
   if (isAuthenticated || token) {
+    const role = userRole || storedRole || 'retailer';
+    
+    // Redirect admin to admin panel, others to dashboard
+    if (role.toLowerCase() === 'admin') {
+      return <Navigate to="/admin" replace />;
+    }
+    
     return <Navigate to={redirectTo} replace />;
   }
 

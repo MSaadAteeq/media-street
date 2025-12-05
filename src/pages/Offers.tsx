@@ -88,6 +88,8 @@ const Offers = () => {
   const [loading, setLoading] = useState(true);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
+  const [isViewOfferDialogOpen, setIsViewOfferDialogOpen] = useState(false);
+  const [viewingOffer, setViewingOffer] = useState<Offer | null>(null);
 
   useEffect(() => {
     // Fetch locations first, then offers (so locations are available for mapping)
@@ -167,14 +169,10 @@ const Offers = () => {
           }
         }
         
-        // Format offers data to match frontend interface
-        // Filter to only include current user's offers (backend should already do this, but double-check)
-        const userOffers = currentUserId 
-          ? response.data.filter((offer: any) => {
-              const offerUserId = offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
-              return offerUserId === currentUserId;
-            })
-          : response.data; // If we can't get user ID, trust backend filtering
+        // Backend already filters by userId, so use all offers from response
+        // Don't filter again on frontend as it might cause issues
+        const userOffers = response.data;
+        console.log(`📊 Using ${userOffers.length} offers from backend (no additional filtering)`);
         
         const formattedOffers = userOffers.map((offer: any, index: number) => {
           try {
@@ -250,22 +248,29 @@ const Offers = () => {
         const validOffers = formattedOffers.filter((offer, index, self) => {
           // Filter out any offers without an ID
           if (!offer.id) {
-            console.warn(`Offer at index ${index} has no ID, skipping:`, offer);
+            console.warn(`⚠️ Offer at index ${index} has no ID, skipping:`, offer);
             return false;
           }
           // Check for duplicate IDs (keep first occurrence)
           const firstIndex = self.findIndex(o => o.id === offer.id);
           if (firstIndex !== index) {
-            console.warn(`Duplicate offer ID found: ${offer.id}, keeping first occurrence`);
+            console.warn(`⚠️ Duplicate offer ID found: ${offer.id}, keeping first occurrence`);
             return false;
           }
           return true;
         });
         
-        console.log(`Valid offers after filtering: ${validOffers.length}`);
+        console.log(`✅ Valid offers after filtering: ${validOffers.length}`);
+        console.log('📋 Final offers to display:', validOffers);
         
         if (validOffers.length !== userOffers.length) {
-          console.warn(`Warning: ${userOffers.length - validOffers.length} offers were filtered out`);
+          console.warn(`⚠️ Warning: ${userOffers.length - validOffers.length} offers were filtered out`);
+        }
+        
+        if (validOffers.length === 0 && userOffers.length > 0) {
+          console.error('❌ ERROR: All offers were filtered out!');
+          console.error('Raw offers:', userOffers);
+          console.error('Formatted offers:', formattedOffers);
         }
         
         setOffers(validOffers);
@@ -307,25 +312,7 @@ const Offers = () => {
     });
   };
 
-  const handleAddLocationToOffer = (offerId: string, locationId: string) => {
-    const location = locations.find(loc => loc.id === locationId);
-    if (!location) return;
-
-    // Update the offers state to include the new location
-    setOffers(offers.map(offer => 
-      offer.id === offerId 
-        ? { 
-            ...offer, 
-            locations: [...offer.locations, { name: location.name, address: location.address }]
-          }
-        : offer
-    ));
-
-    toast({
-      title: "Success",
-      description: `Added ${location.name} to offer`,
-    });
-  };
+  // Removed handleAddLocationToOffer - locations can't be added to offers after creation
 
   const handleToggleOpenOfferOnly = async (locationId: string, checked: boolean) => {
     try {
@@ -390,6 +377,11 @@ const Offers = () => {
     }
   };
 
+  const handleViewOffer = (offer: Offer) => {
+    setViewingOffer(offer);
+    setIsViewOfferDialogOpen(true);
+  };
+
   const handleDeleteOffer = async (offerId: string) => {
     try {
       const { deleteApi } = await import("@/services/apis");
@@ -439,9 +431,6 @@ const Offers = () => {
             <p className="text-muted-foreground">Manage your promotional offers and track redemptions</p>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={() => navigate("/openoffer")}>
-              Browse Open Offers
-            </Button>
             <Button onClick={() => navigate("/offers/create")} className="flex items-center gap-2">
               <Plus className="h-4 w-4" />
               Create New Offer
@@ -456,12 +445,12 @@ const Offers = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MapPin className="h-5 w-5" />
-              Manage which offers are active at each of your locations
+              Offers x Locations
             </CardTitle>
-            <p className="text-muted-foreground">Control offer visibility and track performance across all locations</p>
-            <p className="text-sm text-primary mt-2">
+            <p className="text-muted-foreground">Link a created offer to your store location(s) to start promoting that store. Please note after linking your offer you’ll need to add partners or join Open Offer to get views for your store’s offer.</p>
+            {/* <p className="text-sm text-primary mt-2">
               <strong>Please note:</strong> Offers will only show for these locations if you've partnered with other retailers or enrolled in Open Offer.
-            </p>
+            </p> */}
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -491,36 +480,11 @@ const Offers = () => {
                     </div>
                     
                     {/* Total Redemptions */}
-                    <div className="bg-muted/30 rounded-lg p-3">
+                    {/* <div className="bg-muted/30 rounded-lg p-3">
                       <div className="text-2xl font-bold text-primary">{location.total_redemptions}</div>
                       <p className="text-xs text-muted-foreground">Total Redemptions</p>
-                    </div>
+                    </div> */}
 
-                    {/* Open Offer Eligibility */}
-                    <div className="flex items-start gap-2 p-3 border rounded-lg bg-muted/20">
-                      <Checkbox
-                        id={`open-offer-only-${location.id}`}
-                        checked={!!location.open_offer_only}
-                        onCheckedChange={(checked) =>
-                          handleToggleOpenOfferOnly(location.id, Boolean(checked))
-                        }
-                        className="mt-1"
-                      />
-                      <div>
-                        <Label
-                          htmlFor={`open-offer-only-${location.id}`}
-                          className="text-sm font-medium cursor-pointer"
-                        >
-                          Dedicate this location to Open Offers
-                        </Label>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {location.open_offer_only
-                            ? "This location will only appear when creating Open Offers."
-                            : "This location can be used for regular offers. Enable to reserve it for Open Offers only."}
-                        </p>
-                      </div>
-                    </div>
-                    
                     {/* Current Offer or Selection */}
                     {/* <div>
                       {location.current_offer ? (
@@ -645,32 +609,6 @@ const Offers = () => {
                               </div>
                             </div>
                           )}
-                          
-                          {/* Add Location Dropdown */}
-                          <div className="pt-2">
-                            <Select onValueChange={(value) => handleAddLocationToOffer(offer.id, value)}>
-                              <SelectTrigger className="h-7 text-xs bg-background border border-border">
-                                <SelectValue placeholder="+ Add location" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-background border border-border shadow-lg z-50">
-                                {locations
-                                  .filter(location => !offer.locations.some(ol => ol.name === location.name))
-                                  .map((location) => (
-                                    <SelectItem key={location.id} value={location.id}>
-                                      <div>
-                                        <p className="font-medium">{location.name}</p>
-                                        <p className="text-xs text-muted-foreground">{location.address}</p>
-                                      </div>
-                                    </SelectItem>
-                                  ))}
-                                {locations.filter(location => !offer.locations.some(ol => ol.name === location.name)).length === 0 && (
-                                  <SelectItem value="none" disabled>
-                                    All locations already added
-                                  </SelectItem>
-                                )}
-                              </SelectContent>
-                            </Select>
-                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -684,22 +622,16 @@ const Offers = () => {
                       <TableCell>
                         {new Date(offer.created_at).toLocaleDateString()}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="icon">
+                        <TableCell>
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => handleViewOffer(offer)}
+                            title="View offer details"
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          {!offer.is_active && (
-                            <Button 
-                              variant="ghost" 
-                              size="icon"
-                              onClick={() => handleDeleteOffer(offer.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
+                        </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -838,6 +770,93 @@ const Offers = () => {
                 ))}
               </div>
             </div>
+             </DialogContent>
+             </Dialog>
+
+             {/* View Offer Details Dialog */}
+             <Dialog open={isViewOfferDialogOpen} onOpenChange={setIsViewOfferDialogOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Eye className="h-5 w-5 text-primary" />
+                Offer Details
+              </DialogTitle>
+            </DialogHeader>
+            
+            {viewingOffer && (
+              <div className="space-y-6 mt-4">
+                {/* Offer Text */}
+                <div>
+                  <Label className="text-sm font-semibold text-muted-foreground">Offer Text</Label>
+                  <p className="text-lg font-medium mt-1">{viewingOffer.call_to_action}</p>
+                </div>
+
+                {/* Offer Type */}
+                <div>
+                  <Label className="text-sm font-semibold text-muted-foreground">Offer Type</Label>
+                  <div className="mt-1">
+                    {viewingOffer.is_open_offer ? (
+                      <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
+                        Open Offer
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">
+                        Location-based
+                        {viewingOffer.available_for_partnership && (
+                          <span className="ml-1 text-xs">(Available for Partnership)</span>
+                        )}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Locations */}
+                <div>
+                  <Label className="text-sm font-semibold text-muted-foreground">
+                    Locations ({viewingOffer.locations.length})
+                  </Label>
+                  <div className="mt-2 space-y-2">
+                    {viewingOffer.locations.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No locations assigned</p>
+                    ) : (
+                      viewingOffer.locations.map((location, index) => (
+                        <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                          <div>
+                            <p className="font-medium">{location.name}</p>
+                            <p className="text-sm text-muted-foreground">{location.address}</p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Status */}
+                <div>
+                  <Label className="text-sm font-semibold text-muted-foreground">Status</Label>
+                  <div className="mt-1">
+                    <Badge variant={viewingOffer.is_active ? "default" : "secondary"}>
+                      {viewingOffer.is_active ? "Active" : "Inactive"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Created Date */}
+                <div>
+                  <Label className="text-sm font-semibold text-muted-foreground">Created</Label>
+                  <p className="text-sm mt-1">
+                    {new Date(viewingOffer.created_at).toLocaleString()}
+                  </p>
+                </div>
+
+                {/* Redemptions */}
+                <div>
+                  <Label className="text-sm font-semibold text-muted-foreground">Total Redemptions</Label>
+                  <p className="text-2xl font-bold text-primary mt-1">{viewingOffer.redemption_count}</p>
+                </div>
+              </div>
+            )}
              </DialogContent>
              </Dialog>
 

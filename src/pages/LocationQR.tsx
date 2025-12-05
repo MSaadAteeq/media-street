@@ -126,6 +126,13 @@ const LocationQR = () => {
           </p>
         </div>
 
+        {/* Print & Display Instructions */}
+        <div className="mb-6 bg-muted/50 rounded-lg p-4 border border-border">
+          <p className="text-sm text-muted-foreground">
+            <span className="font-semibold text-foreground">Print & Display:</span> Place this QR code at your checkout counter, entrance, or waiting area for maximum visibility.
+          </p>
+        </div>
+
         {/* QR Code Display Component */}
         <LocationQRDisplay 
           locationId={location.id} 
