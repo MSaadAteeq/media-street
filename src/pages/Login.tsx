@@ -10,6 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Store, ArrowRight } from "lucide-react";
 import Logo from "@/components/Logo";
@@ -34,6 +35,7 @@ const signupSchema = z.object({
   confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
   fullName: z.string().min(2, "Full name must be at least 2 characters"),
   storeName: z.string().min(2, "Store name must be at least 2 characters"),
+  retailChannel: z.string().min(1, "Please select a retail channel"),
   latitude: z.number().optional(),
   longitude: z.number().optional(),
   referralCode: z.string().optional().refine((val) => !val || val.length === 8, {
@@ -76,6 +78,7 @@ export default function Login() {
       confirmPassword: "",
       fullName: "",
       storeName: "",
+      retailChannel: "",
       latitude: undefined,
       longitude: undefined,
       referralCode: "",
@@ -183,6 +186,7 @@ export default function Login() {
           password: data.password,
           storeName: data.storeName,
           location_name: data.storeName, // Use storeName for location name
+          retail_channel: data.retailChannel, // Include retail channel
           latitude: data.latitude,
           longitude: data.longitude,
           referral_code: data.referralCode ? data.referralCode.toUpperCase().trim() : undefined
@@ -190,16 +194,56 @@ export default function Login() {
       });
 
       if (response.success && response.data) {
-        toast({
-          title: "Account created!",
-          description: response.message || "Your account has been created successfully.",
-        });
-        setActiveTab("signin");
-        loginForm.setValue("email", data.email);
+        // Get role from response, or decode from token as fallback
+        let userRole = response.data.user?.role || 'retailer';
         
-        // Store token if provided
+        // Fallback: Try to decode role from JWT token if not in response
+        if (!userRole || userRole === 'retailer') {
+          try {
+            const token = response.data.token;
+            if (token) {
+              const payload = JSON.parse(atob(token.split('.')[1]));
+              if (payload.role) {
+                userRole = payload.role;
+              }
+            }
+          } catch (e) {
+            console.warn('Could not decode role from token:', e);
+          }
+        }
+        
+        // Debug logging
+        console.log('🔐 Signup Response:', response);
+        console.log('👤 User Role:', userRole);
+        console.log('📦 Full User Data:', response.data.user);
+        
+        // Dispatch auth actions to log user in
+        dispatch(authActions.login({ 
+          email: response.data.user?.email || data.email, 
+          fullName: response.data.user?.fullName || data.fullName 
+        }));
+        dispatch(authActions.role({ role: userRole }));
+        
+        // Store token
         if (response.data.token) {
           localStorage.setItem('token', response.data.token);
+        }
+        
+        // Store role in localStorage for immediate access
+        localStorage.setItem('userRole', userRole);
+        
+        toast({
+          title: "Account created!",
+          description: response.message || "Your account has been created successfully. Welcome!",
+        });
+        
+        // Redirect based on user role immediately
+        if (userRole.toLowerCase() === 'admin') {
+          console.log('✅ Redirecting admin to /admin');
+          navigate("/admin", { replace: true });
+        } else {
+          console.log('✅ Redirecting retailer to /dashboard');
+          navigate("/dashboard", { replace: true });
         }
       } else {
         toast({
@@ -396,6 +440,31 @@ export default function Login() {
                             <FormControl>
                               <Input placeholder="My Store" {...field} />
                             </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={signupForm.control}
+                        name="retailChannel"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Retail Channel *</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select retail channel" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="restaurant">Restaurant</SelectItem>
+                                <SelectItem value="retail">Retail</SelectItem>
+                                <SelectItem value="salon">Salon/Spa</SelectItem>
+                                <SelectItem value="cafe">Café/Coffee Shop</SelectItem>
+                                <SelectItem value="grocery">Grocery/Market</SelectItem>
+                                <SelectItem value="other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
                             <FormMessage />
                           </FormItem>
                         )}

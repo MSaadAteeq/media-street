@@ -13,6 +13,7 @@ const ReferralCodeCard = () => {
   const [loading, setLoading] = useState(true);
   const [points, setPoints] = useState<number>(0);
   const [rank, setRank] = useState<number | null>(null);
+  const [credit, setCredit] = useState<number>(0);
 
   useEffect(() => {
     fetchReferralData();
@@ -22,11 +23,12 @@ const ReferralCodeCard = () => {
     try {
       setLoading(true);
       
-      // Fetch user profile to get referral code
+      // Fetch user profile to get referral code and credit
       try {
         const userResponse = await get({ end_point: 'users/me', token: true });
         if (userResponse.success && userResponse.data) {
           setReferralCode(userResponse.data.referralCode || userResponse.data.referral_code || '');
+          setCredit(userResponse.data.credit || 0);
         }
       } catch (error) {
         console.error('Error fetching user profile:', error);
@@ -123,7 +125,7 @@ const ReferralCodeCard = () => {
               Share this code with other retailers. You'll get 3 points when they sign up!
             </p>
           </div>
-          <div className="text-right">
+          <div className="text-right space-y-2">
             <div className="flex items-center gap-2 justify-end">
               {rank !== null && (
                 <div className="flex items-center gap-1 text-primary">
@@ -132,8 +134,14 @@ const ReferralCodeCard = () => {
                 </div>
               )}
             </div>
-            <div className="text-2xl font-bold text-primary mt-1">{points}</div>
-            <div className="text-xs text-muted-foreground">Points</div>
+            <div>
+              <div className="text-2xl font-bold text-primary">{points}</div>
+              <div className="text-xs text-muted-foreground">Points</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">${credit.toFixed(2)}</div>
+              <div className="text-xs text-muted-foreground">Credit</div>
+            </div>
           </div>
         </div>
       </CardHeader>
