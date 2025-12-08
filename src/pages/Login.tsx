@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -54,6 +54,7 @@ export default function Login() {
   const [activeTab, setActiveTab] = useState("signin");
   const [selectedLatitude, setSelectedLatitude] = useState<number | undefined>(undefined);
   const [selectedLongitude, setSelectedLongitude] = useState<number | undefined>(undefined);
+  const [isGettingLocation, setIsGettingLocation] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -84,6 +85,73 @@ export default function Login() {
       referralCode: "",
     },
   });
+
+  // Reset location when switching tabs
+  useEffect(() => {
+    if (activeTab === 'signin') {
+      // Reset location when switching away from signup
+      setSelectedLatitude(undefined);
+      setSelectedLongitude(undefined);
+      setIsGettingLocation(false);
+    }
+  }, [activeTab]);
+
+  // Default location: 550 West 30th Street, New York, New York 10001, United States
+  const DEFAULT_LATITUDE = 40.7505;
+  const DEFAULT_LONGITUDE = -74.0014;
+
+  // Get user's current location when signup tab is active
+  useEffect(() => {
+    if (activeTab === 'signup' && !isGettingLocation) {
+      setIsGettingLocation(true);
+      
+      // Try to get user's current location
+      if (navigator.geolocation) {
+        console.log('🔍 Attempting to get user location...');
+        
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            // Success: Use user's current location
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            console.log('✅ User location detected:', lat, lng);
+            
+            setSelectedLatitude(lat);
+            setSelectedLongitude(lng);
+            signupForm.setValue("latitude", lat);
+            signupForm.setValue("longitude", lng);
+            setIsGettingLocation(false);
+          },
+          (error) => {
+            // Failed: Use default location
+            console.warn('⚠️ Geolocation failed:', error.message);
+            console.log('📍 Using default location: 550 West 30th Street, New York, NY 10001');
+            
+            setSelectedLatitude(DEFAULT_LATITUDE);
+            setSelectedLongitude(DEFAULT_LONGITUDE);
+            signupForm.setValue("latitude", DEFAULT_LATITUDE);
+            signupForm.setValue("longitude", DEFAULT_LONGITUDE);
+            setIsGettingLocation(false);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 15000, // 15 seconds timeout (increased)
+            maximumAge: 0 // Don't use cached position
+          }
+        );
+      } else {
+        // Geolocation not supported: Use default location
+        console.warn('⚠️ Geolocation not supported, using default location');
+        console.log('📍 Using default location: 550 West 30th Street, New York, NY 10001');
+        
+        setSelectedLatitude(DEFAULT_LATITUDE);
+        setSelectedLongitude(DEFAULT_LONGITUDE);
+        signupForm.setValue("latitude", DEFAULT_LATITUDE);
+        signupForm.setValue("longitude", DEFAULT_LONGITUDE);
+        setIsGettingLocation(false);
+      }
+    }
+  }, [activeTab]);
 
   const handleLocationSelect = (latitude: number, longitude: number, locationName?: string) => {
     setSelectedLatitude(latitude);
@@ -275,7 +343,7 @@ export default function Login() {
             src={smallBusinessPartnerships}
             alt="Small business partnership"
             className="w-full h-full object-cover"
-          />
+          /> 
         </div>
 
         <div className="relative z-10 p-12 flex flex-col h-full">
@@ -535,13 +603,22 @@ export default function Login() {
                       />
                       <FormItem>
                         <FormLabel>Business Location *</FormLabel>
-                        <LocationPicker
-                          onLocationSelect={handleLocationSelect}
-                          initialLatitude={selectedLatitude}
-                          initialLongitude={selectedLongitude}
-                          height="400px"
-                        />
-                        {(!selectedLatitude || !selectedLongitude) && (
+                        {isGettingLocation ? (
+                          <div className="flex items-center justify-center h-[400px] border rounded-md bg-muted/50">
+                            <div className="text-center">
+                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                              <p className="text-sm text-muted-foreground">🔍 Detecting your location...</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <LocationPicker
+                            onLocationSelect={handleLocationSelect}
+                            initialLatitude={selectedLatitude || DEFAULT_LATITUDE}
+                            initialLongitude={selectedLongitude || DEFAULT_LONGITUDE}
+                            height="400px"
+                          />
+                        )}
+                        {!isGettingLocation && (!selectedLatitude || !selectedLongitude) && (
                           <p className="text-sm text-destructive mt-1">
                             Please select your business location on the map
                           </p>
