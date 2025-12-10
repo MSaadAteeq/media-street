@@ -45,6 +45,10 @@ type PartnerRequest = {
     last_name: string;
     retail_address?: string;
   };
+  sender_offer_image?: string | null;
+  recipient_offer_image?: string | null;
+  sender_offer?: any;
+  recipient_offer?: any;
 };
 const PartnerRequests = () => {
   const navigate = useNavigate();
@@ -56,6 +60,7 @@ const PartnerRequests = () => {
   const [storeOptions, setStoreOptions] = useState<{
     store_name: string;
     retail_address: string;
+    partner_id?: string;
   }[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string>('current-user-id');
   const [expandedOffer, setExpandedOffer] = useState<string | null>(null);
@@ -271,7 +276,37 @@ const PartnerRequests = () => {
       partnershipEligibleOffers.forEach((offer: any) => {
         // Use locations array if available (formatted by backend), otherwise use locationIds
         const locations = offer.locations || offer.locationIds || offer.location_ids || [];
-        const offerUserId = offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
+        
+        // Extract userId - handle both populated and non-populated cases
+        let offerUserId: string | null = null;
+        if (offer.userId) {
+          if (typeof offer.userId === 'object' && offer.userId._id) {
+            // Populated user object
+            offerUserId = offer.userId._id.toString();
+          } else if (typeof offer.userId === 'object' && offer.userId.toString) {
+            // ObjectId object
+            offerUserId = offer.userId.toString();
+          } else if (typeof offer.userId === 'string') {
+            // String ID
+            offerUserId = offer.userId;
+          }
+        }
+        
+        // Also check user object if available (from backend formatted response)
+        if (!offerUserId && offer.user?._id) {
+          offerUserId = offer.user._id.toString();
+        }
+        
+        // Skip if no userId found
+        if (!offerUserId) {
+          console.warn('⚠️ Warning: No userId found for offer:', offer._id || offer.id);
+          console.warn('   Offer structure:', {
+            userId: offer.userId,
+            user: offer.user,
+            id: offer._id || offer.id
+          });
+          return; // Skip this offer
+        }
         
         // Skip if this is the current user's offer
         if (offerUserId === currentUserId) {
@@ -303,14 +338,6 @@ const PartnerRequests = () => {
           
           // Only add if we have valid location data and not already in map
           if (locId && locName && !locationMap.has(locId)) {
-            // Ensure userId is properly extracted and stored
-            const userId = offerUserId || offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
-            
-            if (!userId) {
-              console.warn('Warning: No userId found for offer:', offer._id || offer.id);
-              return; // Skip if no userId
-            }
-            
             locationMap.set(locId, {
               id: locId,
               store_name: locName,
@@ -320,8 +347,8 @@ const PartnerRequests = () => {
               latitude: locLatitude,
               longitude: locLongitude,
               is_offerx_active: false,
-              userId: userId, // Store userId for partner requests - ensure it's always set
-              user_id: userId, // Also store as user_id for compatibility
+              userId: offerUserId, // Store userId for partner requests - ensure it's always set
+              user_id: offerUserId, // Also store as user_id for compatibility
               offer: {
                 id: offer._id?.toString() || offer.id?.toString(),
                 call_to_action: offer.callToAction || offer.call_to_action || ''
@@ -583,7 +610,8 @@ const PartnerRequests = () => {
         .map(partner => ({
           store_name: partner.store_name,
           retail_address: partner.retail_address,
-          partner_id: partner.id
+          partner_id: partner.id,
+          userId: (partner as any).userId || (partner as any).user_id
         }));
       
       setStoreOptions(matchedStores);
@@ -607,7 +635,8 @@ const PartnerRequests = () => {
             .map(partner => ({
               store_name: partner.store_name,
               retail_address: partner.retail_address,
-              partner_id: partner.id
+              partner_id: partner.id,
+              userId: (partner as any).userId || (partner as any).user_id
             }));
           setStoreOptions(matchedStores);
         }, 500);
@@ -698,20 +727,33 @@ const PartnerRequests = () => {
       let recipientId: string | null = null;
       const searchStoreName = newPartnerStore.trim();
       
-      console.log('Searching for recipient with store name:', searchStoreName);
-      console.log('Available partners in partnersForMap:', partnersForMap.length);
-      console.log('Sample partner:', partnersForMap[0]);
+      console.log('🔍 Searching for recipient with store name:', searchStoreName);
+      console.log('📊 Available partners in partnersForMap:', partnersForMap.length);
+      if (partnersForMap.length > 0) {
+        console.log('📋 Sample partner:', {
+          id: partnersForMap[0].id,
+          store_name: partnersForMap[0].store_name,
+          userId: (partnersForMap[0] as any).userId,
+          user_id: (partnersForMap[0] as any).user_id
+        });
+      }
       
       // First, try to find from storeOptions (if user selected from dropdown)
       const selectedStore = storeOptions.find(store => store.store_name === searchStoreName);
-      if (selectedStore && selectedStore.partner_id) {
+      if (selectedStore) {
         console.log('Found in storeOptions, partner_id:', selectedStore.partner_id);
-        // Get the partner from partnersForMap to find the user ID
-        const partner = partnersForMap.find(p => p.id === selectedStore.partner_id);
-        if (partner) {
-          console.log('Found partner in partnersForMap:', partner);
-          recipientId = (partner as any).userId || (partner as any).user_id;
-          console.log('Extracted recipientId from partner:', recipientId);
+        // First try to get userId directly from storeOptions if available
+        if ((selectedStore as any).userId) {
+          recipientId = (selectedStore as any).userId;
+          console.log('Extracted recipientId directly from storeOptions:', recipientId);
+        } else if (selectedStore.partner_id) {
+          // Get the partner from partnersForMap to find the user ID
+          const partner = partnersForMap.find(p => p.id === selectedStore.partner_id);
+          if (partner) {
+            console.log('Found partner in partnersForMap:', partner);
+            recipientId = (partner as any).userId || (partner as any).user_id;
+            console.log('Extracted recipientId from partner:', recipientId);
+          }
         }
       }
       
@@ -761,11 +803,14 @@ const PartnerRequests = () => {
       }
       
       if (!recipientId) {
-        console.error('Could not find recipient. Available partners:', partnersForMap.map(p => ({
+        console.error('❌ Could not find recipient. Available partners:', partnersForMap.map(p => ({
           store_name: p.store_name,
           userId: (p as any).userId,
+          user_id: (p as any).user_id,
           id: p.id
         })));
+        console.error('❌ Search store name:', searchStoreName);
+        console.error('❌ Store options:', storeOptions);
         toast.error(`Could not find the store "${searchStoreName}". Please select from the dropdown or ensure the store has a partnership-eligible offer.`);
         return;
       }
@@ -1015,7 +1060,7 @@ const PartnerRequests = () => {
   };
   const getRequestType = (request: PartnerRequest) => {
     // Compare as strings to handle both ObjectId and string formats
-    const senderIdStr = request.sender_id?.toString() || request.senderId?.toString() || '';
+    const senderIdStr = request.sender_id?.toString() || '';
     const currentUserIdStr = currentUserId?.toString() || '';
     
     // If sender_id matches current user, it's an outgoing request

@@ -42,6 +42,9 @@ const OfferAI = () => {
   const [loadingOpenOffers, setLoadingOpenOffers] = useState(false);
   const [selectedOpenOffer, setSelectedOpenOffer] = useState<any>(null);
   const [isOpenOfferDialogOpen, setIsOpenOfferDialogOpen] = useState(false);
+  const [showSubscribeDialog, setShowSubscribeDialog] = useState(false);
+  const [pendingSubscribeOffer, setPendingSubscribeOffer] = useState<any>(null);
+  const [selectedSubscribeLocationId, setSelectedSubscribeLocationId] = useState<string>("");
 
   // Load locations and offers from API
   useEffect(() => {
@@ -596,33 +599,11 @@ const OfferAI = () => {
                               <Button 
                                 variant="default" 
                                 size="sm"
-                                onClick={async () => {
-                                  // Subscribe to this open offer
-                                  try {
-                                    const { post } = await import("@/services/apis");
-                                    const response = await post({
-                                      end_point: 'partners/subscribe-open-offer',
-                                      body: { offer_id: offer.id },
-                                      token: true
-                                    });
-                                    
-                                    if (response.success) {
-                                      toast({
-                                        title: "Subscribed!",
-                                        description: `You've subscribed to ${offer.retailer_name}'s open offer. It will now appear in your carousel.`,
-                                      });
-                                      // Refresh open offers list
-                                      fetchAllOpenOffers();
-                                    } else {
-                                      throw new Error(response.message || 'Failed to subscribe');
-                                    }
-                                  } catch (error: any) {
-                                    toast({
-                                      title: "Error",
-                                      description: error?.response?.data?.message || error?.message || "Failed to subscribe to offer",
-                                      variant: "destructive",
-                                    });
-                                  }
+                                onClick={() => {
+                                  // Open dialog to select location for subscription
+                                  setPendingSubscribeOffer(offer);
+                                  setSelectedSubscribeLocationId("");
+                                  setShowSubscribeDialog(true);
                                 }}
                               >
                                 Subscribe
@@ -771,6 +752,113 @@ const OfferAI = () => {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Subscribe to Open Offer Dialog - Location Selector */}
+        <Dialog open={showSubscribeDialog} onOpenChange={setShowSubscribeDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Subscribe to Open Offer</DialogTitle>
+              <DialogDescription>
+                Select which location should subscribe to this open offer: <strong>{pendingSubscribeOffer?.retailer_name || pendingSubscribeOffer?.call_to_action || 'this offer'}</strong>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">
+                  Select Location <span className="text-muted-foreground">(Required)</span>
+                </Label>
+                <div className="text-xs text-muted-foreground mb-2">
+                  Choose which of your locations should display this open offer in the carousel.
+                </div>
+                <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto">
+                  {locations.map(location => (
+                    <Button 
+                      key={location.id} 
+                      variant={selectedSubscribeLocationId === location.id ? "default" : "outline"} 
+                      className="w-full justify-start text-left h-auto py-3" 
+                      onClick={() => setSelectedSubscribeLocationId(location.id)}
+                    >
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">{location.name}</span>
+                        <span className="text-xs text-muted-foreground">{location.address}</span>
+                      </div>
+                    </Button>
+                  ))}
+                </div>
+                {locations.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No locations available. Please add a location first.</p>
+                )}
+                {locations.length > 0 && !selectedSubscribeLocationId && (
+                  <p className="text-xs text-red-600">Please select a location to continue</p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowSubscribeDialog(false);
+                  setPendingSubscribeOffer(null);
+                  setSelectedSubscribeLocationId("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={async () => {
+                  if (!selectedSubscribeLocationId) {
+                    toast({
+                      title: "Location Required",
+                      description: "Please select a location for this subscription",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  if (!pendingSubscribeOffer) {
+                    return;
+                  }
+
+                  try {
+                    const { post } = await import("@/services/apis");
+                    const response = await post({
+                      end_point: 'partners/subscribe-open-offer',
+                      body: { 
+                        offer_id: pendingSubscribeOffer.id,
+                        location_id: selectedSubscribeLocationId
+                      },
+                      token: true
+                    });
+                    
+                    if (response.success) {
+                      toast({
+                        title: "Subscribed!",
+                        description: `You've subscribed to ${pendingSubscribeOffer.retailer_name || 'this'}'s open offer for ${locations.find(l => l.id === selectedSubscribeLocationId)?.name || 'your location'}. It will now appear in your carousel.`,
+                      });
+                      // Refresh open offers list
+                      fetchAllOpenOffers();
+                      // Close dialog
+                      setShowSubscribeDialog(false);
+                      setPendingSubscribeOffer(null);
+                      setSelectedSubscribeLocationId("");
+                    } else {
+                      throw new Error(response.message || 'Failed to subscribe');
+                    }
+                  } catch (error: any) {
+                    toast({
+                      title: "Error",
+                      description: error?.response?.data?.message || error?.message || "Failed to subscribe to offer",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                disabled={!selectedSubscribeLocationId}
+              >
+                Subscribe
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </AppLayout>;

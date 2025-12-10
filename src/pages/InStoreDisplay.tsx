@@ -514,10 +514,10 @@ const InStoreDisplay = () => {
                             alt={item.title}
                             className="w-full h-full object-cover"
                           />
-                          {/* QR Code in top right corner */}
+                          {/* QR Code in top right corner - points to location carousel */}
                           <div className="absolute top-12 right-12 bg-white p-4 rounded-lg shadow-lg">
                             <img 
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`${window.location.origin}/redeem/${item.id}`)}`}
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`${window.location.origin}/carousel/${selectedLocationId}`)}`}
                               alt="QR Code"
                               className="w-38 h-38"
                             />

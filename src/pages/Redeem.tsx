@@ -67,8 +67,13 @@ const Redeem = () => {
   const [qrLocationId, setQrLocationId] = useState<string | null>(locationId || null); // Location ID from QR code
 
   useEffect(() => {
+    // If locationId is present in URL (from old QR codes), redirect to carousel
+    if (locationId) {
+      navigate(`/carousel/${locationId}`, { replace: true });
+      return;
+    }
     fetchOfferDetails();
-  }, [offerCode, searchParams]);
+  }, [offerCode, locationId, searchParams, navigate]);
 
   const fetchOfferDetails = async () => {
     try {

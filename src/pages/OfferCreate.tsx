@@ -39,6 +39,7 @@ const OfferCreate = () => {
   const [expirationDuration, setExpirationDuration] = useState("1day");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCreating, setIsCreating] = useState(false); // Track if offer is being created
+  const [isAiGenerated, setIsAiGenerated] = useState(false); // Track if image is AI-generated
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [redemptionCode, setRedemptionCode] = useState("");
   const [brandColors, setBrandColors] = useState<{ primary: string; secondary: string } | null>(null);
@@ -124,10 +125,10 @@ const OfferCreate = () => {
       }
 
       // Generate QR code URL with location ID (use first selected location)
-      // Each location will have a unique QR code to track which location the redemption belongs to
+      // QR code should point to carousel for the location (if location selected)
       const locationId = selectedLocations.length > 0 ? selectedLocations[0] : '';
       const qrCodeUrl = locationId 
-        ? `${window.location.origin}/redeem/${redemptionCode}/${locationId}`
+        ? `${window.location.origin}/carousel/${locationId}`
         : `${window.location.origin}/redeem/${redemptionCode}`;
       
       // Generate QR code and overlay it on top right
@@ -237,6 +238,7 @@ const OfferCreate = () => {
           }
           const imageFile = new File([imageBlob], 'generated-offer-image.png', { type: imageBlob.type || 'image/png' });
           setAdImage(imageFile);
+          setIsAiGenerated(true); // Mark as AI-generated
         } catch (imageError) {
           console.error('Error loading offer image:', imageError);
           // Continue without image if it fails
@@ -303,6 +305,7 @@ const OfferCreate = () => {
 
   const handleFileUpload = (file: File) => {
     setAdImage(file);
+    setIsAiGenerated(false); // Manual upload is not AI-generated
   };
 
   const getExpirationDate = () => {
@@ -403,13 +406,9 @@ const OfferCreate = () => {
       
       // Generate location-specific images using the same canvas logic as the preview
       for (const locationId of selectedLocations) {
-        // Generate unique redemption code for this location
-        const timestamp = Date.now().toString(36);
-        const random = Math.random().toString(36).substring(2, 8);
-        const locationCode = `${timestamp}-${random}-${locationId.slice(-4)}`.toUpperCase();
-        
-        // Generate QR code URL for this specific location
-        const qrCodeUrl = `${window.location.origin}/redeem/${locationCode}/${locationId}`;
+        // Generate QR code URL for this specific location - points to carousel
+        // This will show all offers for this location in a mobile-responsive carousel
+        const qrCodeUrl = `${window.location.origin}/carousel/${locationId}`;
         
         // Create a canvas for this location's offer image
         const canvas = document.createElement('canvas');
@@ -471,31 +470,33 @@ const OfferCreate = () => {
                 });
               }
               
-              // Generate QR code for this location
-              try {
-                const qrCanvas = document.createElement('canvas');
-                qrCanvas.width = 200;
-                qrCanvas.height = 200;
-                const qrCtx = qrCanvas.getContext('2d');
-                
-                if (qrCtx) {
-                  qrCtx.fillStyle = '#ffffff';
-                  qrCtx.fillRect(0, 0, qrCanvas.width, qrCanvas.height);
+              // Generate QR code for this location (skip for AI-generated images)
+              if (!isAiGenerated) {
+                try {
+                  const qrCanvas = document.createElement('canvas');
+                  qrCanvas.width = 200;
+                  qrCanvas.height = 200;
+                  const qrCtx = qrCanvas.getContext('2d');
                   
-                  await QRCode.toCanvas(qrCanvas, qrCodeUrl, {
-                    width: 180,
-                    margin: 2,
-                    color: {
-                      dark: '#000000',
-                      light: '#FFFFFF'
-                    }
-                  });
-                  
-                  // Draw QR code on main canvas in top right
-                  ctx.drawImage(qrCanvas, targetWidth - 220, 20, 200, 200);
+                  if (qrCtx) {
+                    qrCtx.fillStyle = '#ffffff';
+                    qrCtx.fillRect(0, 0, qrCanvas.width, qrCanvas.height);
+                    
+                    await QRCode.toCanvas(qrCanvas, qrCodeUrl, {
+                      width: 180,
+                      margin: 2,
+                      color: {
+                        dark: '#000000',
+                        light: '#FFFFFF'
+                      }
+                    });
+                    
+                    // Draw QR code on main canvas in top right
+                    ctx.drawImage(qrCanvas, targetWidth - 220, 20, 200, 200);
+                  }
+                } catch (qrError) {
+                  console.error('Error generating QR code for location:', locationId, qrError);
                 }
-              } catch (qrError) {
-                console.error('Error generating QR code for location:', locationId, qrError);
               }
               
               resolve(null);
