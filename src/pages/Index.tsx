@@ -13,6 +13,7 @@ import Footer from "@/components/Footer";
 import CalendlyWidget from "@/components/CalendlyWidget";
 import CookieConsent from "@/components/CookieConsent";
 import PartnershipAccountability from "@/components/PartnershipAccountability";
+import InsightsPreview from "@/components/InsightPreview";
 
 const Index = () => {
   return (
@@ -22,13 +23,14 @@ const Index = () => {
       <OfferBuilderDemo />
       <HowItWorks />
       <RecentOffers />
+      <PartnershipAccountability />
       <Benefits />
       <POSAdvertising />
-      <PartnershipAccountability />
       <EventSponsorshipCallout />
       <Pricing />
       <CTA />
       <ReferralOffer />
+      <InsightsPreview />
       <Footer />
       <CalendlyWidget />
       <CookieConsent />

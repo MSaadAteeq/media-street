@@ -47,6 +47,7 @@ interface OfferAd {
   image: string;
   partner?: string;
   validUntil?: string;
+  offerLocationId?: string; // Original offer location ID for impression tracking
 }
 
 const InStoreDisplay = () => {
@@ -66,6 +67,63 @@ const InStoreDisplay = () => {
   });
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const [requestSubmitted, setRequestSubmitted] = useState(false);
+  const trackedImpressions = useRef<Set<string>>(new Set()); // Track which offers have been viewed
+
+  // Track impressions when carousel slide changes (only once per offer)
+  const trackImpression = async (item: OfferAd) => {
+    if (!selectedLocationId || !item.id || !item.offerLocationId) return;
+    
+    // Create unique key for this impression
+    const impressionKey = `${item.id}-${selectedLocationId}`;
+    
+    // Skip if already tracked
+    if (trackedImpressions.current.has(impressionKey)) {
+      return;
+    }
+    
+    // Mark as tracked
+    trackedImpressions.current.add(impressionKey);
+    
+    try {
+      const { post } = await import("@/services/apis");
+      await post({
+        end_point: 'impressions',
+        body: {
+          offerId: item.id,
+          locationId: item.offerLocationId, // Original offer location
+          displayLocationId: selectedLocationId, // Where it's being displayed
+          impressionType: 'carousel'
+        },
+        token: false // Public endpoint
+      });
+    } catch (error) {
+      // Silently fail - don't interrupt user experience
+      console.error('Error tracking impression:', error);
+      // Remove from tracked set on error so it can be retried
+      trackedImpressions.current.delete(impressionKey);
+    }
+  };
+
+  // Set up carousel API and track impressions
+  useEffect(() => {
+    if (!api) {
+      return;
+    }
+
+    const currentIndex = api.selectedScrollSnap();
+    
+    // Track impression for initial offer
+    if (offersAds[currentIndex]) {
+      trackImpression(offersAds[currentIndex]);
+    }
+
+    api.on("select", () => {
+      const selectedIndex = api.selectedScrollSnap();
+      if (offersAds[selectedIndex]) {
+        trackImpression(offersAds[selectedIndex]);
+      }
+    });
+  }, [api, offersAds, selectedLocationId]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -327,7 +385,8 @@ const InStoreDisplay = () => {
               description: "Partner Offer",
               image: offer.offer_image || offer.offerImage || posCoffeeImage, // Use different image for partner offers
               partner: offer.user?.fullName || offer.userId?.fullName || null,
-              validUntil: offer.expires_at || offer.expiresAt || "∞"
+              validUntil: offer.expires_at || offer.expiresAt || "∞",
+              offerLocationId: offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() || offer.location_ids?.[0] || ''
             }));
           
           console.log(`✅ Processed ${partnerOffersData.length} active partner offers`);
@@ -355,7 +414,8 @@ const InStoreDisplay = () => {
             description: "Open Offer",
             image: offer.offer_image || offer.offerImage || posFlowersImage, // Use different image for open offers
             partner: offer.user?.fullName || offer.userId?.fullName || null,
-            validUntil: offer.expires_at || offer.expiresAt || "7 days"
+            validUntil: offer.expires_at || offer.expiresAt || "7 days",
+            offerLocationId: offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() || offer.location_ids?.[0] || ''
           }));
         }
       } catch (error) {

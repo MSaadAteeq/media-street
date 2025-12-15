@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import Logo from "@/components/Logo";
-import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
+import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, TrendingDown, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -69,6 +69,24 @@ const Dashboard = () => {
   });
   const [locationAnalytics, setLocationAnalytics] = useState<any[]>([]);
   const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
+  
+  // 30-day metrics state
+  const [monthlyMetrics, setMonthlyMetrics] = useState({
+    inboundViewsMonth: 0,
+    inboundViewsLastMonth: 0,
+    outboundViewsMonth: 0,
+    outboundViewsLastMonth: 0,
+    inboundRedemptionsMonth: 0,
+    inboundRedemptionsLastMonth: 0,
+    outboundRedemptionsMonth: 0,
+    outboundRedemptionsLastMonth: 0,
+  });
+
+  // Helper function to calculate percentage change
+  const calculatePercentageChange = (current: number, previous: number): number => {
+    if (previous === 0) return current > 0 ? 100 : 0;
+    return Math.round(((current - previous) / previous) * 100);
+  };
 
   // Fetch dashboard data on mount
   useEffect(() => {
@@ -79,11 +97,13 @@ const Dashboard = () => {
     try {
       setLoading(true);
 
-      // Fetch user profile
+      // Fetch user profile first (needed for calculations)
+      let currentUserId: string | null = null;
       try {
         const userResponse = await get({ end_point: 'users/me', token: true });
         if (userResponse.success && userResponse.data) {
           setCurrentUser(userResponse.data);
+          currentUserId = userResponse.data._id?.toString() || userResponse.data.id?.toString() || null;
         }
       } catch (error) {
         console.error('Error fetching user profile:', error);
@@ -132,6 +152,120 @@ const Dashboard = () => {
         impressions,
         conversionRate: Math.round(conversionRate * 10) / 10
       }));
+
+      // Calculate 30-day metrics
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+      // Fetch impressions data for all user locations
+      let impressionsData: any[] = [];
+      try {
+        // Get impressions for all locations
+        const impressionsPromises = locationsData.map(async (loc: any) => {
+          const locId = loc._id?.toString() || loc.id?.toString();
+          if (!locId) return { inbound: [], outbound: [] };
+          
+          try {
+            const [inboundResponse, outboundResponse] = await Promise.all([
+              get({ end_point: `impressions/inbound/${locId}`, token: true }).catch(() => ({ success: false, data: [] })),
+              get({ end_point: `impressions/outbound/${locId}`, token: true }).catch(() => ({ success: false, data: [] }))
+            ]);
+            
+            return {
+              locationId: locId,
+              inbound: inboundResponse.success ? inboundResponse.data : [],
+              outbound: outboundResponse.success ? outboundResponse.data : []
+            };
+          } catch (error) {
+            console.error(`Error fetching impressions for location ${locId}:`, error);
+            return { locationId: locId, inbound: [], outbound: [] };
+          }
+        });
+        
+        impressionsData = await Promise.all(impressionsPromises);
+      } catch (error) {
+        console.error('Error fetching impressions:', error);
+      }
+
+      // Filter impressions for last 30 days and previous 30 days
+      const allInboundImpressions = impressionsData.flatMap((imp: any) => imp.inbound || []);
+      const allOutboundImpressions = impressionsData.flatMap((imp: any) => imp.outbound || []);
+
+      const inboundImpressionsLast30Days = allInboundImpressions.filter((imp: any) => {
+        const viewedAt = new Date(imp.viewedAt || imp.createdAt || 0);
+        return viewedAt >= thirtyDaysAgo;
+      });
+
+      const inboundImpressionsPrevious30Days = allInboundImpressions.filter((imp: any) => {
+        const viewedAt = new Date(imp.viewedAt || imp.createdAt || 0);
+        return viewedAt >= sixtyDaysAgo && viewedAt < thirtyDaysAgo;
+      });
+
+      const outboundImpressionsLast30Days = allOutboundImpressions.filter((imp: any) => {
+        const viewedAt = new Date(imp.viewedAt || imp.createdAt || 0);
+        return viewedAt >= thirtyDaysAgo;
+      });
+
+      const outboundImpressionsPrevious30Days = allOutboundImpressions.filter((imp: any) => {
+        const viewedAt = new Date(imp.viewedAt || imp.createdAt || 0);
+        return viewedAt >= sixtyDaysAgo && viewedAt < thirtyDaysAgo;
+      });
+
+      // Filter redemptions for last 30 days
+      const redemptionsLast30Days = redemptionsData.filter((r: any) => {
+        const redemptionDate = new Date(r.createdAt || r.created_at || r.redeemedAt || r.redeemed_at || 0);
+        return redemptionDate >= thirtyDaysAgo;
+      });
+
+      // Filter redemptions for previous 30 days (30-60 days ago)
+      const redemptionsPrevious30Days = redemptionsData.filter((r: any) => {
+        const redemptionDate = new Date(r.createdAt || r.created_at || r.redeemedAt || r.redeemed_at || 0);
+        return redemptionDate >= sixtyDaysAgo && redemptionDate < thirtyDaysAgo;
+      });
+
+      // Use real impressions data
+      const inboundViewsMonth = inboundImpressionsLast30Days.length;
+      const inboundViewsLastMonth = inboundImpressionsPrevious30Days.length;
+      const outboundViewsMonth = outboundImpressionsLast30Days.length;
+      const outboundViewsLastMonth = outboundImpressionsPrevious30Days.length;
+
+      // Calculate redemptions (inbound and outbound)
+      const inboundRedemptionsMonth = currentUserId ? redemptionsLast30Days.filter((r: any) => {
+        const offerUserId = r.offer?.userId?._id?.toString() || r.offer?.userId?.toString() || r.offer?.userId;
+        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || r.redeemedAtLocationId?.userId?.toString() || r.redeemedAtLocationId?.userId;
+        return offerUserId && locationUserId && offerUserId === currentUserId && offerUserId !== locationUserId;
+      }).length : 0;
+
+      const inboundRedemptionsLastMonth = currentUserId ? redemptionsPrevious30Days.filter((r: any) => {
+        const offerUserId = r.offer?.userId?._id?.toString() || r.offer?.userId?.toString() || r.offer?.userId;
+        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || r.redeemedAtLocationId?.userId?.toString() || r.redeemedAtLocationId?.userId;
+        return offerUserId && locationUserId && offerUserId === currentUserId && offerUserId !== locationUserId;
+      }).length : 0;
+
+      // Calculate outbound redemptions (partner offers redeemed at user's locations)
+      const outboundRedemptionsMonth = currentUserId ? redemptionsLast30Days.filter((r: any) => {
+        const offerUserId = r.offer?.userId?._id?.toString() || r.offer?.userId?.toString() || r.offer?.userId;
+        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || r.redeemedAtLocationId?.userId?.toString() || r.redeemedAtLocationId?.userId;
+        return offerUserId && locationUserId && locationUserId === currentUserId && offerUserId !== locationUserId;
+      }).length : 0;
+
+      const outboundRedemptionsLastMonth = currentUserId ? redemptionsPrevious30Days.filter((r: any) => {
+        const offerUserId = r.offer?.userId?._id?.toString() || r.offer?.userId?.toString() || r.offer?.userId;
+        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || r.redeemedAtLocationId?.userId?.toString() || r.redeemedAtLocationId?.userId;
+        return offerUserId && locationUserId && locationUserId === currentUserId && offerUserId !== locationUserId;
+      }).length : 0;
+
+      setMonthlyMetrics({
+        inboundViewsMonth,
+        inboundViewsLastMonth,
+        outboundViewsMonth,
+        outboundViewsLastMonth,
+        inboundRedemptionsMonth,
+        inboundRedemptionsLastMonth,
+        outboundRedemptionsMonth,
+        outboundRedemptionsLastMonth,
+      });
 
       // Calculate location analytics using fetched data directly (not state)
       try {
@@ -840,12 +974,23 @@ const Dashboard = () => {
 
           <Tooltip>
             <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-secondary" onClick={() => navigate('/location-qr')}>
+                <QrCode className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>QR Code Stickers</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-secondary" onClick={() => navigate('/requests')}>
                 <Store className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right">
-              <p>Partner Requests</p>
+              <p>Partners</p>
             </TooltipContent>
           </Tooltip>
 
@@ -869,6 +1014,17 @@ const Dashboard = () => {
             </TooltipTrigger>
             <TooltipContent side="right">
               <p>In-Store Display</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-secondary" onClick={() => navigate('/insights')}>
+                <TrendingUp className="h-5 w-5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Insights</p>
             </TooltipContent>
           </Tooltip>
         </div>
@@ -990,27 +1146,34 @@ const Dashboard = () => {
 
           {/* Main Dashboard */}
           <main className="p-6 space-y-6">
-            {/* Weekly Scan Counter */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Monthly Metrics Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Card className="cursor-help hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Inbound Views This Week</p>
-                          <p className="text-3xl font-bold text-primary">{stats.inboundViews}</p>
+                          <p className="text-sm text-muted-foreground">Inbound Views Last 30 Days</p>
+                          <p className="text-3xl font-bold text-primary">{monthlyMetrics.inboundViewsMonth}</p>
+                          <div className="flex items-center gap-1 text-xs">
+                            {calculatePercentageChange(monthlyMetrics.inboundViewsMonth, monthlyMetrics.inboundViewsLastMonth) >= 0 ? <TrendingUp className="h-3 w-3 text-accent-green" /> : <TrendingDown className="h-3 w-3 text-destructive" />}
+                            <span className={calculatePercentageChange(monthlyMetrics.inboundViewsMonth, monthlyMetrics.inboundViewsLastMonth) >= 0 ? "text-accent-green" : "text-destructive"}>
+                              {Math.abs(calculatePercentageChange(monthlyMetrics.inboundViewsMonth, monthlyMetrics.inboundViewsLastMonth))}%
+                            </span>
+                            <span className="text-muted-foreground">vs previous 30 days</span>
+                          </div>
                         </div>
                         <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center">
-                          <QrCode className="h-6 w-6 text-primary" />
+                          <Eye className="h-6 w-6 text-primary" />
                         </div>
                       </div>
                     </CardContent>
                   </Card>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
-                  <p className="font-medium mb-1">Inbound Scans</p>
-                  <p className="text-sm">The number of times users have scanned your offers at other retailers this week. Higher inbound scans mean more customers are discovering and using your promotions.</p>
+                  <p className="font-medium mb-1">Inbound Views</p>
+                  <p className="text-sm">The number of times users have viewed your offers at other retailers in the last 30 days. Higher inbound views mean more customers are discovering your promotions and showing interest in your offer. This counts any time your offers load on an active partner carousel or are shown in mobile coupon format from a referring store's QR code.</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -1020,19 +1183,84 @@ const Dashboard = () => {
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Outbound Views This Week</p>
-                          <p className="text-3xl font-bold text-accent-green">{stats.outboundViews}</p>
+                          <p className="text-sm text-muted-foreground">Outbound Views Last 30 Days</p>
+                          <p className="text-3xl font-bold text-accent-green">{monthlyMetrics.outboundViewsMonth}</p>
+                          <div className="flex items-center gap-1 text-xs">
+                            {calculatePercentageChange(monthlyMetrics.outboundViewsMonth, monthlyMetrics.outboundViewsLastMonth) >= 0 ? <TrendingUp className="h-3 w-3 text-accent-green" /> : <TrendingDown className="h-3 w-3 text-destructive" />}
+                            <span className={calculatePercentageChange(monthlyMetrics.outboundViewsMonth, monthlyMetrics.outboundViewsLastMonth) >= 0 ? "text-accent-green" : "text-destructive"}>
+                              {Math.abs(calculatePercentageChange(monthlyMetrics.outboundViewsMonth, monthlyMetrics.outboundViewsLastMonth))}%
+                            </span>
+                            <span className="text-muted-foreground">vs previous 30 days</span>
+                          </div>
                         </div>
                         <div className="h-12 w-12 bg-accent-green/10 rounded-full flex items-center justify-center">
-                          <QrCode className="h-6 w-6 text-accent-green" />
+                          <Eye className="h-6 w-6 text-accent-green" />
                         </div>
                       </div>
                     </CardContent>
                   </Card>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
-                  <p className="font-medium mb-1">Outbound Scans</p>
-                  <p className="text-sm">The number of times consumers at your store have scanned partner offers this week. Higher outbound scans show you're driving traffic and value to your partners.</p>
+                  <p className="font-medium mb-1">Outbound Views</p>
+                  <p className="text-sm">The number of times consumers at your stores have viewed partner offers in the last 30 days. Higher outbound views show you're driving interest for partner offers. Driving outbound views means your own offer will be shown more at other retailers; in addition to earning free credits and rewards.</p>
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Card className="cursor-help hover:shadow-md transition-shadow">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Inbound Redemptions Last 30 Days</p>
+                          <p className="text-3xl font-bold text-primary">{monthlyMetrics.inboundRedemptionsMonth}</p>
+                          <div className="flex items-center gap-1 text-xs">
+                            {calculatePercentageChange(monthlyMetrics.inboundRedemptionsMonth, monthlyMetrics.inboundRedemptionsLastMonth) >= 0 ? <TrendingUp className="h-3 w-3 text-accent-green" /> : <TrendingDown className="h-3 w-3 text-destructive" />}
+                            <span className={calculatePercentageChange(monthlyMetrics.inboundRedemptionsMonth, monthlyMetrics.inboundRedemptionsLastMonth) >= 0 ? "text-accent-green" : "text-destructive"}>
+                              {Math.abs(calculatePercentageChange(monthlyMetrics.inboundRedemptionsMonth, monthlyMetrics.inboundRedemptionsLastMonth))}%
+                            </span>
+                            <span className="text-muted-foreground">vs previous 30 days</span>
+                          </div>
+                        </div>
+                        <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center">
+                          <Ticket className="h-6 w-6 text-primary" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="font-medium mb-1">Inbound Redemptions</p>
+                  <p className="text-sm">The number of times customers have redeemed your offers in the last 30 days. This includes redemptions logged at your store when customers present offers they discovered through partner stores or Open Offer.</p>
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Card className="cursor-help hover:shadow-md transition-shadow">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Outbound Redemptions Last 30 Days</p>
+                          <p className="text-3xl font-bold text-accent-green">{monthlyMetrics.outboundRedemptionsMonth}</p>
+                          <div className="flex items-center gap-1 text-xs">
+                            {calculatePercentageChange(monthlyMetrics.outboundRedemptionsMonth, monthlyMetrics.outboundRedemptionsLastMonth) >= 0 ? <TrendingUp className="h-3 w-3 text-accent-green" /> : <TrendingDown className="h-3 w-3 text-destructive" />}
+                            <span className={calculatePercentageChange(monthlyMetrics.outboundRedemptionsMonth, monthlyMetrics.outboundRedemptionsLastMonth) >= 0 ? "text-accent-green" : "text-destructive"}>
+                              {Math.abs(calculatePercentageChange(monthlyMetrics.outboundRedemptionsMonth, monthlyMetrics.outboundRedemptionsLastMonth))}%
+                            </span>
+                            <span className="text-muted-foreground">vs previous 30 days</span>
+                          </div>
+                        </div>
+                        <div className="h-12 w-12 bg-accent-green/10 rounded-full flex items-center justify-center">
+                          <Ticket className="h-6 w-6 text-accent-green" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="font-medium mb-1">Outbound Redemptions</p>
+                  <p className="text-sm">The number of times partner offers have been redeemed after being referred from your store in the last 30 days. This includes redemptions through individual partnerships or Open Offer when you're the referring store.</p>
                 </TooltipContent>
               </Tooltip>
             </div>

@@ -30,6 +30,7 @@ import Redeem from "./pages/Redeem";
 import RedeemConfirm from "./pages/RedeemConfirm";
 import Carousel from "./pages/Carousel";
 import LocationQR from "./pages/LocationQR";
+import Insights from "./pages/Insights";
 import AdvertiserSignup from "./pages/AdvertiserSignup";
 import AdvertiserDashboard from "./pages/AdvertiserDashboard";
 import AdvertiserCampaignCreate from "./pages/AdvertiserCampaignCreate";
@@ -55,6 +56,8 @@ const App = () => (
               <Route path="/faq" element={<FAQ />} />
               <Route path="/redeem/:offerCode/:locationId?" element={<Redeem />} />
               <Route path="/redeem/:offerCode/confirm" element={<RedeemConfirm />} />
+              <Route path="/location-qr" element={<ProtectedRoute><LocationQR /></ProtectedRoute>} />
+              <Route path="/location-qr/:locationId" element={<ProtectedRoute><LocationQR /></ProtectedRoute>} />
               <Route path="/locations/:locationId/qr" element={<LocationQR />} />
               <Route path="/carousel/:locationId" element={<Carousel />} />
               
@@ -67,6 +70,7 @@ const App = () => (
               <Route path="/offerx" element={<ProtectedRoute><OfferX /></ProtectedRoute>} />
               <Route path="/display" element={<ProtectedRoute><InStoreDisplay /></ProtectedRoute>} />
               <Route path="/requests" element={<ProtectedRoute><PartnerRequests /></ProtectedRoute>} />
+              <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
               <Route path="/advertiser/dashboard" element={<ProtectedRoute><AdvertiserDashboard /></ProtectedRoute>} />
               <Route path="/advertiser/campaign/create" element={<ProtectedRoute><AdvertiserCampaignCreate /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />

@@ -160,11 +160,11 @@ All colors MUST be HSL. Modern blue and orange theme with tech-forward aesthetic
   .gradient-hero {
     background: var(--gradient-hero);
   }
-  
+
   .gradient-primary {
     background: var(--gradient-primary);
   }
-  
+
   .gradient-subtle {
     background: var(--gradient-subtle);
   }
@@ -175,25 +175,79 @@ All colors MUST be HSL. Modern blue and orange theme with tech-forward aesthetic
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
-  
+
   .shadow-soft {
     box-shadow: var(--shadow-soft);
   }
-  
+
   .shadow-medium {
     box-shadow: var(--shadow-medium);
   }
-  
+
   .shadow-strong {
     box-shadow: var(--shadow-strong);
   }
-  
+
   /* QR Pattern backgrounds */
   .qr-pattern {
-    background-image: 
+    background-image:
       radial-gradient(circle at 2px 2px, var(--qr-pattern-dark) 1px, transparent 0),
       radial-gradient(circle at 14px 14px, var(--qr-pattern-dark) 1px, transparent 0);
     background-size: 16px 16px;
     background-color: var(--qr-pattern-light);
+  }
+
+  .hero-gloss {
+    position: relative;
+    display: inline-block;
+    padding-bottom: 0.1em;
+    line-height: 1.2;
+    overflow: hidden;
+  }
+
+  .hero-gloss::after {
+    content: '';
+    position: absolute;
+    top: -20%;
+    left: -100%;
+    width: 60%;
+    height: 140%;
+    background: linear-gradient(90deg,
+        transparent,
+        rgba(255, 255, 255, 0.6),
+        rgba(255, 255, 255, 0.8),
+        rgba(255, 255, 255, 0.6),
+        transparent);
+    animation: gloss-sweep 10s ease-in-out infinite;
+  }
+
+  @keyframes gloss-sweep {
+    0% {
+      left: -100%;
+    }
+
+    50%,
+    100% {
+      left: 150%;
+    }
+  }
+
+  /* Pulse glow animation for CTA buttons */
+  @keyframes pulse-glow {
+
+    0%,
+    100% {
+      box-shadow: 0 0 20px hsl(200 100% 60% / 0.5), 0 0 40px hsl(200 100% 60% / 0.3);
+      transform: scale(1);
+    }
+
+    50% {
+      box-shadow: 0 0 35px hsl(200 100% 60% / 0.7), 0 0 70px hsl(200 100% 60% / 0.4);
+      transform: scale(1.02);
+    }
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 12s ease-in-out infinite;
   }
 }

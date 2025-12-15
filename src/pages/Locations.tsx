@@ -56,6 +56,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useNavigate } from "react-router-dom";
+import { RETAIL_CHANNELS } from "@/constants/retailChannels";
 import AppLayout from "@/components/AppLayout";
 import {
   TooltipProvider,
@@ -447,12 +448,11 @@ const Locations = () => {
                     <SelectValue placeholder="Select retail channel" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="restaurant">Restaurant</SelectItem>
-                    <SelectItem value="retail">Retail</SelectItem>
-                    <SelectItem value="salon">Salon/Spa</SelectItem>
-                    <SelectItem value="cafe">Café/Coffee Shop</SelectItem>
-                    <SelectItem value="grocery">Grocery/Market</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
+                    {RETAIL_CHANNELS.map((channel) => (
+                      <SelectItem key={channel.value} value={channel.value}>
+                        {channel.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 // Supabase removed - will use Node.js API
 import { Card } from "@/components/ui/card";
@@ -28,6 +28,8 @@ interface Offer {
   redemption_start_date: string;
   redemption_end_date: string;
   location_id: string;
+  location_name?: string; // Original offer location name
+  location_address?: string; // Original offer location address
   business_name?: string;
   distance?: number;
   redemption_code?: string;
@@ -61,6 +63,7 @@ const Carousel = () => {
   const [generatingCoupon, setGeneratingCoupon] = useState<{ [offerId: string]: boolean }>({});
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
+  const trackedImpressions = useRef<Set<string>>(new Set()); // Track which offers have been viewed
 
   useEffect(() => {
     if (locationId) {
@@ -68,17 +71,51 @@ const Carousel = () => {
     }
   }, [locationId]);
 
+  // Track impressions when carousel slide changes
+  const trackImpression = async (offer: Offer) => {
+    if (!locationId || !offer.id || !offer.location_id) return;
+    
+    try {
+      const { post } = await import("@/services/apis");
+      await post({
+        end_point: 'impressions',
+        body: {
+          offerId: offer.id,
+          locationId: offer.location_id, // Original offer location
+          displayLocationId: locationId, // Where it's being displayed
+          impressionType: 'carousel'
+        },
+        token: false // Public endpoint
+      });
+    } catch (error) {
+      // Silently fail - don't interrupt user experience
+      console.error('Error tracking impression:', error);
+    }
+  };
+
   useEffect(() => {
     if (!api) {
       return;
     }
 
-    setCurrent(api.selectedScrollSnap() + 1);
+    const currentIndex = api.selectedScrollSnap();
+    setCurrent(currentIndex + 1);
+    
+    // Track impression for initial offer
+    if (allOffers[currentIndex]) {
+      trackImpression(allOffers[currentIndex]);
+    }
 
     api.on("select", () => {
-      setCurrent(api.selectedScrollSnap() + 1);
+      const newIndex = api.selectedScrollSnap();
+      setCurrent(newIndex + 1);
+      
+      // Track impression when slide changes
+      if (allOffers[newIndex]) {
+        trackImpression(allOffers[newIndex]);
+      }
     });
-  }, [api]);
+  }, [api, allOffers, locationId]);
 
   const loadLocationAndOffers = async () => {
     try {
@@ -190,6 +227,7 @@ const Carousel = () => {
               call_to_action: offer.callToAction || offer.call_to_action || '',
               location_id: offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() || offer.location_ids?.[0] || '',
               location_name: offer.locations?.[0]?.name || offer.locationIds?.[0]?.name || 'Unknown Location',
+              location_address: offer.locations?.[0]?.address || offer.locationIds?.[0]?.address || '',
               is_partner_offer: true,
               is_open_offer: false,
               is_owner_offer: false,
@@ -221,6 +259,7 @@ const Carousel = () => {
               call_to_action: offer.callToAction || offer.call_to_action || '',
               location_id: offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() || offer.location_ids?.[0] || '',
               location_name: offer.locations?.[0]?.name || offer.locationIds?.[0]?.name || 'Unknown Location',
+              location_address: offer.locations?.[0]?.address || offer.locationIds?.[0]?.address || '',
               is_partner_offer: false,
               is_open_offer: true,
               is_owner_offer: false,
@@ -682,8 +721,13 @@ const Carousel = () => {
                                   {couponCode}
                                 </p>
                                 <p className="text-xs text-muted-foreground mt-2">
-                                  Show at {location?.name || 'the store'} to redeem
+                                  Redeem at {offer.location_name || offer.business_name || 'the store'}
                                 </p>
+                                {offer.location_address && (
+                                  <p className="text-xs text-muted-foreground/70 mt-1">
+                                    {offer.location_address}
+                                  </p>
+                                )}
                               </div>
                             ) : (
                               <Button 

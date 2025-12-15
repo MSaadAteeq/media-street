@@ -9,7 +9,7 @@ const Hero = () => {
     {/* Navigation Header */}
     <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-6">
       <div className="flex flex-nowrap justify-between items-center gap-2 sm:gap-4">
-        <Logo size="xl" showText={true} />
+        <Logo size="xl" showText={true} showGloss={true} />
         <div className="flex items-center gap-2 sm:gap-3">
           <Link to="/login">
             <Button variant="outline" size="sm" className="gap-1 sm:gap-2 text-xs sm:text-sm px-2 sm:px-4">
@@ -25,26 +25,13 @@ const Hero = () => {
         <div className="max-w-6xl mx-auto space-y-8 sm:space-y-10 md:space-y-12">
           {/* Centered Text Content */}
           <div className="text-center space-y-6 sm:space-y-8 animate-fade-in">
-            <div className="space-y-3 sm:space-y-4">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold leading-tight text-gray-900 dark:text-foreground px-2">
-                <span className="bg-gradient-to-r from-blue-600 to-purple-700 bg-clip-text text-transparent font-extrabold">Partner with other nearby retailers to get <span className="font-black">new customers</span>.</span>
-              </h1>
-              <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-muted-foreground max-w-3xl mx-auto leading-relaxed px-4">
-                <span className="inline-flex items-center gap-2">
-                  <span className="relative inline-block animate-scale-in">
-                    <span className="text-4xl sm:text-5xl md:text-6xl font-black bg-gradient-to-r from-accent-green via-primary to-accent-green bg-clip-text text-transparent animate-pulse">
-                      85%
-                    </span>
-                    <span className="absolute -inset-1 bg-gradient-to-r from-accent-green/20 to-primary/20 blur-xl -z-10 animate-pulse"></span>
-                  </span>
-                </span>
-                {" "}of transactions still happen in local stores. We help physical retailers grow together with easy and honest x-promos.
-              </p>
-            </div>
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold leading-normal text-gray-900 dark:text-foreground px-2">
+              <span className="relative inline-block bg-gradient-to-r from-blue-600 to-purple-700 bg-clip-text text-transparent font-extrabold pb-2">Partner with other nearby retailers to get <span className="font-black">new customers</span>.</span>
+            </h1>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center mt-2">
               <RequestInviteForm>
-                <Button variant="hero" size="xl" className="group">
+                <Button variant="hero" size="xl" className="group animate-pulse-glow">
                   Build Your Offer
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-1" />
                 </Button>

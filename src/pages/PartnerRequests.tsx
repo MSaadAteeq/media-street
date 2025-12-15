@@ -1101,12 +1101,8 @@ const PartnerRequests = () => {
         </div>
       </div>
 
-      <Tabs defaultValue="requests" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="requests" className="flex items-center gap-2">
-            <Store className="h-4 w-4" />
-            Partner Requests
-          </TabsTrigger>
+      <Tabs defaultValue="map" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="map" className="flex items-center gap-2">
             <MapIcon className="h-4 w-4" />
             Partner Search
@@ -1116,52 +1112,6 @@ const PartnerRequests = () => {
             Recommendations
           </TabsTrigger>
         </TabsList>
-
-        <TabsContent value="requests" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Store className="h-5 w-5" />
-                Send Partner Request
-              </CardTitle>
-              <CardDescription>
-                Enter a store name to send a partnership request
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Input placeholder="Enter store name to send request..." value={newPartnerStore} onChange={e => {
-                    setNewPartnerStore(e.target.value);
-                    searchStores(e.target.value);
-                  }} onFocus={() => {
-                    setIsInputFocused(true);
-                    searchStores(newPartnerStore);
-                  }} onBlur={() => {
-                    setTimeout(() => setIsInputFocused(false), 200);
-                  }} className="flex-1" />
-                  <Button onClick={() => handleSendRequest()} disabled={!newPartnerStore.trim()} className="shrink-0">
-                    <Send className="h-4 w-4 mr-2" />
-                    Send Request
-                  </Button>
-                </div>
-
-                {storeOptions.length > 0 && isInputFocused && <div className="relative">
-                  <div className="absolute z-10 w-full bg-background border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    {storeOptions.map((store, index) => <button key={index} className="w-full px-4 py-2 text-left hover:bg-muted border-b last:border-b-0 text-sm" onClick={() => {
-                      setNewPartnerStore(store.store_name);
-                      setStoreOptions([]);
-                      setIsInputFocused(false);
-                    }}>
-                      <div className="font-medium">{store.store_name}</div>
-                      <div className="text-muted-foreground text-xs">{store.retail_address}</div>
-                    </button>)}
-                  </div>
-                </div>}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         <TabsContent value="recommendations" className="space-y-6">
           <Card>

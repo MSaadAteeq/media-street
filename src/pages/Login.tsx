@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-// Supabase removed - will use Node.js API
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -12,14 +11,24 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Store, ArrowRight } from "lucide-react";
+import { Store, Zap, ArrowRight, SkipForward, Check, AlertCircle, CreditCard, Gift, DollarSign } from "lucide-react";
+import { AddCardForm } from "@/components/AddCardForm";
 import Logo from "@/components/Logo";
+import OfferPreviewCard from "@/components/OfferPreviewCard";
 import smallBusinessPartnerships from "@/assets/small-business-partnerships.jpg";
-import { post } from "@/services/apis";
+import { post, get } from "@/services/apis";
 import { useDispatch } from "react-redux";
 import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
+import { RETAIL_CHANNELS } from "@/constants/retailChannels";
 import LocationPicker from "@/components/LocationPicker";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -27,40 +36,66 @@ const loginSchema = z.object({
   rememberMe: z.boolean().optional(),
 });
 
-// const dispatch = useDispatch();
-
 const signupSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
   fullName: z.string().min(2, "Full name must be at least 2 characters"),
-  storeName: z.string().min(2, "Store name must be at least 2 characters"),
-  retailChannel: z.string().min(1, "Please select a retail channel"),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  referralCode: z.string().optional().refine((val) => !val || val.length === 8, {
-    message: "Referral code must be 8 characters",
-  }),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
 });
 
+const storeDetailsSchema = z.object({
+  storeLocation: z.string().min(10, "Please enter a complete address"),
+  storeName: z.string().min(1, "Store name is required"),
+  retailChannel: z.string().min(1, "Retail channel is required"),
+});
+
+const referralSchema = z.object({
+  referralStore: z.string().optional(),
+  referralCode: z.string().optional(),
+});
+
+const offerSchema = z.object({
+  website: z.string().url("Please enter a valid URL").optional().or(z.literal("")),
+  callToAction: z.string().min(5, "Offer must be at least 5 characters").max(48, "Offer must be less than 48 characters"),
+});
+
 type LoginFormData = z.infer<typeof loginSchema>;
 type SignupFormData = z.infer<typeof signupSchema>;
+type StoreDetailsFormData = z.infer<typeof storeDetailsSchema>;
+type ReferralFormData = z.infer<typeof referralSchema>;
+type OfferFormData = z.infer<typeof offerSchema>;
 
 export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("signin");
+  const [signupStep, setSignupStep] = useState(1);
+  const [isSigningUp, setIsSigningUp] = useState(false);
+  const [locationId, setLocationId] = useState<string | null>(null);
+  const [offerCreated, setOfferCreated] = useState(false);
+  const [isGeneratingOffer, setIsGeneratingOffer] = useState(false);
+  const [generatedOfferData, setGeneratedOfferData] = useState<{
+    businessName: string;
+    offerImageUrl: string | null;
+    brandLogoUrl: string | null;
+    brandColors: { primary: string; secondary: string };
+  } | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [showWelcomeCreditsDialog, setShowWelcomeCreditsDialog] = useState(false);
+  const [showCardForm, setShowCardForm] = useState(false);
+  const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
   const [selectedLatitude, setSelectedLatitude] = useState<number | undefined>(undefined);
   const [selectedLongitude, setSelectedLongitude] = useState<number | undefined>(undefined);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  
   const navigate = useNavigate();
   const { toast } = useToast();
-
-  // console.log(authActions);
-
   const dispatch = useDispatch<AppDispatch>();
+
+  const DEFAULT_LATITUDE = 40.7505;
+  const DEFAULT_LONGITUDE = -74.0014;
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -78,88 +113,72 @@ export default function Login() {
       password: "",
       confirmPassword: "",
       fullName: "",
+    },
+  });
+
+  const storeDetailsForm = useForm<StoreDetailsFormData>({
+    resolver: zodResolver(storeDetailsSchema),
+    defaultValues: {
+      storeLocation: "",
       storeName: "",
       retailChannel: "",
-      latitude: undefined,
-      longitude: undefined,
+    },
+  });
+
+  const referralForm = useForm<ReferralFormData>({
+    resolver: zodResolver(referralSchema),
+    defaultValues: {
+      referralStore: "",
       referralCode: "",
     },
   });
 
-  // Reset location when switching tabs
-  useEffect(() => {
-    if (activeTab === 'signin') {
-      // Reset location when switching away from signup
-      setSelectedLatitude(undefined);
-      setSelectedLongitude(undefined);
-      setIsGettingLocation(false);
-    }
-  }, [activeTab]);
-
-  // Default location: 550 West 30th Street, New York, New York 10001, United States
-  const DEFAULT_LATITUDE = 40.7505;
-  const DEFAULT_LONGITUDE = -74.0014;
+  const offerForm = useForm<OfferFormData>({
+    resolver: zodResolver(offerSchema),
+    defaultValues: {
+      website: "",
+      callToAction: "",
+    },
+  });
 
   // Get user's current location when signup tab is active
   useEffect(() => {
     if (activeTab === 'signup' && !isGettingLocation) {
       setIsGettingLocation(true);
       
-      // Try to get user's current location
       if (navigator.geolocation) {
-        console.log('🔍 Attempting to get user location...');
-        
         navigator.geolocation.getCurrentPosition(
           (position) => {
-            // Success: Use user's current location
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
-            console.log('✅ User location detected:', lat, lng);
-            
             setSelectedLatitude(lat);
             setSelectedLongitude(lng);
-            signupForm.setValue("latitude", lat);
-            signupForm.setValue("longitude", lng);
             setIsGettingLocation(false);
           },
           (error) => {
-            // Failed: Use default location
-            console.warn('⚠️ Geolocation failed:', error.message);
-            console.log('📍 Using default location: 550 West 30th Street, New York, NY 10001');
-            
             setSelectedLatitude(DEFAULT_LATITUDE);
             setSelectedLongitude(DEFAULT_LONGITUDE);
-            signupForm.setValue("latitude", DEFAULT_LATITUDE);
-            signupForm.setValue("longitude", DEFAULT_LONGITUDE);
             setIsGettingLocation(false);
           },
           {
             enableHighAccuracy: true,
-            timeout: 15000, // 15 seconds timeout (increased)
-            maximumAge: 0 // Don't use cached position
+            timeout: 15000,
+            maximumAge: 0
           }
         );
       } else {
-        // Geolocation not supported: Use default location
-        console.warn('⚠️ Geolocation not supported, using default location');
-        console.log('📍 Using default location: 550 West 30th Street, New York, NY 10001');
-        
         setSelectedLatitude(DEFAULT_LATITUDE);
         setSelectedLongitude(DEFAULT_LONGITUDE);
-        signupForm.setValue("latitude", DEFAULT_LATITUDE);
-        signupForm.setValue("longitude", DEFAULT_LONGITUDE);
         setIsGettingLocation(false);
       }
     }
   }, [activeTab]);
 
-  const handleLocationSelect = (latitude: number, longitude: number, locationName?: string) => {
+  const handleLocationSelect = (latitude: number, longitude: number, address?: string) => {
     setSelectedLatitude(latitude);
     setSelectedLongitude(longitude);
-    signupForm.setValue("latitude", latitude);
-    signupForm.setValue("longitude", longitude);
-    if (locationName) {
-      console.log('Selected location:', locationName);
+    if (address) {
+      storeDetailsForm.setValue("storeLocation", address);
     }
   };
 
@@ -175,10 +194,8 @@ export default function Login() {
       });
 
       if (response.success && response.data) {
-        // Get role from response, or decode from token as fallback
         let userRole = response.data.user?.role || 'retailer';
         
-        // Fallback: Try to decode role from JWT token if not in response
         if (!userRole || userRole === 'retailer') {
           try {
             const token = response.data.token;
@@ -193,36 +210,26 @@ export default function Login() {
           }
         }
         
-        // Debug logging
-        console.log('🔐 Login Response:', response);
-        console.log('👤 User Role:', userRole);
-        console.log('📦 Full User Data:', response.data.user);
-        
         dispatch(authActions.login({ 
           email: response.data.user?.email || data.email, 
           fullName: response.data.user?.fullName || 'User' 
         }));
         dispatch(authActions.role({ role: userRole }));
         
-        // Store token
         if (response.data.token) {
           localStorage.setItem('token', response.data.token);
         }
         
-        // Store role in localStorage for immediate access
         localStorage.setItem('userRole', userRole);
         
         toast({
-          title: "Welcome!",
-          description: response.message || "You've been signed in successfully",
+          title: "Welcome back!",
+          description: response.message || "You've been signed in successfully.",
         });
         
-        // Redirect based on user role immediately
         if (userRole.toLowerCase() === 'admin') {
-          console.log('✅ Redirecting admin to /admin');
           navigate("/admin", { replace: true });
         } else {
-          console.log('✅ Redirecting retailer to /dashboard');
           navigate("/dashboard", { replace: true });
         }
       } else {
@@ -245,6 +252,7 @@ export default function Login() {
 
   const onSignUp = async (data: SignupFormData) => {
     setIsLoading(true);
+    setIsSigningUp(true);
     try {
       const response = await post({
         end_point: `auth/signup`,
@@ -252,77 +260,105 @@ export default function Login() {
           fullName: data.fullName,
           email: data.email,
           password: data.password,
-          storeName: data.storeName,
-          location_name: data.storeName, // Use storeName for location name
-          retail_channel: data.retailChannel, // Include retail channel
-          latitude: data.latitude,
-          longitude: data.longitude,
-          referral_code: data.referralCode ? data.referralCode.toUpperCase().trim() : undefined
+          // retail_channel will be set in step 3 when creating location
         }
       });
 
       if (response.success && response.data) {
-        // Get role from response, or decode from token as fallback
         let userRole = response.data.user?.role || 'retailer';
         
-        // Fallback: Try to decode role from JWT token if not in response
-        if (!userRole || userRole === 'retailer') {
+        if (response.data.token) {
+          // Store token temporarily in sessionStorage during signup flow
+          // This prevents PublicRoute from redirecting, but allows API calls
+          sessionStorage.setItem('signup_token', response.data.token);
           try {
-            const token = response.data.token;
-            if (token) {
-              const payload = JSON.parse(atob(token.split('.')[1]));
-              if (payload.role) {
-                userRole = payload.role;
-              }
+            const payload = JSON.parse(atob(response.data.token.split('.')[1]));
+            if (payload.role) {
+              userRole = payload.role;
             }
           } catch (e) {
             console.warn('Could not decode role from token:', e);
           }
         }
         
-        // Debug logging
-        console.log('🔐 Signup Response:', response);
-        console.log('👤 User Role:', userRole);
-        console.log('📦 Full User Data:', response.data.user);
-        
-        // Dispatch auth actions to log user in
-        dispatch(authActions.login({ 
-          email: response.data.user?.email || data.email, 
-          fullName: response.data.user?.fullName || data.fullName 
-        }));
-        dispatch(authActions.role({ role: userRole }));
-        
-        // Store token
-        if (response.data.token) {
-          localStorage.setItem('token', response.data.token);
-        }
-        
-        // Store role in localStorage for immediate access
-        localStorage.setItem('userRole', userRole);
+        // Don't dispatch auth actions or set localStorage yet
+        // Wait until signup flow is complete
+        // This prevents PublicRoute from redirecting
         
         toast({
           title: "Account created!",
-          description: response.message || "Your account has been created successfully. Welcome!",
+          description: "Now let's set up your store.",
         });
-        
-        // Redirect based on user role immediately
-        if (userRole.toLowerCase() === 'admin') {
-          console.log('✅ Redirecting admin to /admin');
-          navigate("/admin", { replace: true });
-        } else {
-          console.log('✅ Redirecting retailer to /dashboard');
-          navigate("/dashboard", { replace: true });
-        }
+        setSignupStep(3); // Skip step 2 (Clover connection), go to store details
       } else {
-        toast({
-          title: "Sign Up Failed",
-          description: response.message || "Please try again.",
-          variant: "destructive",
-        });
+        if (response.message?.includes('already registered') || response.message?.includes('already exists')) {
+          toast({
+            title: "Account exists",
+            description: "This email is already registered. Please sign in instead.",
+            variant: "destructive",
+          });
+          setActiveTab("signin");
+          loginForm.setValue("email", data.email);
+          setIsSigningUp(false);
+        } else {
+          toast({
+            title: "Sign Up Failed",
+            description: response.message || "Please try again.",
+            variant: "destructive",
+          });
+          setIsSigningUp(false);
+        }
       }
     } catch (error: any) {
       toast({
-        title: "Sign Up Failed",
+        title: "An error occurred",
+        description: error?.response?.data?.message || error?.message || "Please try again later.",
+        variant: "destructive",
+      });
+      setIsSigningUp(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const onStoreDetailsSubmit = async (data: StoreDetailsFormData) => {
+    setIsLoading(true);
+    try {
+      if (!selectedLatitude || !selectedLongitude) {
+        toast({
+          title: "Location Required",
+          description: "Please select your business location on the map.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await post({
+        end_point: 'locations',
+        body: {
+          name: data.storeName,
+          address: data.storeLocation,
+          retail_channel: data.retailChannel,
+          latitude: selectedLatitude,
+          longitude: selectedLongitude,
+        },
+        token: true
+      });
+
+      if (response.success && response.data) {
+        setLocationId(response.data._id || response.data.id);
+        toast({
+          title: "Location saved!",
+          description: "Now let's add referral information.",
+        });
+        setSignupStep(4);
+      } else {
+        throw new Error(response.message || "Failed to save location");
+      }
+    } catch (error: any) {
+      toast({
+        title: "An error occurred",
         description: error?.response?.data?.message || error?.message || "Please try again later.",
         variant: "destructive",
       });
@@ -331,21 +367,289 @@ export default function Login() {
     }
   };
 
+  const onReferralSubmit = async (data: ReferralFormData) => {
+    setIsLoading(true);
+    try {
+      if (data.referralCode && data.referralCode.trim()) {
+        // Validate referral code if provided
+        try {
+          const validationResponse = await get({
+            end_point: `users/referral-code/${data.referralCode.trim().toUpperCase()}`,
+            token: true
+          });
+          
+          if (!validationResponse.success) {
+            toast({
+              title: "Invalid Referral Code",
+              description: "The referral code you entered is not valid.",
+              variant: "destructive",
+            });
+            setIsLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error('Error validating referral code:', error);
+          // Continue anyway - referral is optional
+        }
+      }
+
+      toast({
+        title: "Profile saved!",
+        description: "Now let's create your first offer.",
+      });
+      setSignupStep(5);
+    } catch (error: any) {
+      toast({
+        title: "An error occurred",
+        description: error?.response?.data?.message || error?.message || "Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGenerateOffer = async () => {
+    const website = offerForm.getValues("website");
+    if (!website) {
+      toast({
+        title: "Website Required",
+        description: "Please enter your website URL to generate an offer",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGeneratingOffer(true);
+    try {
+      const response = await post({
+        end_point: 'offers/generate-from-website',
+        body: { website },
+        token: false
+      });
+
+      if (response.success && response.data) {
+        const data = response.data;
+        offerForm.setValue("callToAction", data.callToAction || data.call_to_action || "");
+        setGeneratedOfferData({
+          businessName: data.businessName || storeDetailsForm.getValues("storeName") || "Your Business",
+          offerImageUrl: data.offerImageUrl || data.offer_image_url || null,
+          brandLogoUrl: data.brandLogoUrl || data.brand_logo_url || null,
+          brandColors: data.brandColors || { primary: "#6366f1", secondary: "#4f46e5" },
+        });
+        setShowPreview(true);
+        toast({
+          title: "Success",
+          description: "Offer generated! Review your preview below.",
+        });
+      } else {
+        throw new Error(response.message || 'Failed to generate offer');
+      }
+    } catch (error: any) {
+      console.error("Error generating offer:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate offer. Please enter one manually.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingOffer(false);
+    }
+  };
+
+  const handleChangeOfferImage = async () => {
+    const website = offerForm.getValues("website");
+    if (!website) return;
+
+    setIsGeneratingOffer(true);
+    try {
+      const response = await post({
+        end_point: 'offers/generate-from-website',
+        body: { website, regenerateImage: true },
+        token: false
+      });
+
+      if (response.success && response.data?.offerImageUrl && generatedOfferData) {
+        setGeneratedOfferData({
+          ...generatedOfferData,
+          offerImageUrl: response.data.offerImageUrl || response.data.offer_image_url,
+        });
+        toast({
+          title: "Success",
+          description: "Image updated!",
+        });
+      }
+    } catch (error) {
+      console.error("Error regenerating image:", error);
+      toast({
+        title: "Error",
+        description: "Failed to change image. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingOffer(false);
+    }
+  };
+
+  const handleCreateOffer = async (values: OfferFormData) => {
+    if (!locationId) {
+      toast({
+        title: "Session expired",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await post({
+        end_point: "offers",
+        body: {
+          call_to_action: values.callToAction,
+          location_ids: [locationId],
+          expiration_duration: "1week",
+          is_open_offer: false,
+          location_images: locationId ? {
+            [locationId]: generatedOfferData?.offerImageUrl || null
+          } : {}
+        },
+        token: true
+      });
+
+      if (response.success) {
+        setOfferCreated(true);
+        toast({
+          title: "Offer created!",
+          description: "Now subscribe to Open Offer for maximum visibility.",
+        });
+        setSignupStep(6);
+      } else {
+        throw new Error(response.message || "Failed to create offer");
+      }
+    } catch (error: any) {
+      console.error("Error creating offer:", error);
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || error?.message || "Failed to create offer. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubscribeOpenOffer = async () => {
+    if (!locationId) {
+      toast({
+        title: "Session expired",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!hasPaymentMethod) {
+      setShowCardForm(true);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // TODO: Implement Open Offer subscription API call
+      toast({
+        title: "Open Offer activated!",
+        description: "Your offer will be distributed to local retailers.",
+      });
+      completeSignup();
+      navigate("/dashboard");
+    } catch (error: any) {
+      console.error("Error subscribing to Open Offer:", error);
+      toast({
+        title: "Error",
+        description: "Failed to subscribe. Please try again from the dashboard.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCardAdded = () => {
+    setHasPaymentMethod(true);
+    setShowCardForm(false);
+    toast({
+      title: "Card added successfully!",
+      description: "You can now subscribe to Open Offer.",
+    });
+  };
+
+  const completeSignup = () => {
+    // Move token from sessionStorage to localStorage
+    const signupToken = sessionStorage.getItem("signup_token");
+    if (signupToken) {
+      localStorage.setItem('token', signupToken);
+      sessionStorage.removeItem("signup_token");
+      
+      // Decode role from token
+      try {
+        const payload = JSON.parse(atob(signupToken.split('.')[1]));
+        const userRole = payload.role || 'retailer';
+        localStorage.setItem('userRole', userRole);
+        
+        // Dispatch auth actions
+        dispatch(authActions.login({ 
+          email: signupForm.getValues("email"), 
+          fullName: signupForm.getValues("fullName") 
+        }));
+        dispatch(authActions.role({ role: userRole }));
+      } catch (e) {
+        console.warn('Could not decode role from token:', e);
+      }
+    }
+    
+    setIsSigningUp(false);
+  };
+
+  const handleSkipToDashboard = async () => {
+    if (signupStep === 6 && locationId) {
+      setIsLoading(true);
+      try {
+        // Show welcome credits dialog
+        setShowWelcomeCreditsDialog(true);
+        return;
+      } catch (err) {
+        console.error('Error in welcome credits flow:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    completeSignup();
+    navigate("/dashboard");
+  };
+
+  const handleWelcomeDialogClose = () => {
+    setShowWelcomeCreditsDialog(false);
+    completeSignup();
+    navigate("/dashboard");
+  };
+
   return (
     <div className="min-h-screen flex">
       {/* Left Side - Hero Content */}
       <div className="hidden lg:flex flex-1 bg-gradient-to-br from-primary via-primary-dark to-accent relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/90 via-primary-dark/95 to-accent/90" />
-
+        
         {/* Small Business Overlay */}
         <div className="absolute inset-0 opacity-15">
-          <img
-            src={smallBusinessPartnerships}
-            alt="Small business partnership"
+          <img 
+            src={smallBusinessPartnerships} 
+            alt="Small business partnership" 
             className="w-full h-full object-cover"
-          /> 
+          />
         </div>
-
+        
         <div className="relative z-10 p-12 flex flex-col h-full">
           <div className="pt-[25vh]">
             <Logo size="lg" showText className="text-white scale-125" />
@@ -408,7 +712,7 @@ export default function Login() {
                           </FormItem>
                         )}
                       />
-
+                      
                       <div className="flex items-center justify-between">
                         <FormField
                           control={loginForm.control}
@@ -416,8 +720,8 @@ export default function Login() {
                           render={({ field }) => (
                             <FormItem className="flex flex-row items-center space-x-2 space-y-0">
                               <FormControl>
-                                <Checkbox
-                                  checked={field.value}
+                                <Checkbox 
+                                  checked={field.value} 
                                   onCheckedChange={field.onChange}
                                 />
                               </FormControl>
@@ -427,8 +731,8 @@ export default function Login() {
                             </FormItem>
                           )}
                         />
-                        <Button
-                          variant="link"
+                        <Button 
+                          variant="link" 
                           className="p-0 h-auto text-sm text-muted-foreground hover:text-primary"
                           type="button"
                           onClick={async () => {
@@ -441,9 +745,8 @@ export default function Login() {
                               });
                               return;
                             }
-
-                            // TODO: Replace with Node.js API call
-                            // Mock implementation for now
+                            
+                            // TODO: Implement password reset API call
                             toast({
                               title: "Password Reset Email Sent",
                               description: "Check your email for password reset instructions.",
@@ -453,10 +756,9 @@ export default function Login() {
                           Forgot password?
                         </Button>
                       </div>
-
-                      <Button
-                        type="submit"
-                        className="w-full"
+                      <Button 
+                        type="submit" 
+                        className="w-full" 
                         disabled={isLoading}
                       >
                         {isLoading ? "Signing in..." : "Sign In"}
@@ -477,171 +779,500 @@ export default function Login() {
                     </div>
                     <div>
                       <CardTitle className="text-xl">Create Retailer Account</CardTitle>
-                      <CardDescription>
-                        Enter your details to create your account
-                      </CardDescription>
+                    </div>
+                  </div>
+                  
+                  {/* Step Indicator */}
+                  <div className="flex items-center justify-between mt-4 mb-2">
+                    <span className="text-sm text-muted-foreground">
+                      Step {signupStep === 1 ? 1 : signupStep === 3 ? 2 : signupStep === 4 ? 3 : signupStep === 5 ? 4 : 5} of 5
+                    </span>
+                    <div className="flex gap-2">
+                      <div className={`w-2 h-2 rounded-full ${signupStep >= 1 ? 'bg-primary' : 'bg-muted'}`}></div>
+                      <div className={`w-2 h-2 rounded-full ${signupStep >= 3 ? 'bg-primary' : 'bg-muted'}`}></div>
+                      <div className={`w-2 h-2 rounded-full ${signupStep >= 4 ? 'bg-primary' : 'bg-muted'}`}></div>
+                      <div className={`w-2 h-2 rounded-full ${signupStep >= 5 ? 'bg-primary' : 'bg-muted'}`}></div>
+                      <div className={`w-2 h-2 rounded-full ${signupStep >= 6 ? 'bg-primary' : 'bg-muted'}`}></div>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <Form {...signupForm}>
-                    <form onSubmit={signupForm.handleSubmit(onSignUp)} className="space-y-4">
-                      <FormField
-                        control={signupForm.control}
-                        name="fullName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Full Name *</FormLabel>
-                            <FormControl>
-                              <Input placeholder="John Doe" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={signupForm.control}
-                        name="storeName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Store Name *</FormLabel>
-                            <FormControl>
-                              <Input placeholder="My Store" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={signupForm.control}
-                        name="retailChannel"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Retail Channel *</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  {signupStep === 1 && (
+                    <Form {...signupForm}>
+                      <form onSubmit={signupForm.handleSubmit(onSignUp)} className="space-y-4">
+                        <FormField
+                          control={signupForm.control}
+                          name="fullName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Full Name *</FormLabel>
                               <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select retail channel" />
-                                </SelectTrigger>
+                                <Input placeholder="John Doe" {...field} />
                               </FormControl>
-                              <SelectContent>
-                                <SelectItem value="restaurant">Restaurant</SelectItem>
-                                <SelectItem value="retail">Retail</SelectItem>
-                                <SelectItem value="salon">Salon/Spa</SelectItem>
-                                <SelectItem value="cafe">Café/Coffee Shop</SelectItem>
-                                <SelectItem value="grocery">Grocery/Market</SelectItem>
-                                <SelectItem value="other">Other</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={signupForm.control}
-                        name="email"
-                        render={({ field }) => (
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={signupForm.control}
+                          name="email"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Work Email *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Enter your email" type="email" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={signupForm.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Password *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Create a password" type="password" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={signupForm.control}
+                          name="confirmPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Confirm Password *</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Confirm your password" type="password" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button 
+                          type="submit" 
+                          className="w-full" 
+                          disabled={isLoading}
+                        >
+                          {isLoading ? "Creating account..." : "Create Account"}
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Button>
+                      </form>
+                    </Form>
+                  )}
+
+                  {signupStep === 2 && (
+                    <div className="space-y-6">
+                      <div className="text-center space-y-4">
+                        <h3 className="text-2xl font-bold">
+                          Let's <span className="text-primary">connect</span> your <span className="text-primary">Clover</span> account
+                        </h3>
+                        <p className="text-muted-foreground">
+                          Sign in with your Clover Merchant account to link your first store location and start partnering.
+                        </p>
+                      </div>
+                      
+                      <div className="flex justify-center">
+                        <Button 
+                          className="bg-green-500 hover:bg-green-600 text-white px-8 py-3 text-base"
+                          onClick={() => {
+                            toast({
+                              title: "Clover Integration",
+                              description: "Clover integration coming soon!",
+                            });
+                            setSignupStep(3);
+                          }}
+                        >
+                          <img 
+                            src="/lovable-uploads/a0ed7029-4b44-48ca-9afd-4e40c7f02b3e.png" 
+                            alt="Clover" 
+                            className="mr-2 h-5 w-5"
+                          />
+                          Link Your Store Location
+                        </Button>
+                      </div>
+                      
+                      {/* Non-Clover Option */}
+                      <div className="text-center mt-6 pt-6 border-t">
+                        <p className="text-sm text-muted-foreground mb-3">
+                          Don't have Clover?
+                        </p>
+                        <Button
+                          variant="outline"
+                          onClick={() => setSignupStep(3)}
+                          className="w-full"
+                        >
+                          Create your retailer account without linking your point-of-sale system
+                        </Button>
+                        <p className="text-xs text-muted-foreground mt-3 px-4">
+                          <span className="text-amber-600">Note:</span> Not connecting your Clover POS system will limit access to some of our automated features and you will have to manually post cross-promotions.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {signupStep === 3 && (
+                    <div className="space-y-6">
+                      <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-bold">
+                          Add Your <span className="text-primary">Retail Location</span>
+                        </h3>
+                        <p className="text-muted-foreground">Enter your store details to complete your account setup</p>
+                      </div>
+                     
+                      <Form {...storeDetailsForm}>
+                        <form onSubmit={storeDetailsForm.handleSubmit(onStoreDetailsSubmit)} className="space-y-4">
+                          <FormField
+                            control={storeDetailsForm.control}
+                            name="storeName"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Store Name *</FormLabel>
+                                <FormControl>
+                                  <Input {...field} placeholder="My Store" />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          
                           <FormItem>
-                            <FormLabel>Work Email *</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Enter your email" type="email" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={signupForm.control}
-                        name="referralCode"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Referral Code (Optional)</FormLabel>
-                            <FormControl>
-                              <Input 
-                                placeholder="ABCD1234" 
-                                {...field}
-                                onChange={(e) => {
-                                  // Convert to uppercase and limit to 8 characters
-                                  const value = e.target.value.toUpperCase().slice(0, 8);
-                                  field.onChange(value);
-                                }}
-                                maxLength={8}
+                            <FormLabel>Store Address *</FormLabel>
+                            {isGettingLocation ? (
+                              <div className="flex items-center justify-center h-[300px] border rounded-md bg-muted/50">
+                                <div className="text-center">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                                  <p className="text-sm text-muted-foreground">🔍 Detecting your location...</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <LocationPicker
+                                onLocationSelect={handleLocationSelect}
+                                initialLatitude={selectedLatitude || DEFAULT_LATITUDE}
+                                initialLongitude={selectedLongitude || DEFAULT_LONGITUDE}
+                                height="300px"
                               />
-                            </FormControl>
-                            <FormMessage />
-                            <p className="text-xs text-muted-foreground">
-                              Enter a referral code if you were referred by another retailer
+                            )}
+                            <FormField
+                              control={storeDetailsForm.control}
+                              name="storeLocation"
+                              render={({ field }) => (
+                                <FormItem className="mt-2">
+                                  <FormControl>
+                                    <Input {...field} placeholder="123 Main St, New York, NY 10001" readOnly />
+                                  </FormControl>
+                                  <p className="text-xs text-muted-foreground mt-1">Select location on map above</p>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </FormItem>
+                         
+                          <FormField
+                            control={storeDetailsForm.control}
+                            name="retailChannel"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Select Retail Channel</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select retail channel" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent className="bg-background border z-50 max-h-[300px]">
+                                    {RETAIL_CHANNELS.map((channel) => (
+                                      <SelectItem key={channel.value} value={channel.value}>
+                                        {channel.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          
+                          <Button 
+                            type="submit" 
+                            className="w-full bg-primary hover:bg-primary/90 text-white mt-6"
+                            disabled={isLoading || !selectedLatitude || !selectedLongitude}
+                          >
+                            {isLoading ? "Saving..." : "Save & Continue"}
+                          </Button>
+                          <p className="text-xs text-muted-foreground text-center mt-3">
+                            You will be able to add your other retail locations once your Media Street account is created.
+                          </p>
+                        </form>
+                      </Form>
+                    </div>
+                  )}
+
+                  {signupStep === 4 && (
+                    <div className="space-y-6">
+                      <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-bold">
+                          Who referred you?
+                        </h3>
+                        <p className="text-muted-foreground">
+                          Did a retailer refer you to Media Street?
+                        </p>
+                      </div>
+                      
+                      <Form {...referralForm}>
+                        <form onSubmit={referralForm.handleSubmit(onReferralSubmit)} className="space-y-4">
+                          <FormField
+                            control={referralForm.control}
+                            name="referralCode"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Referral Code (Optional)</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    {...field}
+                                    placeholder="Enter referral code (e.g., JOHSMI)"
+                                    className="uppercase"
+                                    onChange={(e) => {
+                                      field.onChange(e.target.value.toUpperCase());
+                                    }}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                         
+                          <Button 
+                            type="submit" 
+                            className="w-full bg-primary hover:bg-primary/90 text-white"
+                            disabled={isLoading}
+                          >
+                            {isLoading ? "Saving..." : "Save & Continue"}
+                          </Button>
+                        </form>
+                      </Form>
+                    </div>
+                  )}
+
+                  {signupStep === 5 && (
+                    <div className="space-y-6">
+                      <div className="text-center space-y-2">
+                        <h3 className="text-2xl font-bold">
+                          Create Your <span className="text-primary">First Offer</span>
+                        </h3>
+                        <p className="text-muted-foreground">
+                          Create an offer to attract new customers from partner retailers. (Optional)
+                        </p>
+                      </div>
+                      
+                      <Form {...offerForm}>
+                        <form onSubmit={offerForm.handleSubmit(handleCreateOffer)} className="space-y-4">
+                          <FormField
+                            control={offerForm.control}
+                            name="website"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Your Website (Optional)</FormLabel>
+                                <div className="flex gap-2">
+                                  <FormControl>
+                                    <Input placeholder="https://yourwebsite.com" {...field} />
+                                  </FormControl>
+                                  <Button 
+                                    type="button" 
+                                    variant="outline" 
+                                    onClick={handleGenerateOffer}
+                                    disabled={isGeneratingOffer || !field.value}
+                                  >
+                                    {isGeneratingOffer ? (
+                                      <span className="animate-spin">⚡</span>
+                                    ) : (
+                                      <Zap className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">Enter your website to auto-generate an offer with AI</p>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Offer Preview */}
+                          {showPreview && generatedOfferData && (
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium">Preview</p>
+                              <OfferPreviewCard
+                                businessName={generatedOfferData.businessName}
+                                callToAction={offerForm.watch("callToAction")}
+                                offerImageUrl={generatedOfferData.offerImageUrl}
+                                brandLogoUrl={generatedOfferData.brandLogoUrl}
+                                brandColors={generatedOfferData.brandColors}
+                                onChangeImage={handleChangeOfferImage}
+                                isChangingImage={isGeneratingOffer}
+                                showChangeImageButton={true}
+                                redemptionStoreName={storeDetailsForm.getValues("storeName")}
+                              />
+                            </div>
+                          )}
+
+                          <FormField
+                            control={offerForm.control}
+                            name="callToAction"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Your Offer *</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    placeholder="Get 10% off on your first visit!" 
+                                    {...field} 
+                                    maxLength={48}
+                                  />
+                                </FormControl>
+                                <p className="text-xs text-muted-foreground">
+                                  {48 - (field.value?.length || 0)} characters left
+                                </p>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <Button 
+                            type="submit" 
+                            className="w-full bg-gradient-to-r from-blue-600 to-purple-700 hover:from-blue-700 hover:to-purple-800"
+                            disabled={isLoading}
+                          >
+                            {isLoading ? "Creating..." : "Create Offer"}
+                            <Check className="ml-2 h-4 w-4" />
+                          </Button>
+                        </form>
+                      </Form>
+                      <div className="border-t pt-4">
+                        <Button 
+                          variant="ghost" 
+                          className="w-full text-muted-foreground"
+                          onClick={handleSkipToDashboard}
+                        >
+                          <SkipForward className="mr-2 h-4 w-4" />
+                          Skip and go to Dashboard
+                        </Button>
+                        <p className="text-xs text-muted-foreground text-center mt-2">
+                          You can create and edit your offers later from your dashboard
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {signupStep === 6 && (
+                    <div className="space-y-6">
+                      <div className="text-center space-y-3">
+                        <div className="mx-auto flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-500">
+                          <Gift className="h-8 w-8 text-white" />
+                        </div>
+                        <h3 className="text-2xl font-bold">
+                          🎉 Congratulations! 🎉
+                        </h3>
+                        <p className="text-lg font-semibold text-primary">
+                          You're getting $100 in credits to try Media Street!
+                        </p>
+                      </div>
+                      
+                      {showCardForm ? (
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2 text-primary">
+                            <CreditCard className="h-5 w-5" />
+                            <h4 className="font-semibold">Add Payment Method</h4>
+                          </div>
+                          <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
+                            <p className="text-sm text-green-700">
+                              <strong>You won't be charged</strong> until your credits are used up. Cancel anytime before then to avoid charges.
                             </p>
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={signupForm.control}
-                        name="password"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Password *</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Create a password" type="password" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={signupForm.control}
-                        name="confirmPassword"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Confirm Password *</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Confirm your password" type="password" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormItem>
-                        <FormLabel>Business Location *</FormLabel>
-                        {isGettingLocation ? (
-                          <div className="flex items-center justify-center h-[400px] border rounded-md bg-muted/50">
-                            <div className="text-center">
-                              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-                              <p className="text-sm text-muted-foreground">🔍 Detecting your location...</p>
+                          </div>
+                          <AddCardForm 
+                            onSuccess={handleCardAdded}
+                            onCancel={() => setShowCardForm(false)}
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="border rounded-lg p-4 bg-primary/5 space-y-4">
+                            <div className="flex items-start gap-3">
+                              <DollarSign className="h-6 w-6 text-green-500 mt-0.5" />
+                              <div>
+                                <h4 className="font-semibold">Your $100 Promo Credits</h4>
+                                <p className="text-sm text-muted-foreground">
+                                  Use your credits for Open Offer. Credits deplete monthly based on your subscription.
+                                </p>
+                              </div>
+                            </div>
+                            
+                            <div className="border-t border-primary/10 pt-4">
+                              <h4 className="font-semibold mb-2">What you get with Open Offer</h4>
+                              <ul className="space-y-2 text-sm">
+                                <li className="flex items-start gap-2">
+                                  <Check className="h-4 w-4 text-green-500 mt-0.5" />
+                                  <span>Show your offer at other nearby Open Offer retailers</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                  <Check className="h-4 w-4 text-green-500 mt-0.5" />
+                                  <span>Show non-competing retailer offers at yours</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                  <Check className="h-4 w-4 text-green-500 mt-0.5" />
+                                  <span>Activate analytics on consumer views and redemptions</span>
+                                </li>
+                              </ul>
+                            </div>
+                            <div className="flex items-start gap-2 p-3 bg-green-500/10 rounded-lg">
+                              <AlertCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                              <p className="text-xs text-green-700">
+                                <strong>You won't be charged</strong> until your $100 credits are used up. Cancel before then to avoid any charges.
+                              </p>
                             </div>
                           </div>
-                        ) : (
-                          <LocationPicker
-                            onLocationSelect={handleLocationSelect}
-                            initialLatitude={selectedLatitude || DEFAULT_LATITUDE}
-                            initialLongitude={selectedLongitude || DEFAULT_LONGITUDE}
-                            height="400px"
-                          />
-                        )}
-                        {!isGettingLocation && (!selectedLatitude || !selectedLongitude) && (
-                          <p className="text-sm text-destructive mt-1">
-                            Please select your business location on the map
-                          </p>
-                        )}
-                      </FormItem>
-                      <Button
-                        type="submit"
-                        className="w-full"
-                        disabled={isLoading || !selectedLatitude || !selectedLongitude}
-                      >
-                        {isLoading ? "Creating account..." : "Create Account"}
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </form>
-                  </Form>
+                          <div className="space-y-3">
+                            {hasPaymentMethod ? (
+                              <Button 
+                                className="w-full bg-gradient-to-r from-blue-600 to-purple-700 hover:from-blue-700 hover:to-purple-800"
+                                onClick={handleSubscribeOpenOffer}
+                                disabled={isLoading}
+                              >
+                                {isLoading ? "Activating..." : "Activate Open Offer with Credits"}
+                                <ArrowRight className="ml-2 h-4 w-4" />
+                              </Button>
+                            ) : (
+                              <Button 
+                                className="w-full bg-gradient-to-r from-blue-600 to-purple-700 hover:from-blue-700 hover:to-purple-800"
+                                onClick={() => setShowCardForm(true)}
+                              >
+                                <CreditCard className="mr-2 h-4 w-4" />
+                                Add Card to Get Started
+                              </Button>
+                            )}
+                            <Button 
+                              variant="ghost" 
+                              className="w-full text-muted-foreground"
+                              onClick={handleSkipToDashboard}
+                            >
+                              <SkipForward className="mr-2 h-4 w-4" />
+                              Skip for now
+                            </Button>
+                            <p className="text-xs text-muted-foreground text-center">
+                              You can activate later from Settings. Your $100 credits will still be waiting!
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
           </Tabs>
 
           <div className="text-center mt-6">
-            <Link
-              to="/"
+            <Link 
+              to="/" 
               className="text-sm text-muted-foreground hover:text-primary transition-colors block"
             >
               ← Back to homepage
@@ -649,6 +1280,35 @@ export default function Login() {
           </div>
         </div>
       </div>
+
+      {/* Welcome Credits Dialog */}
+      <Dialog open={showWelcomeCreditsDialog} onOpenChange={setShowWelcomeCreditsDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-center">
+              <div className="mx-auto flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-500 mb-4">
+                <Gift className="h-8 w-8 text-white" />
+              </div>
+              🎉 Welcome to Media Street! 🎉
+            </DialogTitle>
+            <DialogDescription className="text-center space-y-4 pt-4">
+              <p className="text-lg font-semibold text-primary">
+                You've received $100 in credits!
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Use your credits to create offers and grow your business. Your credits are ready to use right away.
+              </p>
+              <Button 
+                onClick={handleWelcomeDialogClose}
+                className="w-full mt-4"
+              >
+                Get Started
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

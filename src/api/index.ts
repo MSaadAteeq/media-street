@@ -20,10 +20,12 @@ const apiHandler = async ({
   // store.dispatch(apiStatesActions.startLoading());
   // store.dispatch(apiStatesActions.clearError());
 
-  // Get token from localStorage if token parameter is true
+  // Get token from localStorage or sessionStorage (for signup flow) if token parameter is true
   let tokenValue = null;
   if (token) {
-    const storedToken = localStorage.getItem("token");
+    // Check sessionStorage first (for signup flow), then localStorage
+    const signupToken = sessionStorage.getItem("signup_token");
+    const storedToken = signupToken || localStorage.getItem("token");
     tokenValue = storedToken ? (storedToken.startsWith('"') ? JSON.parse(storedToken) : storedToken) : null;
   }
 

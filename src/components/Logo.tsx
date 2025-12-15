@@ -7,6 +7,7 @@ interface LogoProps {
   showText?: boolean;
   className?: string;
   textColor?: 'dark' | 'light';
+  showGloss?: boolean;
 }
 const sizes = {
   sm: 'w-8 h-8',
@@ -24,20 +25,21 @@ const Logo: React.FC<LogoProps> = ({
   size = 'md',
   showText = true,
   className = '',
-  textColor = 'dark'
+  textColor = 'dark',
+  showGloss = false
 }) => {
-  return <Link to="/" className={`flex items-center gap-3 hover:opacity-80 transition-opacity ${className}`}>
-      {/* Logo Icon */}
-      <img 
-        src={logoImage} 
-        alt="Media Street Logo" 
-        className={`${sizes[size]} object-contain`}
-      />
+  return <Link to="/" className={`flex items-center gap-3 hover:opacity-80 transition-opacity ${showGloss ? 'hero-gloss' : ''} ${className}`}>
+    {/* Logo Icon */}
+    <img
+      src={logoImage}
+      alt="Media Street Logo"
+      className={`${sizes[size]} object-contain`}
+    />
 
-      {/* Logo Text */}
-      {showText && <span className={`font-bold ${textSizes[size]} leading-none bg-gradient-to-r from-blue-600 to-purple-700 bg-clip-text text-transparent`}>
-        Media Street™
-      </span>}
-    </Link>;
+    {/* Logo Text */}
+    {showText && <span className={`font-bold ${textSizes[size]} leading-none bg-gradient-to-r from-blue-600 to-purple-700 bg-clip-text text-transparent`}>
+      Media Street™
+    </span>}
+  </Link>;
 };
 export default Logo;

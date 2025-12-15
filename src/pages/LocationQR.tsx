@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 // Supabase removed - will use Node.js API
 import LocationQRDisplay from "@/components/LocationQRDisplay";
-import { Card } from "@/components/ui/card";
-import { ArrowLeft } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowLeft, QrCode, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import AppLayout from "@/components/AppLayout";
 
 interface Location {
   id: string;
@@ -15,13 +16,17 @@ interface Location {
 
 const LocationQR = () => {
   const { locationId } = useParams<{ locationId: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [location, setLocation] = useState<Location | null>(null);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (locationId) {
       loadLocation();
+    } else {
+      loadAllLocations();
     }
   }, [locationId]);
 
@@ -87,6 +92,89 @@ const LocationQR = () => {
     }
   };
 
+  const loadAllLocations = async () => {
+    try {
+      setLoading(true);
+      const { get } = await import("@/services/apis");
+      
+      const response = await get({ 
+        end_point: 'locations',
+        token: true
+      });
+      
+      if (response && response.success && response.data) {
+        const locationsData = Array.isArray(response.data) ? response.data : [];
+        setLocations(locationsData.map((loc: any) => ({
+          id: loc.id || loc._id?.toString() || '',
+          name: loc.name || '',
+          address: loc.address || ''
+        })));
+      } else {
+        setLocations([]);
+      }
+    } catch (error: any) {
+      console.error('Error loading locations:', error);
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || error?.message || "Failed to load locations. Please try again.",
+        variant: "destructive",
+      });
+      setLocations([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Location selector view
+  if (!locationId) {
+    return (
+      <AppLayout pageTitle="QR Code Stickers" pageIcon={<QrCode className="h-5 w-5 text-primary" />}>
+        <div className="space-y-6">
+          <p className="text-muted-foreground">Select a store location to download its unique Media Street QR code sticker and place the sticker in-store</p>
+          
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <div className="text-muted-foreground">Loading locations...</div>
+            </div>
+          ) : locations.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground mb-4">No store locations found. Add a location first.</p>
+                <Button onClick={() => navigate('/locations')}>
+                  Go to Store Locations
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {locations.map(loc => (
+                <Card 
+                  key={loc.id} 
+                  className="cursor-pointer hover:border-primary transition-colors" 
+                  onClick={() => navigate(`/location-qr/${loc.id}`)}
+                >
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <QrCode className="h-5 w-5 text-primary" />
+                      {loc.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">{loc.address}</p>
+                    <Button variant="outline" className="mt-4 w-full">
+                      View QR Code
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </AppLayout>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -104,9 +192,9 @@ const LocationQR = () => {
         <Card className="p-8 text-center max-w-md">
           <h2 className="text-2xl font-bold text-foreground mb-2">Location Not Found</h2>
           <p className="text-muted-foreground mb-4">This location may have been deleted.</p>
-          <Button onClick={() => window.close()}>
+          <Button onClick={() => navigate('/location-qr')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Go Back
+            Back
           </Button>
         </Card>
       </div>
@@ -116,6 +204,12 @@ const LocationQR = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-secondary/5 to-primary/5 py-12 px-4">
       <div className="container mx-auto max-w-2xl">
+        {/* Back Button */}
+        <Button variant="ghost" onClick={() => navigate('/location-qr')} className="mb-6">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">

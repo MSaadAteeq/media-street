@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import AppLayout from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Eye, Trash2, MapPin, MoreHorizontal, ChevronDown, Zap } from "lucide-react";
+import { Plus, Eye, Trash2, MapPin, MoreHorizontal, ChevronDown, Zap, Store, TrendingUp, Download, Sparkles } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -48,6 +49,8 @@ interface Offer {
     address: string;
   }[];
   created_at: string;
+  expires_at?: string;
+  expiresAt?: string;
   is_active: boolean;
   redemption_count: number;
   is_open_offer?: boolean;
@@ -64,6 +67,11 @@ interface Location {
   };
   total_redemptions: number;
   open_offer_only?: boolean;
+  views_7_days?: number;
+  views_30_days?: number;
+  views_all_time?: number;
+  redemptions_7_days?: number;
+  redemptions_30_days?: number;
 }
 
 interface Redemption {
@@ -90,6 +98,7 @@ const Offers = () => {
   const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false);
   const [isViewOfferDialogOpen, setIsViewOfferDialogOpen] = useState(false);
   const [viewingOffer, setViewingOffer] = useState<Offer | null>(null);
+  const [impressionsData, setImpressionsData] = useState<any[]>([]);
 
   useEffect(() => {
     // Fetch locations first, then offers (so locations are available for mapping)
@@ -98,6 +107,13 @@ const Offers = () => {
     });
     fetchRedemptions();
   }, []);
+
+  useEffect(() => {
+    // Fetch impressions when locations are loaded
+    if (locations.length > 0) {
+      fetchImpressions();
+    }
+  }, [locations.length]);
 
   const fetchLocations = async () => {
     try {
@@ -208,12 +224,22 @@ const Offers = () => {
                            offer.id || 
                            `offer-${index}-${Date.now()}`;
             
+            // Check if offer has expired
+            const expiresAt = offer.expiresAt || offer.expires_at;
+            const isExpired = expiresAt && new Date(expiresAt) < new Date();
+            const isActive = offer.isActive !== undefined ? offer.isActive : (offer.is_active !== undefined ? offer.is_active : true);
+            
+            // If expired, set is_active to false
+            const finalIsActive = isExpired ? false : isActive;
+            
             const formattedOffer = {
               id: offerId,
               call_to_action: offer.callToAction || offer.call_to_action || '',
               locations: offerLocations,
               created_at: offer.createdAt || offer.created_at || new Date().toISOString(),
-              is_active: offer.isActive !== undefined ? offer.isActive : (offer.is_active !== undefined ? offer.is_active : true),
+              expires_at: expiresAt || null,
+              expiresAt: expiresAt || null,
+              is_active: finalIsActive,
               redemption_count: offer.redemptionCount || offer.redemption_count || 0,
               is_open_offer: offer.isOpenOffer || offer.is_open_offer || false,
               available_for_partnership: offer.availableForPartnership !== undefined 
@@ -376,6 +402,148 @@ const Offers = () => {
       });
     }
   };
+
+  const fetchImpressions = async () => {
+    try {
+      // Fetch impressions for all locations
+      const impressionsPromises = locations.map(async (loc) => {
+        const locId = loc.id;
+        if (!locId) return { locationId: locId, inbound: [], outbound: [] };
+        
+        try {
+          const [inboundResponse, outboundResponse] = await Promise.all([
+            get({ end_point: `impressions/inbound/${locId}`, token: true }).catch(() => ({ success: false, data: [] })),
+            get({ end_point: `impressions/outbound/${locId}`, token: true }).catch(() => ({ success: false, data: [] }))
+          ]);
+          
+          return {
+            locationId: locId,
+            inbound: inboundResponse.success ? inboundResponse.data : [],
+            outbound: outboundResponse.success ? outboundResponse.data : []
+          };
+        } catch (error) {
+          console.error(`Error fetching impressions for location ${locId}:`, error);
+          return { locationId: locId, inbound: [], outbound: [] };
+        }
+      });
+      
+      const impressions = await Promise.all(impressionsPromises);
+      setImpressionsData(impressions);
+    } catch (error) {
+      console.error("Error fetching impressions:", error);
+      setImpressionsData([]);
+    }
+  };
+
+  // Calculate analytics for each location
+  const locationAnalytics = useMemo(() => {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    return locations.map(loc => {
+      const locImpressions = impressionsData.find(imp => imp.locationId === loc.id);
+      const inboundImpressions = locImpressions?.inbound || [];
+      const outboundImpressions = locImpressions?.outbound || [];
+
+      // Filter impressions by date
+      const views7Days = inboundImpressions.filter((imp: any) => {
+        const viewedAt = new Date(imp.viewedAt || imp.createdAt || 0);
+        return viewedAt >= sevenDaysAgo;
+      }).length;
+
+      const views30Days = inboundImpressions.filter((imp: any) => {
+        const viewedAt = new Date(imp.viewedAt || imp.createdAt || 0);
+        return viewedAt >= thirtyDaysAgo;
+      }).length;
+
+      const viewsAllTime = inboundImpressions.length;
+
+      // Filter redemptions by date
+      const redemptions7Days = redemptions.filter(red => {
+        const redeemedAt = new Date(red.redeemed_at);
+        return redeemedAt >= sevenDaysAgo && red.location?.name === loc.name;
+      }).length;
+
+      const redemptions30Days = redemptions.filter(red => {
+        const redeemedAt = new Date(red.redeemed_at);
+        return redeemedAt >= thirtyDaysAgo && red.location?.name === loc.name;
+      }).length;
+
+      return {
+        ...loc,
+        views_7_days: views7Days,
+        views_30_days: views30Days,
+        views_all_time: viewsAllTime,
+        redemptions_7_days: redemptions7Days,
+        redemptions_30_days: redemptions30Days,
+        total_redemptions: redemptions.filter(red => red.location?.name === loc.name).length
+      };
+    });
+  }, [locations, impressionsData, redemptions]);
+
+  // Generate monthly chart data
+  const generateMonthlyChartData = () => {
+    const months = [];
+    const now = new Date();
+    
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthName = date.toLocaleDateString('en-US', { month: 'short' });
+      months.push({ month: monthName });
+    }
+
+    // Add data for each location
+    locationAnalytics.forEach(loc => {
+      months.forEach((monthData, index) => {
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - (11 - index), 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - (11 - index) + 1, 0);
+        
+        const monthRedemptions = redemptions.filter(red => {
+          const redeemedAt = new Date(red.redeemed_at);
+          return redeemedAt >= monthStart && redeemedAt <= monthEnd && red.location?.name === loc.name;
+        }).length;
+        
+        monthData[loc.name] = monthRedemptions;
+      });
+    });
+
+    // Add "All Stores" line
+    months.forEach((monthData, index) => {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - (11 - index), 1);
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() - (11 - index) + 1, 0);
+      
+      const allStoresRedemptions = redemptions.filter(red => {
+        const redeemedAt = new Date(red.redeemed_at);
+        return redeemedAt >= monthStart && redeemedAt <= monthEnd;
+      }).length;
+      
+      monthData["All Stores"] = allStoresRedemptions;
+    });
+
+    return months;
+  };
+
+  const handleDownloadChart = () => {
+    const chartElement = document.getElementById('weekly-performance-chart');
+    if (!chartElement) return;
+
+    // Simple download - could be enhanced with html2canvas
+    toast({
+      title: "Download",
+      description: "Chart download functionality coming soon",
+    });
+  };
+
+  // Visit value estimates (placeholder - could be fetched from backend)
+  const visitValueEstimates = useMemo(() => {
+    const estimates = new Map();
+    locationAnalytics.forEach(loc => {
+      // Default estimate of $10 per visit
+      estimates.set(loc.id, { estimatedValue: 10 });
+    });
+    return estimates;
+  }, [locationAnalytics]);
 
   const handleViewOffer = (offer: Offer) => {
     setViewingOffer(offer);
@@ -612,9 +780,25 @@ const Offers = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={offer.is_active ? "default" : "secondary"}>
-                          {offer.is_active ? "Active" : "Inactive"}
-                        </Badge>
+                        {(() => {
+                          // Check if offer has expired
+                          const expiresAt = (offer as any).expires_at || (offer as any).expiresAt;
+                          const isExpired = expiresAt && new Date(expiresAt) < new Date();
+                          const isActive = offer.is_active && !isExpired;
+                          
+                          if (isExpired) {
+                            return (
+                              <Badge variant="destructive">
+                                Expired
+                              </Badge>
+                            );
+                          }
+                          return (
+                            <Badge variant={isActive ? "default" : "secondary"}>
+                              {isActive ? "Active" : "Inactive"}
+                            </Badge>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <span className="font-bold text-primary">{offer.redemption_count}</span>
@@ -646,12 +830,234 @@ const Offers = () => {
             <CardTitle>Analytics & Redemptions</CardTitle>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="recent" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="recent">Recent Redemptions</TabsTrigger>
+            <Tabs defaultValue="analytics" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="analytics">Analytics</TabsTrigger>
-                <TabsTrigger value="export">Export Data</TabsTrigger>
+                <TabsTrigger value="recent">Redemptions</TabsTrigger>
               </TabsList>
+              
+              <TabsContent value="analytics" className="mt-6 space-y-8">
+                {locationAnalytics.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">No locations yet. Add a location to see analytics.</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Per-Store Analytics */}
+                    {locationAnalytics.map(location => {
+                      const estimate = visitValueEstimates.get(location.id);
+                      const avgValue = estimate?.estimatedValue || 10;
+                      
+                      return (
+                        <Card key={location.id} className="overflow-hidden">
+                          <CardHeader className="bg-muted/30 pb-3">
+                            <div className="flex items-center gap-2">
+                              <Store className="h-5 w-5 text-primary" />
+                              <div className="flex-1">
+                                <CardTitle className="text-lg">{location.name}</CardTitle>
+                                <p className="text-xs text-muted-foreground">{location.address}</p>
+                              </div>
+                              {estimate && (
+                                <Badge variant="outline" className="ml-auto text-xs">
+                                  ~${avgValue} avg visit <Sparkles className="h-3 w-3 inline ml-1 text-primary" />
+                                </Badge>
+                              )}
+                            </div>
+                          </CardHeader>
+                          <CardContent className="pt-4">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b border-border">
+                                    <th className="text-left py-2 font-medium text-muted-foreground"></th>
+                                    <th className="text-center py-2 font-medium text-muted-foreground px-4">This Week</th>
+                                    <th className="text-center py-2 font-medium text-muted-foreground px-4">This Month</th>
+                                    <th className="text-center py-2 font-medium text-muted-foreground px-4">All-Time</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr className="border-b border-border/50">
+                                    <td className="py-3 flex items-center gap-2">
+                                      <Eye className="h-4 w-4 text-muted-foreground" />
+                                      <span>Offer Views</span>
+                                    </td>
+                                    <td className="text-center py-3 text-primary font-semibold">{location.views_7_days || 0}</td>
+                                    <td className="text-center py-3 text-primary font-semibold">{location.views_30_days || 0}</td>
+                                    <td className="text-center py-3 text-primary font-semibold">{location.views_all_time || 0}</td>
+                                  </tr>
+                                  <tr className="border-b border-border/50">
+                                    <td className="py-3 flex items-center gap-2">
+                                      <Zap className="h-4 w-4 text-muted-foreground" />
+                                      <span>New Customers</span>
+                                    </td>
+                                    <td className="text-center py-3 text-primary font-semibold">{location.redemptions_7_days || 0}</td>
+                                    <td className="text-center py-3 text-primary font-semibold">{location.redemptions_30_days || 0}</td>
+                                    <td className="text-center py-3 text-primary font-semibold">{location.total_redemptions || 0}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="py-3 flex items-center gap-2">
+                                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                                      <span>Est. ROI</span>
+                                    </td>
+                                    <td className="text-center py-3">
+                                      <div className="text-primary font-semibold">${((location.redemptions_7_days || 0) * avgValue).toFixed(0)}</div>
+                                      <div className="text-xs text-muted-foreground">{location.redemptions_7_days || 0} new customers × ${avgValue}</div>
+                                    </td>
+                                    <td className="text-center py-3">
+                                      <div className="text-primary font-semibold">${((location.redemptions_30_days || 0) * avgValue).toFixed(0)}</div>
+                                      <div className="text-xs text-muted-foreground">{location.redemptions_30_days || 0} new customers × ${avgValue}</div>
+                                    </td>
+                                    <td className="text-center py-3">
+                                      <div className="text-primary font-semibold">${((location.total_redemptions || 0) * avgValue).toFixed(0)}</div>
+                                      <div className="text-xs text-muted-foreground">{location.total_redemptions || 0} new customers × ${avgValue}</div>
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+
+                    {/* Cumulative Totals for All Stores */}
+                    {locationAnalytics.length > 1 && (
+                      <Card className="overflow-hidden border-primary/30">
+                        <CardHeader className="bg-primary/10 pb-3">
+                          <div className="flex items-center gap-2">
+                            <TrendingUp className="h-5 w-5 text-primary" />
+                            <CardTitle className="text-lg">All Stores Combined</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-4">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-border">
+                                  <th className="text-left py-2 font-medium text-muted-foreground"></th>
+                                  <th className="text-center py-2 font-medium text-muted-foreground px-4">This Week</th>
+                                  <th className="text-center py-2 font-medium text-muted-foreground px-4">This Month</th>
+                                  <th className="text-center py-2 font-medium text-muted-foreground px-4">All-Time</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr className="border-b border-border/50">
+                                  <td className="py-3 flex items-center gap-2">
+                                    <Eye className="h-4 w-4 text-muted-foreground" />
+                                    <span>Total Offer Views</span>
+                                  </td>
+                                  <td className="text-center py-3 text-primary font-bold text-lg">
+                                    {locationAnalytics.reduce((sum, loc) => sum + (loc.views_7_days || 0), 0)}
+                                  </td>
+                                  <td className="text-center py-3 text-primary font-bold text-lg">
+                                    {locationAnalytics.reduce((sum, loc) => sum + (loc.views_30_days || 0), 0)}
+                                  </td>
+                                  <td className="text-center py-3 text-primary font-bold text-lg">
+                                    {locationAnalytics.reduce((sum, loc) => sum + (loc.views_all_time || 0), 0)}
+                                  </td>
+                                </tr>
+                                <tr className="border-b border-border/50">
+                                  <td className="py-3 flex items-center gap-2">
+                                    <Zap className="h-4 w-4 text-muted-foreground" />
+                                    <span>Total New Customers</span>
+                                  </td>
+                                  <td className="text-center py-3 text-primary font-bold text-lg">
+                                    {locationAnalytics.reduce((sum, loc) => sum + (loc.redemptions_7_days || 0), 0)}
+                                  </td>
+                                  <td className="text-center py-3 text-primary font-bold text-lg">
+                                    {locationAnalytics.reduce((sum, loc) => sum + (loc.redemptions_30_days || 0), 0)}
+                                  </td>
+                                  <td className="text-center py-3 text-primary font-bold text-lg">
+                                    {locationAnalytics.reduce((sum, loc) => sum + (loc.total_redemptions || 0), 0)}
+                                  </td>
+                                </tr>
+                                <tr>
+                                  <td className="py-3 flex items-center gap-2">
+                                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                                    <span>Total Est. ROI</span>
+                                  </td>
+                                  <td className="text-center py-3">
+                                    <div className="text-primary font-bold text-lg">
+                                      ${locationAnalytics.reduce((sum, loc) => {
+                                        const est = visitValueEstimates.get(loc.id);
+                                        return sum + (loc.redemptions_7_days || 0) * (est?.estimatedValue || 10);
+                                      }, 0).toFixed(0)}
+                                    </div>
+                                  </td>
+                                  <td className="text-center py-3">
+                                    <div className="text-primary font-bold text-lg">
+                                      ${locationAnalytics.reduce((sum, loc) => {
+                                        const est = visitValueEstimates.get(loc.id);
+                                        return sum + (loc.redemptions_30_days || 0) * (est?.estimatedValue || 10);
+                                      }, 0).toFixed(0)}
+                                    </div>
+                                  </td>
+                                  <td className="text-center py-3">
+                                    <div className="text-primary font-bold text-lg">
+                                      ${locationAnalytics.reduce((sum, loc) => {
+                                        const est = visitValueEstimates.get(loc.id);
+                                        return sum + (loc.total_redemptions || 0) * (est?.estimatedValue || 10);
+                                      }, 0).toFixed(0)}
+                                    </div>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Monthly Performance Chart */}
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold">Monthly New Customers</h3>
+                        <Button variant="outline" size="sm" onClick={handleDownloadChart}>
+                          <Download className="h-4 w-4 mr-2" />
+                          Download
+                        </Button>
+                      </div>
+                      <Card id="weekly-performance-chart" className="p-4">
+                        <div className="h-[300px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={generateMonthlyChartData()}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                              <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" />
+                              <YAxis stroke="hsl(var(--muted-foreground))" />
+                              <Tooltip contentStyle={{
+                                backgroundColor: 'hsl(var(--background))',
+                                border: '1px solid hsl(var(--border))'
+                              }} />
+                              <Legend />
+                              {locationAnalytics.map((loc, index) => {
+                                const colors = ['hsl(var(--primary))', 'hsl(142 76% 36%)', 'hsl(38 92% 50%)', 'hsl(280 68% 60%)', 'hsl(200 75% 50%)'];
+                                return (
+                                  <Line 
+                                    key={loc.id}
+                                    type="monotone" 
+                                    dataKey={loc.name} 
+                                    stroke={colors[index % colors.length]} 
+                                    strokeWidth={2} 
+                                    dot={{ fill: colors[index % colors.length] }} 
+                                  />
+                                );
+                              })}
+                              <Line 
+                                type="monotone" 
+                                dataKey="All Stores" 
+                                stroke="hsl(var(--foreground))" 
+                                strokeWidth={3} 
+                                strokeDasharray="5 5"
+                                dot={{ fill: 'hsl(var(--foreground))' }} 
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </Card>
+                    </div>
+                  </>
+                )}
+              </TabsContent>
               
               <TabsContent value="recent" className="mt-6">
                 {redemptions.length === 0 ? (
@@ -692,49 +1098,6 @@ const Offers = () => {
                     </TableBody>
                   </Table>
                 )}
-              </TabsContent>
-              
-              <TabsContent value="analytics" className="mt-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                  <Card>
-                    <CardContent className="p-6">
-                      <div className="text-2xl font-bold">{redemptions.length}</div>
-                      <p className="text-xs text-muted-foreground">Total Redemptions</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-6">
-                      <div className="text-2xl font-bold">{offers.filter(o => o.is_active).length}</div>
-                      <p className="text-xs text-muted-foreground">Active Offers</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="p-6">
-                      <div className="text-2xl font-bold">
-                        {redemptions.length > 0 && offers.length > 0 
-                          ? Math.round((redemptions.length / (offers.reduce((sum, o) => sum + (o.redemption_count || 0), 0) || 1)) * 100)
-                          : 0}%
-                      </div>
-                      <p className="text-xs text-muted-foreground">Conversion Rate</p>
-                    </CardContent>
-                  </Card>
-                </div>
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">Detailed analytics coming soon</p>
-                </div>
-              </TabsContent>
-              
-              <TabsContent value="export" className="mt-6">
-                <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <Button variant="outline">Export Offers (CSV)</Button>
-                    <Button variant="outline">Export Redemptions (CSV)</Button>
-                    <Button variant="outline">Export Analytics (PDF)</Button>
-                  </div>
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">Export functionality coming soon</p>
-                  </div>
-                </div>
               </TabsContent>
             </Tabs>
           </CardContent>

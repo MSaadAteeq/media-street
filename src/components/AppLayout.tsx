@@ -5,12 +5,11 @@ import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
 import { get, patch } from "@/services/apis";
 // Supabase removed - will use Node.js API
-import { 
+import {
   Home,
-  Store, 
+  Store,
   MapPin,
   Zap,
-  Settings,
   Bell,
   Gift,
   LogOut,
@@ -19,14 +18,16 @@ import {
   ShoppingBag,
   Bot,
   Monitor,
-  MessageSquare
+  MessageSquare,
+  QrCode,
+  TrendingUp
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/Logo";
-import { 
-  Tooltip, 
-  TooltipContent, 
-  TooltipTrigger 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
 } from "@/components/ui/tooltip";
 import {
   Popover,
@@ -84,7 +85,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
         // TODO: Replace with Node.js API call
         // const response = await get({ end_point: 'profile/referral-code' });
         // setReferralCode(response.data.referral_code);
-        
+
         // Mock data for now
         setReferralCode("REF12345");
       } catch (error) {
@@ -149,11 +150,11 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      await patch({ 
-        end_point: `notifications/${notificationId}/read`, 
-        token: true 
+      await patch({
+        end_point: `notifications/${notificationId}/read`,
+        token: true
       });
-      setNotifications(prev => 
+      setNotifications(prev =>
         prev.map(n => n._id === notificationId ? { ...n, isRead: true, read: true } : n)
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
@@ -164,9 +165,9 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
 
   const markAllAsRead = async () => {
     try {
-      await patch({ 
-        end_point: 'notifications/read-all', 
-        token: true 
+      await patch({
+        end_point: 'notifications/read-all',
+        token: true
       });
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true, read: true })));
       setUnreadCount(0);
@@ -180,7 +181,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
     if (!notification.isRead) {
       markAsRead(notification._id);
     }
-    
+
     // Navigate based on notification type
     if (notification.relatedEntityType === 'partner' && notification.relatedEntityId) {
       navigate('/requests');
@@ -193,74 +194,69 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
     }
   };
 
-  const allNavigationItems = [
-    { 
-      icon: Home, 
-      tooltip: "Dashboard", 
+  const navigationItems = [
+    {
+      icon: Home,
+      tooltip: "Dashboard",
       path: "/dashboard",
       onClick: () => navigate('/dashboard')
     },
-    { 
-      icon: Store, 
-      tooltip: "Partners", 
-      path: "/requests",
-      onClick: () => navigate('/requests')
-    },
-    { 
-      icon: MapPin, 
-      tooltip: "Store Locations", 
+    {
+      icon: MapPin,
+      tooltip: "Store Locations",
       path: "/locations",
       onClick: () => navigate('/locations')
     },
-    { 
-      icon: Zap, 
-      tooltip: "Your Offers", 
+    {
+      icon: Zap,
+      tooltip: "Your Offers",
       path: "/offers",
       onClick: () => navigate('/offers')
     },
-    { 
-      icon: Bot, 
-      tooltip: "Open Offer", 
+    {
+      icon: QrCode,
+      tooltip: "QR Code Stickers",
+      path: "/location-qr",
+      onClick: () => navigate('/location-qr')
+    },
+    {
+      icon: Store,
+      tooltip: "Partners",
+      path: "/requests",
+      onClick: () => navigate('/requests')
+    },
+    {
+      icon: Bot,
+      tooltip: "Open Offer",
       path: "/openoffer",
       onClick: () => navigate('/openoffer')
     },
-    { 
-      icon: Monitor, 
-      tooltip: "In-Store Display", 
+    {
+      icon: Monitor,
+      tooltip: "In-Store Display",
       path: "/display",
       onClick: () => navigate('/display')
     },
-    { 
-      icon: Settings, 
-      tooltip: "Settings", 
-      path: "/settings",
-      onClick: () => navigate('/settings')
+    {
+      icon: TrendingUp,
+      tooltip: "Insights",
+      path: "/insights",
+      onClick: () => navigate('/insights')
     },
   ];
-
-  // Filter out Settings icon for Partner Requests, Store Locations, Offers, and Open Offer pages
-  const navigationItems = allNavigationItems.filter(item => {
-    if (item.path === "/settings") {
-      return location.pathname !== "/requests" && 
-       location.pathname !== "/locations" && 
-             location.pathname !== "/offers" && 
-             !location.pathname.startsWith("/offers/") &&
-             location.pathname !== "/openoffer" && 
-             !location.pathname.startsWith("/openoffer/") &&
-             location.pathname !== "/display";
-    }
-    return true;
-  });
 
   const isActivePath = (path: string) => {
     if (path === "/offers") {
       return location.pathname === "/offers" || location.pathname.startsWith("/offers/");
     }
+    if (path === "/location-qr") {
+      return location.pathname === "/location-qr" || location.pathname.startsWith("/location-qr/");
+    }
     if (path === "/openoffer") {
       return location.pathname === "/openoffer" || location.pathname.startsWith("/openoffer/");
     }
-    if (path === "/settings") {
-      return location.pathname === "/settings" || location.pathname.startsWith("/settings/");
+    if (path === "/insights") {
+      return location.pathname === "/insights" || location.pathname.startsWith("/insights/");
     }
     return location.pathname === path;
   };
@@ -268,30 +264,29 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
   return (
     <div className="min-h-screen bg-background pb-16 sm:pb-0">
       {/* Left Sidebar */}
-      <div className="fixed top-0 left-0 z-50 w-12 sm:w-16 h-full bg-background border-r border-border flex flex-col items-center py-3 sm:py-4 space-y-3 sm:space-y-4">
+      <div className="fixed top-0 left-0 z-50 w-12 sm:w-16 h-full bg-background border-r border-border flex flex-col items-center py-3 sm:py-4 space-y-4 sm:space-y-6">
         {/* Logo */}
         <div className="mb-2 sm:mb-4">
           <Logo showText={false} />
         </div>
 
         {/* Navigation Icons */}
-        <div className="flex flex-col space-y-1.5 sm:space-y-2">
+        <div className="flex flex-col space-y-4 sm:space-y-6">
           {navigationItems.map((item, index) => {
             const Icon = item.icon;
             const isActive = isActivePath(item.path);
-            
+
             return (
               <Tooltip key={index}>
                 <TooltipTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className={`h-8 w-8 sm:h-10 sm:w-10 hover:text-foreground hover:bg-secondary ${
-                      isActive ? 'bg-secondary text-primary' : 'text-muted-foreground'
-                    }`}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={`hover:text-foreground hover:bg-secondary ${isActive ? 'text-foreground bg-secondary' : 'text-muted-foreground'
+                      }`}
                     onClick={item.onClick}
                   >
-                    <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <Icon className="h-5 w-5" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right">
@@ -312,7 +307,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
             {pageIcon}
             <span className="text-foreground font-medium text-sm sm:text-base">{pageTitle}</span>
           </div>
-          
+
           <div className="flex items-center space-x-2 sm:space-x-4">
             {/* Referral Code Popover */}
             <Popover>
@@ -338,8 +333,8 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                 <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 relative">
                   <Bell className="h-5 w-5" />
                   {unreadCount > 0 && (
-                    <Badge 
-                      variant="destructive" 
+                    <Badge
+                      variant="destructive"
                       className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
                     >
                       {unreadCount}
@@ -351,9 +346,9 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                 <div className="p-4 border-b border-border flex items-center justify-between">
                   <h3 className="font-semibold text-foreground">Notifications</h3>
                   {unreadCount > 0 && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className="text-xs h-7"
                       onClick={markAllAsRead}
                     >
@@ -375,9 +370,8 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                       {notifications.map((notification) => (
                         <div
                           key={notification._id}
-                          className={`p-4 hover:bg-secondary/50 cursor-pointer transition-colors ${
-                            !notification.isRead ? 'bg-secondary/30' : ''
-                          }`}
+                          className={`p-4 hover:bg-secondary/50 cursor-pointer transition-colors ${!notification.isRead ? 'bg-secondary/30' : ''
+                            }`}
                           onClick={() => handleNotificationClick(notification)}
                         >
                           <div className="flex items-start justify-between gap-2">
@@ -394,7 +388,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground mt-2">
-                            {notification.timestamp 
+                            {notification.timestamp
                               ? notification.timestamp.toLocaleString()
                               : new Date(notification.createdAt).toLocaleString()}
                           </p>
@@ -409,7 +403,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
             {/* User Profile */}
             <Popover>
               <PopoverTrigger asChild>
-                <div 
+                <div
                   className="w-8 h-8 bg-gradient-to-r from-primary to-accent-green rounded-full cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center relative z-50"
                 >
                   <div className="w-6 h-6 bg-gradient-to-r from-primary to-accent-green rounded-full border-2 border-background">
@@ -418,17 +412,17 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                         {currentUser.fullName.charAt(0).toUpperCase()}
                       </div>
                     ) : (
-                      <img 
-                        src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" 
-                        alt={currentUser?.fullName || "User"} 
+                      <img
+                        src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png"
+                        alt={currentUser?.fullName || "User"}
                         className="w-full h-full rounded-full object-cover"
                       />
                     )}
                   </div>
                 </div>
               </PopoverTrigger>
-              <PopoverContent 
-                align="end" 
+              <PopoverContent
+                align="end"
                 sideOffset={8}
                 className="w-80 p-0 bg-card border-border shadow-lg z-[100]"
               >
@@ -443,9 +437,9 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                             {currentUser.fullName.charAt(0).toUpperCase()}
                           </div>
                         ) : (
-                          <img 
-                            src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" 
-                            alt={currentUser?.fullName || "User"} 
+                          <img
+                            src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png"
+                            alt={currentUser?.fullName || "User"}
                             className="w-full h-full rounded-full object-cover"
                           />
                         )}
@@ -460,58 +454,49 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
 
                   {/* Menu Items */}
                   <div className="space-y-1 border-t pt-3">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className="w-full justify-start h-9 text-sm"
                       onClick={() => navigate('/settings/profile')}
                     >
                       <User className="h-4 w-4 mr-3" />
                       Profile
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className="w-full justify-start h-9 text-sm"
                       onClick={() => navigate('/settings/messages')}
                     >
                       <MessageSquare className="h-4 w-4 mr-3" />
                       Messages
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       className="w-full justify-start h-9 text-sm"
                       onClick={() => navigate('/settings/billing')}
                     >
                       <CreditCard className="h-4 w-4 mr-3" />
                       Billing
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="w-full justify-start h-9 text-sm"
-                      onClick={() => navigate('/settings')}
-                    >
-                      <Settings className="h-4 w-4 mr-3" />
-                      Settings
-                    </Button>
                     <div className="border-t pt-1 mt-2">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         className="w-full justify-start h-9 text-sm text-destructive hover:text-destructive"
                         onClick={async () => {
                           try {
                             // TODO: Replace with Node.js API call
                             // await post({ end_point: 'auth/logout' });
-                            
+
                             // Clear Redux state first
                             dispatch(authActions.logout());
-                            
+
                             // Remove token from localStorage
                             localStorage.removeItem('token');
-                            
+
                             // Navigate to login page
                             navigate('/login', { replace: true });
                           } catch (error) {
@@ -529,14 +514,14 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                     </div>
                     <div className="border-t pt-3 mt-3">
                       <div className="flex items-center justify-center space-x-2 text-xs text-muted-foreground">
-                        <button 
+                        <button
                           onClick={() => navigate('/privacy-policy')}
                           className="hover:text-foreground transition-colors"
                         >
                           Privacy Policy
                         </button>
                         <span>•</span>
-                        <button 
+                        <button
                           onClick={() => navigate('/terms-of-service')}
                           className="hover:text-foreground transition-colors"
                         >
