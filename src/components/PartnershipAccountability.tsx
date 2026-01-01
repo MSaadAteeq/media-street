@@ -104,7 +104,7 @@ const PartnershipAccountability = () => {
                 </Card>
 
                 {/* Connector with Total ROI */}
-                {/* <div className="flex flex-col items-center gap-2 px-4 animate-fade-in">
+                <div className="flex flex-col items-center gap-2 px-4 animate-fade-in">
                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-emerald-500/20 border-2 border-primary/30 flex items-center justify-center">
                         <TrendingUp className="w-6 h-6 text-primary" />
                     </div>
@@ -114,7 +114,7 @@ const PartnershipAccountability = () => {
                             ${((32 * 8) + (12 * 45)).toFixed(2)}
                         </div>
                     </div>
-                </div> */}
+                </div>
 
                 <Card className="p-6 bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/20 flex-1">
                     <div className="flex items-center gap-3 mb-4">

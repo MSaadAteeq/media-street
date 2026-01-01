@@ -473,7 +473,7 @@ const InStoreDisplay = () => {
               <div className="space-y-2 flex-1">
                 <h3 className="font-semibold">In-Store Display Mode</h3>
                 <p className="text-sm text-muted-foreground">
-                  This carousel is designed to run on a tablet in your store. Offers and ads will automatically rotate every 10 seconds. Individual offers can be printed on your Partner Network page.
+                  This carousel is designed to run on a tablet in your store. Offers will automatically rotate every 10 seconds. Individual offers can be printed on your Partner Network page.
                 </p>
               </div>
               <div className="flex gap-3">

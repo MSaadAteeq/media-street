@@ -58,7 +58,28 @@ const referralSchema = z.object({
 });
 
 const offerSchema = z.object({
-  website: z.string().url("Please enter a valid URL").optional().or(z.literal("")),
+  website: z.string()
+    .refine((val) => {
+      // Allow empty string (optional field)
+      if (!val || val.trim() === "") return true;
+      
+      // Normalize the URL - add https:// if no protocol is present
+      let urlToValidate = val.trim();
+      if (!urlToValidate.match(/^https?:\/\//i)) {
+        urlToValidate = `https://${urlToValidate}`;
+      }
+      
+      // Validate as URL
+      try {
+        new URL(urlToValidate);
+        return true;
+      } catch {
+        return false;
+      }
+    }, {
+      message: "Please enter a valid URL"
+    })
+    .optional(),
   callToAction: z.string().min(5, "Offer must be at least 5 characters").max(48, "Offer must be less than 48 characters"),
 });
 
@@ -89,6 +110,8 @@ export default function Login() {
   const [selectedLatitude, setSelectedLatitude] = useState<number | undefined>(undefined);
   const [selectedLongitude, setSelectedLongitude] = useState<number | undefined>(undefined);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [referralRetailerName, setReferralRetailerName] = useState<string | null>(null);
+  const [isValidatingReferral, setIsValidatingReferral] = useState(false);
   
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -194,9 +217,11 @@ export default function Login() {
       });
 
       if (response.success && response.data) {
-        let userRole = response.data.user?.role || 'retailer';
+        // Get role from response, fallback to token, then default to retailer
+        let userRole = response.data.user?.role;
         
-        if (!userRole || userRole === 'retailer') {
+        // If role not in response, try to get it from token
+        if (!userRole) {
           try {
             const token = response.data.token;
             if (token) {
@@ -209,6 +234,14 @@ export default function Login() {
             console.warn('Could not decode role from token:', e);
           }
         }
+        
+        // Default to retailer if still no role found
+        userRole = userRole || 'retailer';
+        
+        // Log user info for debugging
+        console.log('[FRONTEND LOGIN] User email:', response.data.user?.email);
+        console.log('[FRONTEND LOGIN] User role from response:', response.data.user?.role);
+        console.log('[FRONTEND LOGIN] Final userRole:', userRole);
         
         dispatch(authActions.login({ 
           email: response.data.user?.email || data.email, 
@@ -227,9 +260,16 @@ export default function Login() {
           description: response.message || "You've been signed in successfully.",
         });
         
-        if (userRole.toLowerCase() === 'admin') {
+        // Redirect based on role (case-insensitive check)
+        const normalizedRole = String(userRole || '').toLowerCase().trim();
+        console.log('[FRONTEND LOGIN] Normalized role for redirect:', normalizedRole);
+        
+        // Force redirect to admin if role is admin
+        if (normalizedRole === 'admin') {
+          console.log('[FRONTEND LOGIN] Redirecting to /admin');
           navigate("/admin", { replace: true });
         } else {
+          console.log('[FRONTEND LOGIN] Redirecting to /dashboard');
           navigate("/dashboard", { replace: true });
         }
       } else {
@@ -410,14 +450,22 @@ export default function Login() {
   };
 
   const handleGenerateOffer = async () => {
-    const website = offerForm.getValues("website");
-    if (!website) {
+    let website = offerForm.getValues("website");
+    if (!website || !website.trim()) {
       toast({
         title: "Website Required",
-        description: "Please enter your website URL to generate an offer",
+        description: "Please enter your website URL to generate an offer with AI",
         variant: "destructive",
       });
       return;
+    }
+
+    // Normalize the URL - add https:// if no protocol is present
+    website = website.trim();
+    if (!website.match(/^https?:\/\//i)) {
+      website = `https://${website}`;
+      // Update the form field with the normalized URL
+      offerForm.setValue("website", website);
     }
 
     setIsGeneratingOffer(true);
@@ -440,7 +488,7 @@ export default function Login() {
         setShowPreview(true);
         toast({
           title: "Success",
-          description: "Offer generated! Review your preview below.",
+          description: "Offer generated with AI! Review your preview below.",
         });
       } else {
         throw new Error(response.message || 'Failed to generate offer');
@@ -492,26 +540,71 @@ export default function Login() {
   };
 
   const handleCreateOffer = async (values: OfferFormData) => {
-    if (!locationId) {
-      toast({
-        title: "Session expired",
-        description: "Please try again.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsLoading(true);
+    
     try {
+      // Check if locationId exists, if not try to fetch it
+      let currentLocationId = locationId;
+      
+      if (!currentLocationId) {
+        // Check if we have a token
+        const token = sessionStorage.getItem('signup_token') || localStorage.getItem('token');
+        if (!token) {
+          toast({
+            title: "Session expired",
+            description: "Please try again.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+        
+        // Fetch locations to get locationId if missing
+        try {
+          const locationsResponse = await get({ end_point: 'locations', token: true });
+          if (locationsResponse.success && locationsResponse.data && locationsResponse.data.length > 0) {
+            currentLocationId = locationsResponse.data[0]._id || locationsResponse.data[0].id;
+            setLocationId(currentLocationId);
+          } else {
+            toast({
+              title: "Location Required",
+              description: "Please complete step 3 (Store Details) to add a location first, or skip this step.",
+              variant: "destructive",
+            });
+            setIsLoading(false);
+            return;
+          }
+        } catch (error: any) {
+          console.error('Error fetching locations:', error);
+          toast({
+            title: "Error",
+            description: "Failed to fetch your location. Please complete step 3 (Store Details) first.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+      }
+      
+      if (!currentLocationId) {
+        toast({
+          title: "Location Required",
+          description: "Please complete step 3 (Store Details) to add a location first.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
       const response = await post({
         end_point: "offers",
         body: {
           call_to_action: values.callToAction,
-          location_ids: [locationId],
+          location_ids: [currentLocationId],
           expiration_duration: "1week",
           is_open_offer: false,
-          location_images: locationId ? {
-            [locationId]: generatedOfferData?.offerImageUrl || null
+          location_images: currentLocationId ? {
+            [currentLocationId]: generatedOfferData?.offerImageUrl || null
           } : {}
         },
         token: true
@@ -1035,11 +1128,50 @@ export default function Login() {
                                     {...field}
                                     placeholder="Enter referral code (e.g., JOHSMI)"
                                     className="uppercase"
-                                    onChange={(e) => {
-                                      field.onChange(e.target.value.toUpperCase());
+                                    onChange={async (e) => {
+                                      const value = e.target.value.toUpperCase();
+                                      field.onChange(value);
+                                      
+                                      // Validate referral code and show retailer name
+                                      if (value.trim().length >= 8) {
+                                        setIsValidatingReferral(true);
+                                        setReferralRetailerName(null);
+                                        try {
+                                          const response = await get({
+                                            end_point: `users/referral-code/${value.trim()}`,
+                                            token: false
+                                          });
+                                          
+                                          if (response.success && response.data?.retailerName) {
+                                            setReferralRetailerName(response.data.retailerName);
+                                          } else {
+                                            setReferralRetailerName(null);
+                                          }
+                                        } catch (error) {
+                                          console.error('Error validating referral code:', error);
+                                          setReferralRetailerName(null);
+                                        } finally {
+                                          setIsValidatingReferral(false);
+                                        }
+                                      } else {
+                                        setReferralRetailerName(null);
+                                      }
                                     }}
                                   />
                                 </FormControl>
+                                {isValidatingReferral && (
+                                  <p className="text-xs text-muted-foreground mt-1">Validating...</p>
+                                )}
+                                {referralRetailerName && !isValidatingReferral && (
+                                  <p className="text-xs text-green-600 font-medium mt-1">
+                                    ✓ Referred by: <span className="font-semibold">{referralRetailerName}</span>
+                                  </p>
+                                )}
+                                {!referralRetailerName && referralForm.watch("referralCode") && referralForm.watch("referralCode").trim().length >= 8 && !isValidatingReferral && (
+                                  <p className="text-xs text-destructive mt-1">
+                                    Invalid referral code
+                                  </p>
+                                )}
                                 <FormMessage />
                               </FormItem>
                             )}
@@ -1087,13 +1219,19 @@ export default function Login() {
                                     disabled={isGeneratingOffer || !field.value}
                                   >
                                     {isGeneratingOffer ? (
-                                      <span className="animate-spin">⚡</span>
+                                      <>
+                                        <span className="animate-spin mr-2">⚡</span>
+                                        Generating...
+                                      </>
                                     ) : (
-                                      <Zap className="h-4 w-4" />
+                                      <>
+                                        <Zap className="h-4 w-4 mr-2" />
+                                        Generate
+                                      </>
                                     )}
                                   </Button>
                                 </div>
-                                <p className="text-xs text-muted-foreground">Enter your website to auto-generate an offer with AI</p>
+                                <p className="text-xs text-muted-foreground">Enter your website URL to generate an offer with AI</p>
                                 <FormMessage />
                               </FormItem>
                             )}
@@ -1137,14 +1275,26 @@ export default function Login() {
                               </FormItem>
                             )}
                           />
+                          {!locationId && (
+                            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                <strong>Note:</strong> You need to complete step 3 (Store Details) first to add a location before creating an offer. You can skip this step and add a location later.
+                              </p>
+                            </div>
+                          )}
                           <Button 
                             type="submit" 
                             className="w-full bg-gradient-to-r from-blue-600 to-purple-700 hover:from-blue-700 hover:to-purple-800"
-                            disabled={isLoading}
+                            disabled={isLoading || !locationId}
                           >
                             {isLoading ? "Creating..." : "Create Offer"}
                             <Check className="ml-2 h-4 w-4" />
                           </Button>
+                          {!locationId && (
+                            <p className="text-xs text-muted-foreground text-center">
+                              Complete step 3 (Store Details) to add a location first, or skip to dashboard.
+                            </p>
+                          )}
                         </form>
                       </Form>
                       <div className="border-t pt-4">

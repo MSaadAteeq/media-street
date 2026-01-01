@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect } from "react";
+import { ReactNode, useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import { authActions } from "@/store/auth/auth";
@@ -67,6 +67,28 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
   const [referralCode, setReferralCode] = useState<string>("");
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loadingNotifications, setLoadingNotifications] = useState<boolean>(false);
+  const [hasOpenOfferLocation, setHasOpenOfferLocation] = useState<boolean>(false);
+
+  // Check if any location has open offer enabled
+  const checkOpenOfferLocations = useCallback(async () => {
+    try {
+      const response = await get({ end_point: 'locations', token: true });
+      if (response.success && response.data) {
+        const hasOpenOffer = response.data.some((location: any) => 
+          location.open_offer_only === true || location.openOfferOnly === true
+        );
+        console.log('Open Offer check:', { hasOpenOffer, route: location.pathname, locations: response.data.map((l: any) => ({ id: l.id, open_offer_only: l.open_offer_only, openOfferOnly: l.openOfferOnly })) });
+        setHasOpenOfferLocation(hasOpenOffer);
+      } else {
+        console.log('Open Offer check: No locations data', response);
+        setHasOpenOfferLocation(false);
+      }
+    } catch (error) {
+      console.error('Error checking open offer locations:', error);
+      // Default to false on error
+      setHasOpenOfferLocation(false);
+    }
+  }, [location.pathname]);
 
   // Fetch user profile and referral code
   useEffect(() => {
@@ -94,6 +116,23 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
     };
 
     fetchUserData();
+  }, []);
+
+  // Check open offer locations on mount and when route changes
+  useEffect(() => {
+    checkOpenOfferLocations();
+  }, [checkOpenOfferLocations]);
+
+  // Listen for location toggle events
+  useEffect(() => {
+    const handleLocationToggle = () => {
+      checkOpenOfferLocations();
+    };
+
+    window.addEventListener('locationToggle', handleLocationToggle);
+    return () => {
+      window.removeEventListener('locationToggle', handleLocationToggle);
+    };
   }, []);
 
   // Fetch notifications from API
@@ -194,54 +233,63 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
     }
   };
 
+  // Navigation items - computed based on current state
   const navigationItems = [
     {
       icon: Home,
       tooltip: "Dashboard",
       path: "/dashboard",
-      onClick: () => navigate('/dashboard')
+      onClick: () => navigate('/dashboard'),
+      disabled: false
     },
     {
       icon: MapPin,
       tooltip: "Store Locations",
       path: "/locations",
-      onClick: () => navigate('/locations')
+      onClick: () => navigate('/locations'),
+      disabled: false
     },
     {
       icon: Zap,
       tooltip: "Your Offers",
       path: "/offers",
-      onClick: () => navigate('/offers')
+      onClick: () => navigate('/offers'),
+      disabled: false
     },
     {
       icon: QrCode,
       tooltip: "QR Code Stickers",
       path: "/location-qr",
-      onClick: () => navigate('/location-qr')
+      onClick: () => navigate('/location-qr'),
+      disabled: false
     },
     {
       icon: Store,
       tooltip: "Partners",
       path: "/requests",
-      onClick: () => navigate('/requests')
+      onClick: () => navigate('/requests'),
+      disabled: false
     },
     {
       icon: Bot,
       tooltip: "Open Offer",
       path: "/openoffer",
-      onClick: () => navigate('/openoffer')
+      onClick: () => navigate('/openoffer'),
+      disabled: !hasOpenOfferLocation
     },
     {
       icon: Monitor,
       tooltip: "In-Store Display",
       path: "/display",
-      onClick: () => navigate('/display')
+      onClick: () => navigate('/display'),
+      disabled: false
     },
     {
       icon: TrendingUp,
       tooltip: "Insights",
       path: "/insights",
-      onClick: () => navigate('/insights')
+      onClick: () => navigate('/insights'),
+      disabled: false
     },
   ];
 
@@ -275,6 +323,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
           {navigationItems.map((item, index) => {
             const Icon = item.icon;
             const isActive = isActivePath(item.path);
+            const isDisabled = item.disabled || false;
 
             return (
               <Tooltip key={index}>
@@ -283,14 +332,15 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                     variant="ghost"
                     size="icon"
                     className={`hover:text-foreground hover:bg-secondary ${isActive ? 'text-foreground bg-secondary' : 'text-muted-foreground'
-                      }`}
-                    onClick={item.onClick}
+                      } ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={isDisabled ? undefined : item.onClick}
+                    disabled={isDisabled}
                   >
                     <Icon className="h-5 w-5" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  <p>{item.tooltip}</p>
+                  <p>{item.tooltip}{isDisabled ? ' (Enable Open Offer for at least one location)' : ''}</p>
                 </TooltipContent>
               </Tooltip>
             );

@@ -93,6 +93,32 @@ const Dashboard = () => {
     fetchDashboardData();
   }, []);
 
+  // Listen for location toggle events to update hasOpenOffer state
+  useEffect(() => {
+    const handleLocationToggle = () => {
+      // Re-check if any location has open offer enabled
+      const checkOpenOfferLocations = async () => {
+        try {
+          const response = await get({ end_point: 'locations', token: true });
+          if (response.success && response.data) {
+            const hasOpenOfferLocation = response.data.some((loc: any) => 
+              loc.open_offer_only === true || loc.openOfferOnly === true
+            );
+            setHasOpenOffer(hasOpenOfferLocation);
+          }
+        } catch (error) {
+          console.error('Error checking open offer locations:', error);
+        }
+      };
+      checkOpenOfferLocations();
+    };
+
+    window.addEventListener('locationToggle', handleLocationToggle);
+    return () => {
+      window.removeEventListener('locationToggle', handleLocationToggle);
+    };
+  }, []);
+
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
@@ -120,12 +146,17 @@ const Dashboard = () => {
       // Set locations state
       const locationsData = locationsResponse.success && locationsResponse.data ? locationsResponse.data : [];
       setLocations(locationsData);
+      
+      // Check if any location has open offer enabled
+      const hasOpenOfferLocation = locationsData.some((loc: any) => 
+        loc.open_offer_only === true || loc.openOfferOnly === true
+      );
+      setHasOpenOffer(hasOpenOfferLocation);
 
       // Set offers state
       const offersData = offersResponse.success && offersResponse.data ? offersResponse.data : [];
       setOffers(offersData);
       const activeOffers = offersData.filter((o: any) => o.is_active);
-      setHasOpenOffer(activeOffers.some((o: any) => o.is_open_offer));
 
       // Set partnerships state
       const partnershipsData = partnersResponse.success && partnersResponse.data ? partnersResponse.data : [];
@@ -385,7 +416,8 @@ const Dashboard = () => {
             return dateB.getTime() - dateA.getTime(); // Newest first
           });
           
-          const currentOffer = sortedActiveOffers[0] || locationOffers[0]; // Fallback to first offer if no active
+          // Only use active offers - don't fallback to expired offers
+          const currentOffer = sortedActiveOffers[0] || null;
           
           // Extract offer image from various possible field names
           let offerImage = null;
@@ -412,6 +444,14 @@ const Dashboard = () => {
             console.log(`⚠️ No offer found for location ${loc.name} (${locationId})`);
           }
           
+          // Only set currentOffer if we have both an offer AND an image
+          // If there's no image, treat it as no offer
+          const validOffer = currentOffer && offerImage ? {
+            image: offerImage,
+            createdAt: currentOffer.createdAt || currentOffer.created_at,
+            expiresAt: currentOffer.expiresAt || currentOffer.expires_at
+          } : null;
+          
           return {
             id: locationId,
             name: loc.name,
@@ -423,24 +463,15 @@ const Dashboard = () => {
             outboundRedemptions: outboundRedemptionsCount,
             partners: partnerCount,
             isOpenOffer: loc.openOfferOnly || loc.open_offer_only || false,
-            currentOffer: currentOffer ? {
-              image: offerImage,
-              createdAt: currentOffer.createdAt || currentOffer.created_at,
-              expiresAt: currentOffer.expiresAt || currentOffer.expires_at
-            } : null
+            currentOffer: validOffer
           };
         });
 
-        // Filter: Only show locations that have at least one offer
-        const locationsWithOffers = locationAnalyticsData.filter((loc: any) => {
-          return loc.currentOffer !== null && loc.currentOffer !== undefined;
-        });
-        
+        // Show all locations, even if they don't have offers
         console.log('📍 Total locations:', locationAnalyticsData.length);
-        console.log('📍 Locations with offers:', locationsWithOffers.length);
-        console.log('📍 Location analytics data (filtered):', locationsWithOffers);
-        console.log('📍 Setting locationAnalytics with', locationsWithOffers.length, 'locations (only those with offers)');
-        setLocationAnalytics(locationsWithOffers);
+        console.log('📍 Location analytics data:', locationAnalyticsData);
+        console.log('📍 Setting locationAnalytics with', locationAnalyticsData.length, 'locations (all locations)');
+        setLocationAnalytics(locationAnalyticsData);
       } catch (error) {
         console.error('Error calculating location analytics:', error);
         // Even if there's an error, set empty array to show "No locations" message
@@ -997,12 +1028,18 @@ const Dashboard = () => {
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-secondary" onClick={() => navigate('/openoffer')}>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className={`${hasOpenOffer ? 'text-muted-foreground hover:text-foreground hover:bg-secondary' : 'opacity-50 cursor-not-allowed'}`}
+                onClick={() => hasOpenOffer ? navigate('/openoffer') : undefined}
+                disabled={!hasOpenOffer}
+              >
                 <Bot className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right">
-              <p>Open Offer</p>
+              <p>Open Offer{!hasOpenOffer ? ' (Enable Open Offer for at least one location)' : ''}</p>
             </TooltipContent>
           </Tooltip>
 
@@ -1755,7 +1792,7 @@ const Dashboard = () => {
                       {locationAnalytics.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                            No offers found. Create an offer to show offer details.
+                            No locations found. Add a location to get started.
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -1776,9 +1813,11 @@ const Dashboard = () => {
                           // Calculate total redemptions (inbound + outbound)
                           const totalRedemptions = (row.inboundRedemptions || 0) + (row.outboundRedemptions || 0);
                           
-                          // Format dates as "start date - end date"
-                          let offerDates = 'N/A';
-                          if (row.currentOffer?.expiresAt && row.currentOffer?.createdAt) {
+                          // Format dates as "start date - end date" (only from offer, not location)
+                          // Only show dates if we have a valid offer with an image
+                          let offerDates = '-';
+                          if (row.currentOffer && offerImage && row.currentOffer.createdAt && row.currentOffer.expiresAt) {
+                            // Both start and end dates available
                             const startDate = new Date(row.currentOffer.createdAt).toLocaleDateString('en-US', { 
                               month: 'short', 
                               day: 'numeric', 
@@ -1790,21 +1829,16 @@ const Dashboard = () => {
                               year: 'numeric' 
                             });
                             offerDates = `${startDate} - ${endDate}`;
-                          } else if (row.currentOffer?.createdAt) {
+                          } else if (row.currentOffer && offerImage && row.currentOffer.createdAt) {
+                            // Only start date available
                             const startDate = new Date(row.currentOffer.createdAt).toLocaleDateString('en-US', { 
                               month: 'short', 
                               day: 'numeric', 
                               year: 'numeric' 
                             });
                             offerDates = `${startDate} - N/A`;
-                          } else if (row.createdAt) {
-                            const startDate = new Date(row.createdAt).toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric', 
-                              year: 'numeric' 
-                            });
-                            offerDates = `${startDate} - N/A`;
                           }
+                          // If no offer exists or no image, show "No offer" (don't use location createdAt)
                           
                           return (
                             <TableRow key={row.id} className="border-border hover:bg-secondary/50">

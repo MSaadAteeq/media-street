@@ -70,8 +70,8 @@ const trendingPhrases = [
 ];
 
 const Insights = () => {
-  const [topOffers, setTopOffers] = useState<TopOffer[]>(sampleTopOffers);
-  const [loading, setLoading] = useState(false);
+  const [topOffers, setTopOffers] = useState<TopOffer[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchTopOffers();
@@ -81,58 +81,68 @@ const Insights = () => {
     try {
       setLoading(true);
       
-      // Fetch all active offers from backend
+      // Fetch all offers from backend (already filtered to current user's offers)
       const offersResponse = await get({ 
         end_point: 'offers',
         token: true
       });
 
       if (offersResponse.success && offersResponse.data && Array.isArray(offersResponse.data)) {
-        // Fetch all redemptions once
-        const allRedemptionsResponse = await get({
-          end_point: 'redemptions',
-          token: true
-        }).catch(() => ({ success: false, data: [] }));
-
-        const allRedemptions = allRedemptionsResponse.success ? allRedemptionsResponse.data : [];
-
-        // Fetch impressions and redemptions for each offer
+        const userOffers = offersResponse.data;
+        
+        // The backend already includes metrics (views, redemptions, conversionRate)
+        // Process all offers (not just top 10)
         const offersWithMetrics = await Promise.all(
-          offersResponse.data.slice(0, 10).map(async (offer: any) => {
+          userOffers.map(async (offer: any) => {
             try {
               const offerId = offer._id?.toString() || offer.id?.toString();
               
-              // Fetch impressions for this offer
-              const impressionsResponse = await get({
-                end_point: `impressions/offer/${offerId}`,
-                token: true
-              }).catch(() => ({ success: false, data: [] }));
-
-              const impressions = impressionsResponse.success ? impressionsResponse.data : [];
+              // Use metrics from backend if available, otherwise fetch separately
+              let views = offer.views || offer.viewsCount || 0;
+              let redemptionCount = offer.redemptions || offer.redemptionCount || offer.redemption_count || 0;
               
-              // Filter redemptions for this offer
-              const redemptions = allRedemptions.filter((r: any) => {
-                const redemptionOfferId = r.offerId?.toString() || 
-                                        r.offer?._id?.toString() || 
-                                        r.offer?.id?.toString();
-                return redemptionOfferId === offerId;
-              });
+              // If metrics not in response, fetch them
+              if (!offer.views && !offer.viewsCount) {
+                const impressionsResponse = await get({
+                  end_point: `impressions/offer/${offerId}`,
+                  token: true
+                }).catch(() => ({ success: false, data: [] }));
+                views = impressionsResponse.success ? (impressionsResponse.data?.length || 0) : 0;
+              }
+              
+              if (!offer.redemptions && !offer.redemptionCount && !offer.redemption_count) {
+                const redemptionsResponse = await get({
+                  end_point: 'redemptions',
+                  token: true
+                }).catch(() => ({ success: false, data: [] }));
+                
+                const allRedemptions = redemptionsResponse.success ? redemptionsResponse.data : [];
+                redemptionCount = allRedemptions.filter((r: any) => {
+                  const redemptionOfferId = r.offerId?.toString() || 
+                                          r.offer?._id?.toString() || 
+                                          r.offer?.id?.toString();
+                  return redemptionOfferId === offerId;
+                }).length;
+              }
 
-              const views = impressions.length;
-              const redemptionCount = redemptions.length;
               const conversionRate = views > 0 ? (redemptionCount / views) * 100 : 0;
 
-              // Get location name
+              // Get location name - handle both populated and non-populated locationIds
               let storeName = "Store";
               if (offer.locationIds && offer.locationIds.length > 0) {
                 const locationId = offer.locationIds[0];
                 if (typeof locationId === 'object' && locationId.name) {
+                  // Location is populated
                   storeName = locationId.name;
+                } else if (typeof locationId === 'object' && locationId._id) {
+                  // Location object with _id but not populated
+                  storeName = locationId.name || "Store";
                 } else {
-                  // Fetch location details
+                  // Location ID string - fetch location details
                   try {
+                    const locationIdStr = typeof locationId === 'string' ? locationId : locationId.toString();
                     const locationResponse = await get({
-                      end_point: `locations/${locationId}`,
+                      end_point: `locations/${locationIdStr}`,
                       token: true
                     }).catch(() => ({ success: false }));
                     if (locationResponse.success && locationResponse.data) {
@@ -144,17 +154,29 @@ const Insights = () => {
                 }
               }
 
-              // Get offer image
-              const offerImage = offer.offerImage || 
-                                offer.offer_image || 
-                                offer.offerImageUrl || 
-                                offer.offer_image_url ||
-                                [coffeeCampaign, flowersCampaign, salonCampaign, subsCampaign][
-                                  Math.floor(Math.random() * 4)
-                                ];
+              // Get offer image - handle base64 data URLs
+              let offerImage = offer.offerImage || 
+                              offer.offer_image || 
+                              offer.offerImageUrl || 
+                              offer.offer_image_url;
+              
+              // If image is base64, convert to data URL
+              if (offerImage && !offerImage.startsWith('http') && !offerImage.startsWith('data:') && !offerImage.startsWith('/')) {
+                // Check if it's base64 without data URL prefix
+                if (offerImage.length > 100) {
+                  offerImage = `data:image/png;base64,${offerImage}`;
+                }
+              }
+              
+              // Fallback to placeholder if no image
+              if (!offerImage) {
+                offerImage = [coffeeCampaign, flowersCampaign, salonCampaign, subsCampaign][
+                  Math.floor(Math.random() * 4)
+                ];
+              }
 
               return {
-                id: offer._id?.toString() || offer.id?.toString() || '',
+                id: offerId,
                 storeName,
                 offerImage,
                 callToAction: offer.callToAction || offer.call_to_action || '',
@@ -169,26 +191,28 @@ const Insights = () => {
           })
         );
 
-        // Filter out null values and sort by conversion rate
+        // Filter out null values and sort by conversion rate (descending), then by redemptions
         const validOffers = offersWithMetrics
           .filter((offer): offer is TopOffer => offer !== null)
-          .sort((a, b) => b.conversionRate - a.conversionRate)
-          .slice(0, 10);
+          .sort((a, b) => {
+            // First sort by conversion rate
+            if (b.conversionRate !== a.conversionRate) {
+              return b.conversionRate - a.conversionRate;
+            }
+            // Then by redemptions
+            return b.redemptions - a.redemptions;
+          });
 
-        if (validOffers.length > 0) {
-          setTopOffers(validOffers);
-        } else {
-          // Use sample data if no valid offers
-          setTopOffers(sampleTopOffers);
-        }
+        // Show all offers, not just top 10
+        setTopOffers(validOffers);
       } else {
-        // Use sample data as fallback
-        setTopOffers(sampleTopOffers);
+        // No offers found - show empty array instead of sample data
+        setTopOffers([]);
       }
     } catch (error) {
       console.error("Error fetching offers:", error);
-      // Use sample data as fallback
-      setTopOffers(sampleTopOffers);
+      // Show empty array on error instead of sample data
+      setTopOffers([]);
     } finally {
       setLoading(false);
     }
@@ -216,7 +240,11 @@ const Insights = () => {
           <CardContent>
             {loading ? (
               <div className="text-center py-8">
-                <p className="text-muted-foreground">Loading top offers...</p>
+                <p className="text-muted-foreground">Loading your offers...</p>
+              </div>
+            ) : topOffers.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">No offers found. Create an offer to see insights.</p>
               </div>
             ) : (
               <div className="grid gap-4">

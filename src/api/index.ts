@@ -26,7 +26,21 @@ const apiHandler = async ({
     // Check sessionStorage first (for signup flow), then localStorage
     const signupToken = sessionStorage.getItem("signup_token");
     const storedToken = signupToken || localStorage.getItem("token");
-    tokenValue = storedToken ? (storedToken.startsWith('"') ? JSON.parse(storedToken) : storedToken) : null;
+    
+    if (storedToken) {
+      // Trim whitespace and handle JSON-encoded tokens
+      const trimmedToken = storedToken.trim();
+      if (trimmedToken.startsWith('"') && trimmedToken.endsWith('"')) {
+        try {
+          tokenValue = JSON.parse(trimmedToken);
+        } catch (e) {
+          // If JSON parsing fails, use the token as-is
+          tokenValue = trimmedToken;
+        }
+      } else {
+        tokenValue = trimmedToken;
+      }
+    }
   }
 
   const apiInterceptor = axios.create({
@@ -76,17 +90,24 @@ const apiHandler = async ({
           "Something went wrong! Please try again later.",
           statusCode
         );
-      } else if (statusCode === 401) {
+      } else if (statusCode === 401 || statusCode === 403) {
+        // Handle both 401 (Unauthorized) and 403 (Forbidden) as authentication errors
+        // 403 is returned when token is invalid or expired
         if (logoutTimeoutId) clearTimeout(logoutTimeoutId);
 
         logoutTimeoutId = setTimeout(() => {
           localStorage.removeItem("token");
+          sessionStorage.removeItem("signup_token");
           // store.dispatch(authActions.logout());
           logoutTimeoutId = null;
+          // Optionally redirect to login page
+          if (window.location.pathname !== "/login" && window.location.pathname !== "/") {
+            window.location.href = "/login";
+          }
         }, 2000);
 
         throw createError(
-          error.response.data?.message || "An error occurred.",
+          error.response.data?.message || "Invalid or expired token. Please login again.",
           statusCode
         );
       } else {

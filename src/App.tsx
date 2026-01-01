@@ -31,6 +31,7 @@ import RedeemConfirm from "./pages/RedeemConfirm";
 import Carousel from "./pages/Carousel";
 import LocationQR from "./pages/LocationQR";
 import Insights from "./pages/Insights";
+import NYCDeals from "./pages/NYCDeals";
 import AdvertiserSignup from "./pages/AdvertiserSignup";
 import AdvertiserDashboard from "./pages/AdvertiserDashboard";
 import AdvertiserCampaignCreate from "./pages/AdvertiserCampaignCreate";
@@ -54,6 +55,7 @@ const App = () => (
               <Route path="/terms-of-service" element={<TermsOfService />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/faq" element={<FAQ />} />
+              <Route path="/nyc-deals" element={<NYCDeals />} />
               <Route path="/redeem/:offerCode/:locationId?" element={<Redeem />} />
               <Route path="/redeem/:offerCode/confirm" element={<RedeemConfirm />} />
               <Route path="/location-qr" element={<ProtectedRoute><LocationQR /></ProtectedRoute>} />

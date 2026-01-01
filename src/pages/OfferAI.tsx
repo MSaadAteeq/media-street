@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Bot, MapPin, Zap, Eye } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import AppLayout from "@/components/AppLayout";
@@ -29,6 +29,7 @@ interface Location {
   posConnected?: boolean;
 }
 const OfferAI = () => {
+  const navigate = useNavigate();
   const {
     toast
   } = useToast();
@@ -84,6 +85,23 @@ const OfferAI = () => {
 
       if (locationsResponse.success && locationsResponse.data) {
         const locationsData = locationsResponse.data;
+        
+        // Check if any location has open offer enabled
+        const hasOpenOfferLocation = locationsData.some((loc: any) => 
+          loc.open_offer_only === true || loc.openOfferOnly === true
+        );
+        
+        // If no location has open offer enabled, redirect to locations page
+        if (!hasOpenOfferLocation) {
+          toast({
+            title: "Open Offer Not Enabled",
+            description: "Please enable Open Offer for at least one location to access this page.",
+            variant: "destructive",
+          });
+          navigate('/locations');
+          return;
+        }
+        
         const offersData = offersResponse.success ? offersResponse.data : [];
 
         // Map locations with their current offers and open offer status

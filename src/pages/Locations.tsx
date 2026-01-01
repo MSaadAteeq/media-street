@@ -220,6 +220,9 @@ const Locations = () => {
             ? "Location is now dedicated to Open Offers only" 
             : "Location is now available for regular offers",
         });
+        
+        // Dispatch custom event to notify AppLayout about the toggle
+        window.dispatchEvent(new CustomEvent('locationToggle'));
       } else {
         throw new Error(response.message || 'Failed to update location');
       }

@@ -54,7 +54,28 @@ const formSchema = z.object({
 });
 
 const offerSchema = z.object({
-  website: z.string().url("Please enter a valid URL").optional().or(z.literal("")),
+  website: z.string()
+    .optional()
+    .refine((val) => {
+      // Allow empty string or undefined (optional field)
+      if (!val || val.trim() === "") return true;
+      
+      // Normalize the URL - add https:// if no protocol is present
+      let urlToValidate = val.trim();
+      if (!urlToValidate.match(/^https?:\/\//i)) {
+        urlToValidate = `https://${urlToValidate}`;
+      }
+      
+      // Validate as URL
+      try {
+        new URL(urlToValidate);
+        return true;
+      } catch {
+        return false;
+      }
+    }, {
+      message: "Please enter a valid URL"
+    }),
   callToAction: z.string().min(5, "Offer must be at least 5 characters").max(48, "Offer must be less than 48 characters"),
 });
 
@@ -109,24 +130,81 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
   const offerForm = useForm<OfferFormValues>({
     resolver: zodResolver(offerSchema),
     defaultValues: {
-      website: "",
+      website: undefined,
       callToAction: "",
     },
   });
 
+  // Geocode address to get coordinates
+  const geocodeAddress = async (address: string): Promise<{ lat: number; lng: number } | null> => {
+    if (!address || !address.trim()) return null;
+    
+    try {
+      // Use OpenStreetMap Nominatim API (free, no API key required)
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+        {
+          headers: {
+            'User-Agent': 'OfferAve-Frontend/1.0' // Required by Nominatim
+          }
+        }
+      );
+      
+      if (!response.ok) {
+        return null;
+      }
+      
+      const data = await response.json();
+      if (data && data.length > 0 && data[0].lat && data[0].lon) {
+        return {
+          lat: parseFloat(data[0].lat),
+          lng: parseFloat(data[0].lon)
+        };
+      }
+    } catch (error) {
+      console.error('Geocoding error:', error);
+    }
+    
+    return null;
+  };
+
   const validateReferralCode = async (code: string) => {
-    if (!code.trim()) {
+    const trimmedCode = code.trim();
+    if (!trimmedCode) {
       setReferralValidation(null);
       return;
     }
+    
+    // Only validate if code is 8 characters (referral codes are 8 chars)
+    if (trimmedCode.length !== 8) {
+      setReferralValidation({ isValid: false, storeName: '' });
+      return;
+    }
+    
     setIsValidatingReferral(true);
     try {
-      // TODO: Implement referral code validation API endpoint
-      // For now, skip validation - will be handled by backend during signup
-      setReferralValidation({ isValid: true, storeName: '' });
-    } catch (error) {
-      console.error('Error validating referral code:', error);
-      setReferralValidation({ isValid: false, storeName: '' });
+      const response = await get({
+        end_point: `users/referral-code/${trimmedCode.toUpperCase()}`,
+        token: false
+      });
+      
+      if (response.success && response.data) {
+        setReferralValidation({ 
+          isValid: true, 
+          storeName: response.data.retailerName || response.data.fullName || 'Retailer'
+        });
+      } else {
+        setReferralValidation({ isValid: false, storeName: '' });
+      }
+    } catch (error: any) {
+      // Handle 404 or other errors
+      if (error?.response?.status === 404 || error?.response?.data?.success === false) {
+        setReferralValidation({ isValid: false, storeName: '' });
+      } else {
+        console.error('Error validating referral code:', error);
+        // On network errors, don't show invalid - just clear validation
+        setReferralValidation(null);
+      }
     } finally {
       setIsValidatingReferral(false);
     }
@@ -136,20 +214,27 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
     setIsSubmitting(true);
 
     try {
+      // Prepare signup body - only include referral_code if provided and not empty
+      const signupBody: any = {
+        email: values.email,
+        password: values.password,
+        fullName: `${values.firstName} ${values.lastName}`,
+        storeName: values.storeName,
+        location_name: values.storeName,
+        retail_channel: values.retailChannel,
+        address: values.retailAddress,
+        phone: values.phone,
+      };
+
+      // Only include referral_code if it's provided and not empty
+      if (values.referralCode && values.referralCode.trim()) {
+        signupBody.referral_code = values.referralCode.toUpperCase().trim();
+      }
+
       // Sign up the user using Node.js API
       const response = await post({
         end_point: 'auth/signup',
-        body: {
-          email: values.email,
-          password: values.password,
-          fullName: `${values.firstName} ${values.lastName}`,
-          storeName: values.storeName,
-          location_name: values.storeName,
-          retail_channel: values.retailChannel,
-          address: values.retailAddress,
-          phone: values.phone,
-          referral_code: values.referralCode ? values.referralCode.toUpperCase().trim() : undefined
-        },
+        body: signupBody,
         token: false
       });
 
@@ -167,19 +252,80 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
       }
 
       const userData = response.data.user;
-      setUserId(userData._id || userData.id);
+      const newUserId = userData._id || userData.id;
+      setUserId(newUserId);
+      console.log('User ID set:', newUserId);
 
       // Get location ID from response (should be created during signup)
+      let newLocationId = null;
       if (response.data.location?._id || response.data.location?.id) {
-        setLocationId(response.data.location._id || response.data.location.id);
+        newLocationId = response.data.location._id || response.data.location.id;
       } else if (response.data.locations && response.data.locations.length > 0) {
-        setLocationId(response.data.locations[0]._id || response.data.locations[0].id);
+        newLocationId = response.data.locations[0]._id || response.data.locations[0].id;
       }
-
-      // Store token and login user
+      
+      // Store token first (in both localStorage and sessionStorage for consistency)
       if (response.data.token) {
         localStorage.setItem('token', response.data.token);
+        sessionStorage.setItem('signup_token', response.data.token);
       }
+      
+      // If location ID is not in response, try to create it or fetch it
+      if (!newLocationId) {
+        try {
+          // First, try to fetch existing locations
+          const locationsResponse = await get({ end_point: 'locations', token: true });
+          if (locationsResponse.success && locationsResponse.data && locationsResponse.data.length > 0) {
+            newLocationId = locationsResponse.data[0]._id || locationsResponse.data[0].id;
+            console.log('Location found:', newLocationId);
+          } else {
+            // No location exists - try to create one from the address provided
+            console.log('No location found, attempting to create one from address...');
+            
+            // Geocode the address to get coordinates
+            const coordinates = await geocodeAddress(values.retailAddress);
+            
+            if (coordinates) {
+              // Create location with geocoded coordinates
+              try {
+                const createLocationResponse = await post({
+                  end_point: 'locations',
+                  body: {
+                    name: values.storeName,
+                    address: values.retailAddress,
+                    retail_channel: values.retailChannel,
+                    latitude: coordinates.lat,
+                    longitude: coordinates.lng,
+                  },
+                  token: true
+                });
+                
+                if (createLocationResponse.success && createLocationResponse.data) {
+                  newLocationId = createLocationResponse.data._id || createLocationResponse.data.id;
+                  console.log('Location created:', newLocationId);
+                }
+              } catch (createError) {
+                console.error('Error creating location:', createError);
+                // Continue without location - user can add it later
+              }
+            } else {
+              console.warn('Could not geocode address. User can add location later.');
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching/creating locations after signup:', error);
+          // Don't block the flow - user can add location later
+        }
+      }
+      
+      if (newLocationId) {
+        setLocationId(newLocationId);
+        console.log('Location ID set:', newLocationId);
+      } else {
+        console.warn('Location ID not found. User can add location later from dashboard.');
+      }
+
+      // Token already stored above
 
       // Dispatch auth actions
       dispatch(authActions.login({
@@ -198,6 +344,7 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
       toast.success("Account created successfully!");
 
       // Move to step 2 (optional offer creation)
+      // If no location exists, user can skip and add location later
       setCurrentStep(2);
 
     } catch (error: any) {
@@ -209,10 +356,18 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
   };
 
   const handleGenerateOffer = async () => {
-    const website = offerForm.getValues("website");
-    if (!website) {
-      toast.error("Please enter your website URL to generate an offer");
+    let website = offerForm.getValues("website");
+    if (!website || !website.trim()) {
+      toast.error("Please enter your website URL to generate an offer with AI");
       return;
+    }
+
+    // Normalize the URL - add https:// if no protocol is present
+    website = website.trim();
+    if (!website.match(/^https?:\/\//i)) {
+      website = `https://${website}`;
+      // Update the form field with the normalized URL
+      offerForm.setValue("website", website, { shouldValidate: true });
     }
 
     setIsGeneratingOffer(true);
@@ -224,7 +379,7 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
       });
 
       if (!response.success) {
-        throw new Error(response.message || 'Failed to generate offer');
+        throw new Error(response.message || 'Failed to generate offer with AI');
       }
 
       const data = response.data;
@@ -237,11 +392,11 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
           brandColors: data.brandColors || { primary: "#6366f1", secondary: "#4f46e5" },
         });
         setShowPreview(true);
-        toast.success("Offer generated! Review your preview below.");
+        toast.success("Offer generated with AI! Review your preview below.");
       }
     } catch (error: any) {
-      console.error("Error generating offer:", error);
-      toast.error(error?.response?.data?.message || error?.message || "Failed to generate offer. Please enter one manually.");
+      console.error("Error generating offer with AI:", error);
+      toast.error(error?.response?.data?.message || error?.message || "Failed to generate offer with AI. Please enter one manually.");
     } finally {
       setIsGeneratingOffer(false);
     }
@@ -280,30 +435,100 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
   };
 
   const handleCreateOffer = async (values: OfferFormValues) => {
-    if (!userId || !locationId) {
-      toast.error("Session expired. Please try again.");
-      return;
-    }
-
     setIsSubmitting(true);
+    
     try {
+      // If locationId is missing, try to fetch it from the API
+      let currentLocationId = locationId;
+      let currentUserId = userId;
+      
+      if (!currentLocationId || !currentUserId) {
+        // Check if we have a token
+        const token = localStorage.getItem('token') || sessionStorage.getItem('signup_token');
+        if (!token) {
+          toast.error("Session expired. Please try again.");
+          setIsSubmitting(false);
+          return;
+        }
+        
+        // Fetch user profile to get userId if missing
+        if (!currentUserId) {
+          try {
+            const userResponse = await get({ end_point: 'users/me', token: true });
+            if (userResponse.success && userResponse.data) {
+              currentUserId = userResponse.data._id || userResponse.data.id;
+              setUserId(currentUserId);
+            }
+          } catch (error) {
+            console.error('Error fetching user profile:', error);
+          }
+        }
+        
+        // Fetch locations to get locationId if missing
+        if (!currentLocationId) {
+          try {
+            const locationsResponse = await get({ end_point: 'locations', token: true });
+            console.log('Locations response:', locationsResponse);
+            if (locationsResponse.success && locationsResponse.data && locationsResponse.data.length > 0) {
+              currentLocationId = locationsResponse.data[0]._id || locationsResponse.data[0].id;
+              setLocationId(currentLocationId);
+              console.log('Location ID found:', currentLocationId);
+            } else {
+              // No location exists - user needs to add one first
+              console.warn('No locations found for user');
+              toast.error("Please add a location first to create an offer. Click 'Skip and go to Dashboard' to add a location.");
+              setIsSubmitting(false);
+              return;
+            }
+          } catch (error: any) {
+            console.error('Error fetching locations:', error);
+            console.error('Error details:', error?.response?.data || error?.message);
+            toast.error("Failed to fetch your location. Please try again or skip to dashboard to add a location.");
+            setIsSubmitting(false);
+            return;
+          }
+        }
+      }
+      
+      if (!currentLocationId) {
+        toast.error("Please add a location first to create an offer. Click 'Skip and go to Dashboard' to add a location.");
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (!currentUserId) {
+        toast.error("Session expired. Please try again.");
+        setIsSubmitting(false);
+        return;
+      }
+
       // Prepare location_images map for the offer
       const locationImages: { [key: string]: string } = {};
       if (generatedOfferData?.offerImageUrl) {
-        locationImages[locationId] = generatedOfferData.offerImageUrl;
+        locationImages[currentLocationId] = generatedOfferData.offerImageUrl;
+      }
+
+      // Prepare offer body
+      const offerBody: any = {
+        call_to_action: values.callToAction,
+        location_ids: [currentLocationId],
+        expiration_duration: "1week", // Must be one of: '1hour', '1day', '1week'
+        is_open_offer: false, // Required boolean field
+        available_for_partnership: true
+      };
+
+      // Only include image-related fields if we have generated offer data
+      if (generatedOfferData?.offerImageUrl) {
+        offerBody.offer_image = generatedOfferData.offerImageUrl;
+        offerBody.location_images = locationImages;
+      }
+      if (generatedOfferData?.brandLogoUrl) {
+        offerBody.brand_logo = generatedOfferData.brandLogoUrl;
       }
 
       const response = await post({
         end_point: 'offers',
-        body: {
-          call_to_action: values.callToAction,
-          location_ids: [locationId],
-          offer_image: generatedOfferData?.offerImageUrl || null,
-          brand_logo: generatedOfferData?.brandLogoUrl || null,
-          location_images: Object.keys(locationImages).length > 0 ? locationImages : undefined,
-          expiration_duration: 30, // Default 30 days
-          available_for_partnership: true
-        },
+        body: offerBody,
         token: true
       });
 
@@ -323,8 +548,35 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
   };
 
   const handleSubscribeOpenOffer = async () => {
-    if (!locationId) {
-      toast.error("Session expired. Please try again.");
+    // Check if location exists, if not try to fetch it
+    let currentLocationId = locationId;
+    
+    if (!currentLocationId) {
+      // Check if we have a token
+      const token = localStorage.getItem('token') || sessionStorage.getItem('signup_token');
+      if (!token) {
+        toast.error("Session expired. Please try again.");
+        return;
+      }
+      
+      try {
+        const locationsResponse = await get({ end_point: 'locations', token: true });
+        if (locationsResponse.success && locationsResponse.data && locationsResponse.data.length > 0) {
+          currentLocationId = locationsResponse.data[0]._id || locationsResponse.data[0].id;
+          setLocationId(currentLocationId);
+        } else {
+          toast.error("Please add a location first to subscribe to Open Offer. You can add it from the Store Locations page.");
+          return;
+        }
+      } catch (error: any) {
+        console.error('Error fetching locations:', error);
+        toast.error("Failed to fetch your location. Please try again or skip to dashboard to add a location.");
+        return;
+      }
+    }
+    
+    if (!currentLocationId) {
+      toast.error("Please add a location first to subscribe to Open Offer.");
       return;
     }
 
@@ -339,7 +591,7 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
       // Store Open Offer subscription in localStorage (matching Locations.tsx behavior)
       const stored = localStorage.getItem('openOfferLocations');
       const openOfferSet = new Set(stored ? JSON.parse(stored) : []);
-      openOfferSet.add(locationId);
+      openOfferSet.add(currentLocationId);
       localStorage.setItem('openOfferLocations', JSON.stringify([...openOfferSet]));
 
       toast.success("Open Offer subscription activated! Your offer will be distributed to local retailers.");
@@ -382,6 +634,14 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
       offerForm.reset();
       setOfferCreated(false);
       setReferralValidation(null);
+      setLocationId(null);
+      setUserId(null);
+      setGeneratedOfferData(null);
+      setShowPreview(false);
+      setShowCardForm(false);
+      setHasPaymentMethod(false);
+      setIsSubmitting(false);
+      setIsGeneratingOffer(false);
     }
   };
 
@@ -555,9 +815,11 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
                       <Input
                         placeholder="Enter referral code"
                         {...field}
+                        className="uppercase"
                         onChange={(e) => {
-                          field.onChange(e);
-                          validateReferralCode(e.target.value);
+                          const value = e.target.value.toUpperCase();
+                          field.onChange(value);
+                          validateReferralCode(value);
                         }}
                       />
                     </FormControl>
@@ -608,7 +870,15 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
                       <FormLabel>Your Website (Optional)</FormLabel>
                       <div className="flex gap-2">
                         <FormControl>
-                          <Input placeholder="https://yourwebsite.com" {...field} />
+                          <Input 
+                            placeholder="https://yourwebsite.com" 
+                            {...field} 
+                            value={field.value || ""}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              field.onChange(value === "" ? undefined : value);
+                            }}
+                          />
                         </FormControl>
                         <Button
                           type="button"
@@ -617,13 +887,19 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
                           disabled={isGeneratingOffer || !field.value}
                         >
                           {isGeneratingOffer ? (
-                            <span className="animate-spin">⚡</span>
+                            <>
+                              <span className="animate-spin mr-2">⚡</span>
+                              Generating...
+                            </>
                           ) : (
-                            <Zap className="h-4 w-4" />
+                            <>
+                              <Zap className="h-4 w-4 mr-2" />
+                              Generate
+                            </>
                           )}
                         </Button>
                       </div>
-                      <p className="text-xs text-muted-foreground">Enter your website to auto-generate an offer with AI</p>
+                      <p className="text-xs text-muted-foreground">Enter your website URL to generate an offer with AI</p>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -667,16 +943,28 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
                   )}
                 />
 
+                {!locationId && (
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                      <strong>Note:</strong> You need to add a location first to create an offer. You can skip this step and add a location from the Store Locations page.
+                    </p>
+                  </div>
+                )}
                 <div className="flex gap-3">
                   <Button
                     type="submit"
                     className="flex-1 bg-gradient-to-r from-blue-600 to-purple-700 hover:from-blue-700 hover:to-purple-800"
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !locationId}
                   >
                     {isSubmitting ? "Creating..." : "Create Offer"}
                     <Check className="ml-2 h-4 w-4" />
                   </Button>
                 </div>
+                {!locationId && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Complete step 1 to add a location first, or skip to dashboard to add one.
+                  </p>
+                )}
               </form>
             </Form>
 
@@ -751,11 +1039,18 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
                   </CardContent>
                 </Card>
 
+                {!locationId && (
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                      <strong>Note:</strong> You need to add a location first to subscribe to Open Offer. You can skip this step and add a location from the Store Locations page.
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-3">
                   <Button
                     className="w-full bg-green-600 hover:bg-green-700"
                     onClick={handleSubscribeOpenOffer}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || !locationId}
                   >
                     {isSubmitting ? "Joining..." : "Join Open Offer ($25/month)"}
                     <ArrowRight className="ml-2 h-4 w-4" />
