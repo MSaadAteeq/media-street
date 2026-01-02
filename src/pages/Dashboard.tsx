@@ -4,6 +4,7 @@ import { useWeeklyCountdown } from "@/hooks/useWeeklyCountdown";
 import coffeePromo from "@/assets/coffee-promo.jpg";
 import flowerPromo from "@/assets/flower-promo.jpg";
 import cleaningPromo from "@/assets/cleaning-promo.jpg";
+import mediaStreetLogo from "@/assets/media-street-logo.png";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,16 +12,18 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import Logo from "@/components/Logo";
-import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, TrendingDown, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
+import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, TrendingDown, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2, CheckCircle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 // import { Toaster } from "@/components/ui/toaster";
 import { SupportDialog } from "@/components/SupportDialog";
+import TabletOfferPreview from "@/components/TabletOfferPreview";
 import { useDispatch, useSelector } from "react-redux";
 import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
@@ -46,6 +49,19 @@ const Dashboard = () => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [supportDialogOpen, setSupportDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [openOfferDialogOpen, setOpenOfferDialogOpen] = useState(false);
+  const [selectedLocationForOO, setSelectedLocationForOO] = useState<any>(null);
+  const [togglingOpenOffer, setTogglingOpenOffer] = useState(false);
+  const [creditBalance, setCreditBalance] = useState(0);
+  const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
+  const [isCheckingPaymentMethod, setIsCheckingPaymentMethod] = useState(true);
+  const [redemptionSuccessDialogOpen, setRedemptionSuccessDialogOpen] = useState(false);
+  const [enlargedOffer, setEnlargedOffer] = useState<{
+    businessName: string;
+    callToAction: string;
+    offerImageUrl: string | null;
+    redemptionStoreName: string;
+  } | null>(null);
 
   const dispatch = useDispatch<AppDispatch>();
   const authData = useSelector((state: any) => state.auth.authData);
@@ -792,6 +808,107 @@ const Dashboard = () => {
     });
     setPauseDialogOpen(false);
     setSelectedCampaign(null);
+  };
+
+  // Check payment method on mount
+  useEffect(() => {
+    const checkPaymentMethod = async () => {
+      setIsCheckingPaymentMethod(true);
+      try {
+        const response = await get({ end_point: 'billing/cards', token: true });
+        if (response.success && response.data) {
+          const hasCard = Array.isArray(response.data) && response.data.length > 0;
+          setHasPaymentMethod(hasCard);
+        } else {
+          setHasPaymentMethod(false);
+        }
+      } catch (error) {
+        console.error('Error checking payment method:', error);
+        setHasPaymentMethod(false);
+      } finally {
+        setIsCheckingPaymentMethod(false);
+      }
+    };
+    checkPaymentMethod();
+  }, []);
+
+  // Fetch user credit balance
+  useEffect(() => {
+    const fetchCreditBalance = async () => {
+      try {
+        const response = await get({ end_point: 'users/me', token: true });
+        if (response.success && response.data) {
+          setCreditBalance(response.data.credit || 0);
+        }
+      } catch (error) {
+        console.error('Error fetching credit balance:', error);
+      }
+    };
+    fetchCreditBalance();
+  }, []);
+
+  // Update Open Offer status
+  const updateOpenOfferStatus = async (row: any, status: boolean) => {
+    setTogglingOpenOffer(true);
+    try {
+      const locationId = row.id || row.locationId || row._id?.toString();
+      if (!locationId) {
+        toast({
+          title: "Error",
+          description: "Location ID not found",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (status) {
+        // Subscribe to Open Offer
+        const response = await post({
+          end_point: 'partners/open-offer-subscription',
+          body: { locationId },
+          token: true
+        });
+
+        if (response.success) {
+          toast({
+            title: "Open Offer Activated",
+            description: `Open Offer is now active for ${row.name || row.store || 'this location'}. You'll be billed $25/month after any available credits are deducted.`
+          });
+          setOpenOfferDialogOpen(false);
+          // Refresh dashboard data
+          fetchDashboardData();
+        } else {
+          throw new Error(response.message || "Failed to subscribe to Open Offer");
+        }
+      } else {
+        // Cancel subscription
+        const response = await post({
+          end_point: 'partners/cancel-open-offer',
+          body: { locationId },
+          token: true
+        });
+
+        if (response.success) {
+          toast({
+            title: "Open Offer Cancelled",
+            description: "Your Open Offer subscription has been cancelled."
+          });
+          // Refresh dashboard data
+          fetchDashboardData();
+        } else {
+          throw new Error(response.message || "Failed to cancel Open Offer");
+        }
+      }
+    } catch (error: any) {
+      console.error('Error updating Open Offer status:', error);
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || error.message || "Failed to update Open Offer status",
+        variant: "destructive"
+      });
+    } finally {
+      setTogglingOpenOffer(false);
+    }
   };
 
   const getCampaignActionIcon = (campaign: any, index: number) => {
@@ -1924,7 +2041,7 @@ const Dashboard = () => {
             </AlertDialogHeader>
             <AlertDialogFooter className="flex justify-center">
               <AlertDialogAction onClick={handlePausePartnership} className="bg-destructive hover:bg-destructive/90">
-                Yes, I understand I will forfeit my partnership fee if I end the partnership early.
+                Yes, end this partnership
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1987,6 +2104,100 @@ const Dashboard = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Open Offer Subscription Confirmation Dialog */}
+        <AlertDialog open={openOfferDialogOpen} onOpenChange={setOpenOfferDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Subscribe to Open Offer</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div>
+                  <p>Turning on Open Offer for <strong>{selectedLocationForOO?.store || selectedLocationForOO?.name}</strong> will:</p>
+                  <ul className="mt-2 list-disc list-inside space-y-1 text-sm">
+                    <li>Show your offer at other nearby retailers</li>
+                    <li>Show non-competing retailer offers at yours</li>
+                    <li>Activate analytics on offer views and redemptions</li>
+                    <li>Start a <strong>$25/month</strong> subscription for this location</li>
+                  </ul>
+                  
+                  {creditBalance >= 25 && <div className="mt-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+                      <p className="text-sm text-green-700">
+                        <strong>You have ${creditBalance.toFixed(2)} in promo credits.</strong> Your free credits will be used first.
+                      </p>
+                    </div>}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex-col items-stretch gap-2 sm:flex-col">
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">
+                <AlertDialogCancel disabled={togglingOpenOffer}>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => {
+                  if (!hasPaymentMethod && !isCheckingPaymentMethod) {
+                    toast({
+                      title: "Payment method required",
+                      description: "You must add a card on file before subscribing.",
+                      variant: "destructive"
+                    });
+                    setOpenOfferDialogOpen(false);
+                    navigate(`/settings/billing?showAddCard=true&pendingOO=${selectedLocationForOO}`);
+                    return;
+                  }
+                  if (selectedLocationForOO) {
+                    updateOpenOfferStatus(selectedLocationForOO, true);
+                  }
+                }} disabled={togglingOpenOffer || isCheckingPaymentMethod} className="bg-accent-green hover:bg-accent-green/90">
+                  {togglingOpenOffer ? "Joining..." : "Join Open Offer ($25/month)"}
+                </AlertDialogAction>
+              </div>
+              <p className="text-xs text-muted-foreground text-center mt-3">I authorize Media Street to charge my card on file until cancelled. Promo credits will be used, if available, before charging your card on file.</p>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Redemption Success Dialog */}
+        <Dialog open={redemptionSuccessDialogOpen} onOpenChange={setRedemptionSuccessDialogOpen}>
+          <DialogContent className="sm:max-w-md" aria-describedby="redemption-success-description">
+            <DialogHeader className="sr-only">
+              <DialogTitle>Coupon Redeemed Successfully</DialogTitle>
+            </DialogHeader>
+            <DialogDescription id="redemption-success-description" className="sr-only">
+              The coupon has been successfully logged in the system.
+            </DialogDescription>
+            <div className="text-center py-6">
+              <div className="flex justify-center mb-4">
+                <img src={mediaStreetLogo} alt="Media Street" className="h-12 object-contain" />
+              </div>
+              <CheckCircle className="h-20 w-20 text-green-500 mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-foreground mb-2">Coupon Redeemed</h2>
+              <p className="text-muted-foreground">Successfully logged this redemption!</p>
+            </div>
+            <div className="flex justify-center">
+              <Button onClick={() => setRedemptionSuccessDialogOpen(false)}>
+                Done
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Enlarged Offer Preview Dialog */}
+        <Dialog open={!!enlargedOffer} onOpenChange={() => setEnlargedOffer(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Offer Preview</DialogTitle>
+              <DialogDescription>
+                This is how the offer appears in the partner carousel
+              </DialogDescription>
+            </DialogHeader>
+            {enlargedOffer && (
+              <TabletOfferPreview
+                businessName={enlargedOffer.businessName}
+                callToAction={enlargedOffer.callToAction}
+                offerImageUrl={enlargedOffer.offerImageUrl}
+                redemptionStoreName={enlargedOffer.redemptionStoreName}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* <Toaster /> */}
       </div>

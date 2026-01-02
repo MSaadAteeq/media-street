@@ -22,7 +22,7 @@ import { MediaStreetOverlay } from "@/components/MediaStreetOverlay";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import ReferralCodeCard from "@/components/ReferralCodeCard";
 import { AddCardForm } from "@/components/AddCardForm";
-import { get, post, deleteApi } from "@/services/apis";
+import { get, post, patch, deleteApi } from "@/services/apis";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,15 +39,15 @@ const Settings = () => {
     return localStorage.getItem('adsEnabled') === 'true';
   });
   const [showMediaStreetOverlay, setShowMediaStreetOverlay] = useState(false);
-  const [balance, setBalance] = useState(327.50);
-  const [paypalEmail, setPaypalEmail] = useState("");
-  const [venmoUsername, setVenmoUsername] = useState("");
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
   const [activePartnerships, setActivePartnerships] = useState<any[]>([]);
   const [selectedPartner, setSelectedPartner] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingConversations, setLoadingConversations] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [creditBalance, setCreditBalance] = useState<number>(0);
   const [isRedeemingPromo, setIsRedeemingPromo] = useState(false);
@@ -62,6 +62,14 @@ const Settings = () => {
   const [offerXSubscription, setOfferXSubscription] = useState<any>(null);
   const [cancellingSubscription, setCancellingSubscription] = useState<string | null>(null);
   const [cancelOODialogOpen, setCancelOODialogOpen] = useState(false);
+  const [notificationPreferences, setNotificationPreferences] = useState({
+    campaignUpdates: { inApp: true, email: true },
+    securityAlerts: { inApp: true, email: true },
+    monthlyInsights: { inApp: true, email: true },
+    newsletter: false
+  });
+  const [loadingNotificationPrefs, setLoadingNotificationPrefs] = useState(false);
+  const [savingNotificationPrefs, setSavingNotificationPrefs] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -85,16 +93,30 @@ const Settings = () => {
 
   useEffect(() => {
     fetchCurrentUser();
-    fetchActivePartnerships();
-    fetchCreditBalance();
+    fetchUserProfile();
+    if (getCurrentTab() === 'messages') {
+      fetchConversations();
+    }
     if (getCurrentTab() === 'billing') {
       fetchSavedCards();
       fetchTransactions();
       fetchSubscriptions();
     }
+    if (getCurrentTab() === 'notifications') {
+      fetchNotificationPreferences();
+    }
   }, []);
 
   useEffect(() => {
+    if (getCurrentTab() === 'notifications') {
+      fetchNotificationPreferences();
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (getCurrentTab() === 'messages') {
+      fetchConversations();
+    }
     if (getCurrentTab() === 'billing') {
       fetchSavedCards();
       fetchTransactions();
@@ -280,64 +302,70 @@ const Settings = () => {
 
 
   const fetchCurrentUser = async () => {
-    // TODO: Replace with Node.js API call
-    // const response = await get({ end_point: 'auth/me' });
-    // setCurrentUserId(response.data.user.id);
-    
-    // Mock implementation
-    const token = localStorage.getItem('token');
-    if (token) {
-      setCurrentUserId('current-user-id');
+    try {
+      const response = await get({ end_point: 'users/me', token: true });
+      if (response.success && response.data) {
+        setCurrentUserId(response.data.id);
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error);
     }
   };
 
-  const fetchActivePartnerships = async () => {
+  const fetchUserProfile = async () => {
+    setLoadingProfile(true);
     try {
-      // Mock data - will work with real data once database is set up
-      const mockPartnerships = [
-        {
-          id: '1',
-          partner_name: "Sample Retailer",
-          partner_id: 'sample-retailer-id',
-          last_message: "That sounds great! Let's coordinate our offers. We also have an event coming up you can participate in if you want.",
-          last_message_time: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-          unread_count: 1
-        }
-      ];
-      setActivePartnerships(mockPartnerships);
-      console.log('Active partnerships loaded:', mockPartnerships);
-      
-      // Check if there's a partner to select from URL
-      const urlParams = new URLSearchParams(window.location.search);
-      const partnerName = urlParams.get('partner');
-      if (partnerName) {
-        const partner = mockPartnerships.find(p => p.partner_name === partnerName);
-        if (partner) {
-          handleSelectPartner(partner);
+      const response = await get({ end_point: 'users/me', token: true });
+      if (response.success && response.data) {
+        setUserProfile(response.data);
+        setCurrentUserId(response.data.id);
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  const fetchConversations = async () => {
+    setLoadingConversations(true);
+    try {
+      const response = await get({ end_point: 'messages/conversations', token: true });
+      if (response.success && response.data) {
+        setActivePartnerships(response.data || []);
+        
+        // Check if there's a partner to select from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const partnerName = urlParams.get('partner');
+        if (partnerName) {
+          const partner = response.data.find((p: any) => p.partner_name === partnerName);
+          if (partner) {
+            handleSelectPartner(partner);
+          }
         }
       }
     } catch (error) {
-      console.error('Error fetching partnerships:', error);
+      console.error('Error fetching conversations:', error);
+      setActivePartnerships([]);
+    } finally {
+      setLoadingConversations(false);
     }
   };
 
-  const fetchMessages = async (partnerId: string) => {
+  const fetchMessages = async (partnershipId: string) => {
     setLoadingMessages(true);
     try {
-      // Mock message
-      const mockMessages = [
-        {
-          id: '1',
-          sender_id: partnerId,
-          message_text: "That sounds great! Let's coordinate our offers. We also have an event coming up you can participate in if you want.",
-          created_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-          read: true
-        }
-      ];
-      setMessages(mockMessages);
+      const response = await get({ 
+        end_point: `messages/partnership/${partnershipId}`, 
+        token: true 
+      });
+      if (response.success && response.data) {
+        setMessages(response.data || []);
+      }
     } catch (error) {
       console.error('Error fetching messages:', error);
       toast.error('Failed to load messages');
+      setMessages([]);
     } finally {
       setLoadingMessages(false);
     }
@@ -345,27 +373,90 @@ const Settings = () => {
 
   const handleSelectPartner = (partner: any) => {
     setSelectedPartner(partner);
-    fetchMessages(partner.partner_id);
+    if (partner.partnership_id) {
+      fetchMessages(partner.partnership_id);
+    }
   };
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedPartner) return;
 
     try {
-      const newMsg = {
-        id: Date.now().toString(),
-        sender_id: currentUserId,
-        message_text: newMessage.trim(),
-        created_at: new Date().toISOString(),
-        read: false
-      };
-      
-      setMessages([...messages, newMsg]);
-      setNewMessage("");
-      toast.success('Message sent!');
-    } catch (error) {
+      const response = await post({
+        end_point: 'messages',
+        body: {
+          partnershipId: selectedPartner.partnership_id,
+          messageText: newMessage.trim(),
+          recipientId: selectedPartner.partner_id
+        },
+        token: true
+      });
+
+      if (response.success && response.data) {
+        setMessages([...messages, response.data]);
+        setNewMessage("");
+        toast.success('Message sent!');
+        // Refresh conversations to update last message
+        fetchConversations();
+      } else {
+        throw new Error(response.message || 'Failed to send message');
+      }
+    } catch (error: any) {
       console.error('Error sending message:', error);
-      toast.error('Failed to send message');
+      toast.error(error?.response?.data?.message || 'Failed to send message');
+    }
+  };
+
+  const fetchNotificationPreferences = async () => {
+    setLoadingNotificationPrefs(true);
+    try {
+      const response = await get({ end_point: 'users/notification-preferences', token: true });
+      if (response.success && response.data) {
+        setNotificationPreferences(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching notification preferences:', error);
+    } finally {
+      setLoadingNotificationPrefs(false);
+    }
+  };
+
+  const updateNotificationPreference = async (category: string, type: string, value: boolean) => {
+    // Optimistically update UI
+    const currentPrefs = { ...notificationPreferences };
+    const updatedPrefs = { ...notificationPreferences };
+    
+    if (category === 'newsletter') {
+      updatedPrefs.newsletter = value;
+    } else if (updatedPrefs[category as keyof typeof updatedPrefs]) {
+      (updatedPrefs[category as keyof typeof updatedPrefs] as any)[type] = value;
+    }
+    setNotificationPreferences(updatedPrefs);
+
+    // Save to backend
+    setSavingNotificationPrefs(true);
+    try {
+      const response = await patch({
+        end_point: 'users/notification-preferences',
+        body: { notificationPreferences: updatedPrefs },
+        token: true
+      });
+      
+      if (response.success) {
+        setNotificationPreferences(response.data);
+        toast.success('Notification preferences updated');
+      } else {
+        // Revert on error
+        setNotificationPreferences(currentPrefs);
+        throw new Error(response.message || 'Failed to update preferences');
+      }
+    } catch (error: any) {
+      console.error('Error updating notification preferences:', error);
+      toast.error(error?.response?.data?.message || 'Failed to update notification preferences');
+      // Revert to previous state
+      setNotificationPreferences(currentPrefs);
+    } finally {
+      setSavingNotificationPrefs(false);
     }
   };
 
@@ -444,37 +535,24 @@ const Settings = () => {
                 {/* Name */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Name</label>
-                  <Input defaultValue="Kris Marins" className="max-w-md" />
-                </div>
-
-                {/* Company Name */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Company Name</label>
-                  <Input defaultValue="Media Street" className="max-w-md" />
-                </div>
-
-                {/* LinkedIn URL */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">LinkedIn URL</label>
-                  <Input defaultValue="in/krismartins" className="max-w-md" />
+                  <Input 
+                    defaultValue={userProfile?.fullName || ""} 
+                    className="max-w-md" 
+                    disabled={loadingProfile}
+                  />
                 </div>
 
                 {/* Email Address */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Email Address</label>
                   <div className="flex items-center gap-2 max-w-md">
-                    <Input defaultValue="kris@mediastreet.ai" readOnly className="flex-1" />
-                    <Button variant="outline" size="sm">Change</Button>
-                  </div>
-                </div>
-
-                {/* Contact Number */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Contact Number</label>
-                  <p className="text-sm text-muted-foreground">We'll only use this to contact you about important account matters.</p>
-                  <div className="flex items-center gap-2 max-w-md">
-                    <Input defaultValue="16465577924" className="flex-1" />
-                    <Button variant="outline" size="sm">Change</Button>
+                    <Input 
+                      defaultValue={userProfile?.email || ""} 
+                      readOnly 
+                      className="flex-1" 
+                      disabled={loadingProfile}
+                    />
+                    <Button variant="outline" size="sm" disabled>Change</Button>
                   </div>
                 </div>
 
@@ -509,7 +587,11 @@ const Settings = () => {
                   {/* Partner List */}
                   <div className="md:col-span-1 border-r pr-4">
                     <ScrollArea className="h-full">
-                      {activePartnerships.length === 0 ? (
+                      {loadingConversations ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          Loading conversations...
+                        </div>
+                      ) : activePartnerships.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">
                           <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-50" />
                           <p className="text-sm">No active partnerships yet</p>
@@ -536,12 +618,16 @@ const Settings = () => {
                                       </span>
                                     )}
                                   </div>
-                                  <p className="text-xs text-muted-foreground truncate mt-1">
-                                    {partner.last_message}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    {new Date(partner.last_message_time).toLocaleTimeString()}
-                                  </p>
+                                  {partner.last_message && (
+                                    <p className="text-xs text-muted-foreground truncate mt-1">
+                                      {partner.last_message}
+                                    </p>
+                                  )}
+                                  {partner.last_message_time && (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      {new Date(partner.last_message_time).toLocaleTimeString()}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -968,31 +1054,16 @@ const Settings = () => {
                         <Shield className="h-4 w-4" />
                       </div>
                       <div>
-                        <p className="font-medium">2018 MacBook Pro 15-inch</p>
-                        <p className="text-sm text-muted-foreground">Los Angeles, California • 22 Jan at 10:40am</p>
+                        <p className="font-medium">Current Session</p>
+                        <p className="text-sm text-muted-foreground">You are currently logged in</p>
                         <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Active now</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Other Sessions */}
-                  <div className="space-y-3">
-                    {[1, 2].map((session) => (
-                      <div key={session} className="flex items-center justify-between p-4 border border-border rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-secondary rounded flex items-center justify-center">
-                            <Shield className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <p className="font-medium">2018 MacBook Pro 15-inch</p>
-                            <p className="text-sm text-muted-foreground">Los Angeles, California • 22 Jan at 10:40am</p>
-                          </div>
-                        </div>
-                        <Button variant="ghost" size="icon">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
+                  {/* Other Sessions - Placeholder for future implementation */}
+                  <div className="text-sm text-muted-foreground text-center py-4">
+                    Session management coming soon
                   </div>
                 </div>
 
@@ -1030,11 +1101,19 @@ const Settings = () => {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm">In-App</span>
-                      <Switch defaultChecked />
+                      <Switch 
+                        checked={notificationPreferences.campaignUpdates?.inApp ?? true}
+                        onCheckedChange={(checked) => updateNotificationPreference('campaignUpdates', 'inApp', checked)}
+                        disabled={loadingNotificationPrefs || savingNotificationPrefs}
+                      />
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm">Email</span>
-                      <Switch defaultChecked />
+                      <Switch 
+                        checked={notificationPreferences.campaignUpdates?.email ?? true}
+                        onCheckedChange={(checked) => updateNotificationPreference('campaignUpdates', 'email', checked)}
+                        disabled={loadingNotificationPrefs || savingNotificationPrefs}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1048,11 +1127,19 @@ const Settings = () => {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm">In-App</span>
-                      <Switch defaultChecked />
+                      <Switch 
+                        checked={notificationPreferences.securityAlerts?.inApp ?? true}
+                        onCheckedChange={(checked) => updateNotificationPreference('securityAlerts', 'inApp', checked)}
+                        disabled={loadingNotificationPrefs || savingNotificationPrefs}
+                      />
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm">Email</span>
-                      <Switch defaultChecked />
+                      <Switch 
+                        checked={notificationPreferences.securityAlerts?.email ?? true}
+                        onCheckedChange={(checked) => updateNotificationPreference('securityAlerts', 'email', checked)}
+                        disabled={loadingNotificationPrefs || savingNotificationPrefs}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1066,11 +1153,19 @@ const Settings = () => {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm">In-App</span>
-                      <Switch defaultChecked />
+                      <Switch 
+                        checked={notificationPreferences.monthlyInsights?.inApp ?? true}
+                        onCheckedChange={(checked) => updateNotificationPreference('monthlyInsights', 'inApp', checked)}
+                        disabled={loadingNotificationPrefs || savingNotificationPrefs}
+                      />
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm">Email</span>
-                      <Switch defaultChecked />
+                      <Switch 
+                        checked={notificationPreferences.monthlyInsights?.email ?? true}
+                        onCheckedChange={(checked) => updateNotificationPreference('monthlyInsights', 'email', checked)}
+                        disabled={loadingNotificationPrefs || savingNotificationPrefs}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1082,7 +1177,13 @@ const Settings = () => {
                     <p className="text-sm text-muted-foreground">A quick weekly rundown of all the latest industry trends along with exciting Media Street updates and offers.</p>
                     <div className="space-y-3">
                       <label className="text-sm font-medium">Subscribe to updates</label>
-                      <Button className="bg-primary hover:bg-primary/90">Subscribe</Button>
+                      <Button 
+                        className="bg-primary hover:bg-primary/90"
+                        onClick={() => updateNotificationPreference('newsletter', '', !notificationPreferences.newsletter)}
+                        disabled={loadingNotificationPrefs || savingNotificationPrefs}
+                      >
+                        {notificationPreferences.newsletter ? 'Unsubscribe' : 'Subscribe'}
+                      </Button>
                     </div>
                   </div>
                 </div>

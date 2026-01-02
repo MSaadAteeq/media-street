@@ -220,15 +220,16 @@ const LocationPicker: React.FC<LocationPickerProps> = ({
     // Initialize map
     mapboxgl.accessToken = MAPBOX_TOKEN;
     
+    // Default location: 501 West 28th Street, New York, New York 10001, United States
     const center: [number, number] = initialLongitude && initialLatitude
       ? [initialLongitude, initialLatitude]
-      : [-98.5795, 39.8283]; // Default: Center of USA
+      : [-74.0014, 40.7505]; // Default: 501 W 28th St, New York, NY 10001 (longitude, latitude)
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: center,
-      zoom: initialLatitude && initialLongitude ? 12 : 3
+      zoom: initialLatitude && initialLongitude ? 12 : 14 // Zoom in more for NYC default location
     });
 
     // Add navigation controls

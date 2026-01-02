@@ -463,8 +463,8 @@ const Locations = () => {
                 <Label>Business Location *</Label>
                 <LocationPicker
                   onLocationSelect={handleLocationSelect}
-                  initialLatitude={selectedLatitude}
-                  initialLongitude={selectedLongitude}
+                  initialLatitude={selectedLatitude || 40.7505} // Default: 501 W 28th St, NYC
+                  initialLongitude={selectedLongitude || -74.0014} // Default: 501 W 28th St, NYC
                   height="400px"
                 />
                 {(!selectedLatitude || !selectedLongitude) && (

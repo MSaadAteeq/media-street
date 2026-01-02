@@ -215,11 +215,12 @@ const OfferCreate = () => {
         setAiGeneratedStoreName(data.businessName);
       }
 
-      // Set brand colors
-      if (data?.colors) {
+      // Set brand colors (check both colors and brandColors for compatibility)
+      if (data?.colors || data?.brandColors) {
+        const colors = data.colors || data.brandColors;
         setBrandColors({
-          primary: data.colors.primary || '#9333EA',
-          secondary: data.colors.secondary || '#7E3AF2'
+          primary: colors.primary || '#9333EA',
+          secondary: colors.secondary || '#7E3AF2'
         });
       }
 

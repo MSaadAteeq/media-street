@@ -389,7 +389,7 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
           businessName: data.businessName || form.getValues("storeName") || "Your Business",
           offerImageUrl: data.offerImageUrl || null,
           brandLogoUrl: data.brandLogoUrl || null,
-          brandColors: data.brandColors || { primary: "#6366f1", secondary: "#4f46e5" },
+          brandColors: data.brandColors || data.colors || { primary: "#6366f1", secondary: "#4f46e5" },
         });
         setShowPreview(true);
         toast.success("Offer generated with AI! Review your preview below.");

@@ -158,21 +158,27 @@ const InStoreDisplay = () => {
 
     setSubmittingRequest(true);
     try {
-      // TODO: Replace with Node.js API call
-      // await post({ 
-      //   end_point: 'tablet/request', 
-      //   body: {
-      //     storeName: selectedLocation.name,
-      //     storeAddress: selectedLocation.address,
-      //     transactionsPerDay: tabletRequestData.transactionsPerDay
-      //   }
-      // });
+      const { post } = await import("@/services/apis");
+      const response = await post({ 
+        end_point: 'locations/request-tablet', 
+        body: {
+          locationId: tabletRequestData.locationId,
+          storeName: selectedLocation.name,
+          storeAddress: selectedLocation.address,
+          transactionsPerDay: tabletRequestData.transactionsPerDay
+        },
+        token: true
+      });
 
-      setRequestSubmitted(true);
-      toast.success("Request submitted successfully!");
-    } catch (error) {
+      if (response.success) {
+        setRequestSubmitted(true);
+        toast.success("Request submitted successfully!");
+      } else {
+        throw new Error(response.message || "Failed to submit request");
+      }
+    } catch (error: any) {
       console.error('Error submitting tablet request:', error);
-      toast.error("Failed to submit request. Please try again.");
+      toast.error(error?.response?.data?.message || error?.message || "Failed to submit request. Please try again.");
     } finally {
       setSubmittingRequest(false);
     }

@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useDispatch } from "react-redux";
+import { authActions } from "@/store/auth/auth";
+import type { AppDispatch } from "@/store";
 import { get, post, deleteApi } from "@/services/apis";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, MapPin, Handshake, Eye, ScanLine, TicketCheck, DollarSign, TrendingUp, UserPlus, Store, Megaphone, Trophy, Calendar, Save, Gift, Coins, Trash2, Tag, AlertTriangle, Zap } from "lucide-react";
+import { Users, MapPin, Handshake, Eye, ScanLine, TicketCheck, DollarSign, TrendingUp, UserPlus, Store, Megaphone, Trophy, Calendar, Save, Gift, Coins, Trash2, Tag, AlertTriangle, Zap, LogOut } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
@@ -160,6 +163,28 @@ const Admin = () => {
   const [activeTab, setActiveTab] = useState("locations");
   const tabsRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const dispatch = useDispatch<AppDispatch>();
+
+  const handleLogout = async () => {
+    try {
+      // Clear Redux state
+      dispatch(authActions.logout());
+
+      // Remove token and role from localStorage
+      localStorage.removeItem('token');
+      localStorage.removeItem('userRole');
+
+      // Navigate to login page
+      navigate('/login', { replace: true });
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Even if there's an error, clear state and redirect
+      dispatch(authActions.logout());
+      localStorage.removeItem('token');
+      localStorage.removeItem('userRole');
+      navigate('/login', { replace: true });
+    }
+  };
 
   const scrollToTabsAndSetActive = (tab: string) => {
     setActiveTab(tab);
@@ -571,7 +596,17 @@ const Admin = () => {
       <div className="max-w-7xl mx-auto space-y-8">
         <div className="flex justify-between items-center">
           <h1 className="text-4xl font-bold">Admin Dashboard</h1>
-          <Button variant="outline" onClick={() => navigate('/')}>Back to Home</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => navigate('/')}>Back to Home</Button>
+            <Button 
+              variant="outline" 
+              onClick={handleLogout}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
+          </div>
         </div>
 
         {/* Top Metrics Row */}

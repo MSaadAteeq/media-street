@@ -967,44 +967,53 @@ const PartnerRequests = () => {
   const fetchMessages = async (partnershipId: string) => {
     setLoadingMessages(true);
     try {
-      // Mock messages for now - will work once database table is created
-      const mockMessages = [{
-        id: '1',
-        sender_id: currentUserId === 'current-user-id' ? 'joes-coffee-id' : 'current-user-id',
-        recipient_id: currentUserId,
-        partnership_id: partnershipId,
-        message_text: "Hey! Looking forward to our partnership!",
-        created_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-        read: false
-      }];
-      setMessages(mockMessages);
-      setLoadingMessages(false);
+      const { get } = await import("@/services/apis");
+      const response = await get({ 
+        end_point: `messages/partnership/${partnershipId}`, 
+        token: true 
+      });
+      if (response.success && response.data) {
+        setMessages(response.data || []);
+      } else {
+        setMessages([]);
+      }
     } catch (error) {
       console.error('Error fetching messages:', error);
       toast.error('Failed to load messages');
+      setMessages([]);
+    } finally {
       setLoadingMessages(false);
     }
   };
+  
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedPartnership) return;
-    const recipientId = getRequestType(selectedPartnership) === 'outgoing' ? selectedPartnership.recipient_id : selectedPartnership.sender_id;
+    const recipientId = getRequestType(selectedPartnership) === 'outgoing' 
+      ? selectedPartnership.recipient_id 
+      : selectedPartnership.sender_id;
+    
     try {
-      // Add message to local state for now
-      const newMsg = {
-        id: Date.now().toString(),
-        sender_id: currentUserId,
-        recipient_id: recipientId,
-        partnership_id: selectedPartnership.id,
-        message_text: newMessage.trim(),
-        created_at: new Date().toISOString(),
-        read: false
-      };
-      setMessages([...messages, newMsg]);
-      setNewMessage("");
-      toast.success('Message sent!');
-    } catch (error) {
+      const { post } = await import("@/services/apis");
+      const response = await post({
+        end_point: 'messages',
+        body: {
+          partnershipId: selectedPartnership.id,
+          messageText: newMessage.trim(),
+          recipientId: recipientId
+        },
+        token: true
+      });
+
+      if (response.success && response.data) {
+        setMessages([...messages, response.data]);
+        setNewMessage("");
+        toast.success('Message sent!');
+      } else {
+        throw new Error(response.message || 'Failed to send message');
+      }
+    } catch (error: any) {
       console.error('Error sending message:', error);
-      toast.error('Failed to send message');
+      toast.error(error?.response?.data?.message || 'Failed to send message');
     }
   };
   const updateRequestStatus = async (requestId: string, status: 'approved' | 'rejected') => {

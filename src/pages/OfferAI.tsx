@@ -640,31 +640,59 @@ const OfferAI = () => {
 
         {/* PartnerAI Confirmation Dialog */}
         <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-          <AlertDialogContent className="max-w-md">
+          <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Subscribe to Open Offer</AlertDialogTitle>
-              <AlertDialogDescription asChild>
-                <div className="space-y-4">
-                  <div className="text-sm">Media Street will display your store's offer across the Open Offer network. Your store's partner carousel will show offers from other retailers in the Open Offer network.</div>
-
-                  <div className="flex items-start space-x-2 pt-2">
-                    <Checkbox id="authorize" checked={authorized} onCheckedChange={checked => setAuthorized(checked === true)} />
-                    <label htmlFor="authorize" className="text-sm leading-none cursor-pointer">I authorize Media Street to charge my billing method on file the $20/month subscription fee for Open Offer until turned off on this same page. </label>
+              <AlertDialogTitle>Activate Open Offer?</AlertDialogTitle>
+              <AlertDialogDescription className="space-y-4">
+                <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+                  <div className="font-semibold text-foreground text-base">Pricing Terms</div>
+                  <div className="space-y-2 text-sm">
+                    <p>
+                      Your payment method in{" "}
+                      <button 
+                        onClick={() => navigate('/settings?tab=billing')} 
+                        className="text-primary hover:text-primary/80 underline font-medium"
+                      >
+                        Billing
+                      </button>{" "}
+                      will be charged <strong className="text-foreground">$25 per month</strong> for running your offer on POS machines at this location, until cancelled.
+                    </p>
+                    <div className="border-l-2 border-accent-green pl-3 py-1">
+                      <p className="font-medium text-foreground">Earn Credits:</p>
+                      <p>Receive $1 credit for every successful redemption you refer to another Open Offer retailer. Credits are applied monthly and reset when your subscription renews.</p>
+                    </div>
                   </div>
-
-                  <div className="text-sm">
-                    You'll be able to see campaign results from your Partnerships & Offers tab on the dashboard.
-                  </div>
+                </div>
+                <p className="text-sm">
+                  You'll be able to see campaign results from your <strong>Partnerships & Offers</strong> tab on the dashboard.
+                </p>
+                <div className="flex items-start space-x-2 pt-2">
+                  <Checkbox 
+                    id="price-agreement" 
+                    checked={authorized} 
+                    onCheckedChange={(checked) => setAuthorized(checked === true)}
+                  />
+                  <label 
+                    htmlFor="price-agreement" 
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                  >
+                    I understand and agree to the $25/month subscription fee with credit discounts for referrals
+                  </label>
                 </div>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={handleCancelOpenOffer}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleConfirmOpenOffer} disabled={!authorized}>
-                Subscribe
+              <AlertDialogCancel onClick={handleCancelOpenOffer}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={handleConfirmOpenOffer}
+                disabled={!authorized}
+              >
+                Activate Open Offer
               </AlertDialogAction>
             </AlertDialogFooter>
-        </AlertDialogContent>
+          </AlertDialogContent>
         </AlertDialog>
 
         {/* Open Offer Details Dialog */}

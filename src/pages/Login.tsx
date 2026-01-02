@@ -117,7 +117,8 @@ export default function Login() {
   const { toast } = useToast();
   const dispatch = useDispatch<AppDispatch>();
 
-  const DEFAULT_LATITUDE = 40.7505;
+  // Default location: 501 West 28th Street, New York, New York 10001, United States
+  const DEFAULT_LATITUDE = 40.7505; // Coordinates for 501 W 28th St, New York, NY 10001
   const DEFAULT_LONGITUDE = -74.0014;
 
   const loginForm = useForm<LoginFormData>({
@@ -483,7 +484,7 @@ export default function Login() {
           businessName: data.businessName || storeDetailsForm.getValues("storeName") || "Your Business",
           offerImageUrl: data.offerImageUrl || data.offer_image_url || null,
           brandLogoUrl: data.brandLogoUrl || data.brand_logo_url || null,
-          brandColors: data.brandColors || { primary: "#6366f1", secondary: "#4f46e5" },
+          brandColors: data.brandColors || data.colors || { primary: "#6366f1", secondary: "#4f46e5" },
         });
         setShowPreview(true);
         toast({
