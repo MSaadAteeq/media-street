@@ -47,7 +47,9 @@ const formSchema = z.object({
   storeName: z.string().min(2, "Store name must be at least 2 characters"),
   retailChannel: z.string().min(1, "Please select a retail channel"),
   retailAddress: z.string().min(5, "Please enter a valid address"),
-  phone: z.string().min(10, "Please enter a valid phone number"),
+  phone: z.string()
+    .min(10, "Please enter a valid phone number")
+    .regex(/^[0-9]+$/, "Phone number must contain only numbers"),
   email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   referralCode: z.string().optional(),
@@ -769,7 +771,16 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
                     <FormItem>
                       <FormLabel>Phone *</FormLabel>
                       <FormControl>
-                        <Input placeholder="(555) 123-4567" {...field} />
+                        <Input 
+                          type="tel"
+                          placeholder="5551234567" 
+                          {...field}
+                          onChange={(e) => {
+                            // Only allow numbers
+                            const value = e.target.value.replace(/[^0-9]/g, '');
+                            field.onChange(value);
+                          }}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

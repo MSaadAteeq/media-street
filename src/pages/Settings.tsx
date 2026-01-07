@@ -86,7 +86,7 @@ const Settings = () => {
     if (path.includes('/profile')) return 'profile';
     if (path.includes('/messages')) return 'messages';
     if (path.includes('/billing')) return 'billing';
-    if (path.includes('/security')) return 'security';
+    // if (path.includes('/security')) return 'security';
     if (path.includes('/notifications')) return 'notifications';
     return 'profile'; // default
   };
@@ -485,7 +485,7 @@ const Settings = () => {
 
         {/* Tabs */}
         <Tabs value={getCurrentTab()} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               Profile
@@ -498,10 +498,10 @@ const Settings = () => {
               <CreditCard className="h-4 w-4" />
               Billing
             </TabsTrigger>
-            <TabsTrigger value="security" className="flex items-center gap-2">
+            {/* <TabsTrigger value="security" className="flex items-center gap-2">
               <Shield className="h-4 w-4" />
               Security
-            </TabsTrigger>
+            </TabsTrigger> */}
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="h-4 w-4" />
               Notifications
@@ -1034,7 +1034,8 @@ const Settings = () => {
             </Card>
           </TabsContent>
 
-          {/* Security Tab */}
+          {/* Security Tab - Commented out */}
+          {/*
           <TabsContent value="security" className="space-y-6">
             <Card>
               <CardHeader>
@@ -1042,12 +1043,10 @@ const Settings = () => {
                 <p className="text-sm text-muted-foreground">Manage your active sessions</p>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Active Sessions */}
                 <div className="space-y-4">
                   <label className="text-sm font-medium">Active Sessions</label>
                   <p className="text-sm text-muted-foreground">Where you're logged in</p>
                   
-                  {/* Current Session */}
                   <div className="flex items-center justify-between p-4 border border-border rounded-lg">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-secondary rounded flex items-center justify-center">
@@ -1061,13 +1060,11 @@ const Settings = () => {
                     </div>
                   </div>
 
-                  {/* Other Sessions - Placeholder for future implementation */}
                   <div className="text-sm text-muted-foreground text-center py-4">
                     Session management coming soon
                   </div>
                 </div>
 
-                {/* Delete Account */}
                 <div className="border-t pt-6">
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 text-destructive">
@@ -1083,6 +1080,7 @@ const Settings = () => {
               </CardContent>
             </Card>
           </TabsContent>
+          */}
 
           {/* Notifications Tab */}
           <TabsContent value="notifications" className="space-y-6">
