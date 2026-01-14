@@ -25,10 +25,11 @@ import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
 
 const formSchema = z.object({
-  newPassword: z.string().min(8, "Password must be at least 8 characters"),
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string().min(1, "Please confirm your password"),
 }).refine((data) => data.newPassword === data.confirmPassword, {
-  message: "Passwords don't match",
+  message: "Password doesn't match",
   path: ["confirmPassword"],
 });
 
@@ -47,6 +48,7 @@ export function ChangePasswordDialog({ children }: ChangePasswordDialogProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      currentPassword: "",
       newPassword: "",
       confirmPassword: "",
     },
@@ -56,18 +58,30 @@ export function ChangePasswordDialog({ children }: ChangePasswordDialogProps) {
     setIsLoading(true);
     
     try {
-      // TODO: Replace with Node.js API call
-      // await post({ end_point: 'auth/change-password', body: { newPassword: values.newPassword } });
+      const { post } = await import("@/services/apis");
       
-      // Mock implementation
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // First, we need to get the current password from user
+      // For now, we'll use a prompt or we can add current password field
+      // Let's add current password field to the form
+      const response = await post({ 
+        end_point: 'users/change-password', 
+        body: { 
+          currentPassword: values.currentPassword,
+          newPassword: values.newPassword 
+        },
+        token: true
+      });
 
-      toast.success("Password updated successfully!");
-      setOpen(false);
-      form.reset();
-    } catch (error) {
+      if (response.success) {
+        toast.success("Password updated successfully!");
+        setOpen(false);
+        form.reset();
+      } else {
+        throw new Error(response.message || "Failed to update password");
+      }
+    } catch (error: any) {
       console.error("Error changing password:", error);
-      toast.error("An unexpected error occurred");
+      toast.error(error?.response?.data?.message || error?.message || "An unexpected error occurred");
     } finally {
       setIsLoading(false);
     }
@@ -87,6 +101,23 @@ export function ChangePasswordDialog({ children }: ChangePasswordDialogProps) {
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="currentPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Current Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="password"
+                      placeholder="Enter current password"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="newPassword"

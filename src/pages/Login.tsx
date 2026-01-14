@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Store, Zap, ArrowRight, SkipForward, Check, AlertCircle, CreditCard, Gift, DollarSign } from "lucide-react";
+import { Store, Zap, ArrowRight, SkipForward, Check, AlertCircle, CreditCard, Gift, DollarSign, Eye, EyeOff } from "lucide-react";
 import { AddCardForm } from "@/components/AddCardForm";
 import Logo from "@/components/Logo";
 import OfferPreviewCard from "@/components/OfferPreviewCard";
@@ -42,7 +42,7 @@ const signupSchema = z.object({
   confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
   fullName: z.string().min(2, "Full name must be at least 2 characters"),
 }).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
+  message: "Password doesn't match",
   path: ["confirmPassword"],
 });
 
@@ -112,6 +112,9 @@ export default function Login() {
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [referralRetailerName, setReferralRetailerName] = useState<string | null>(null);
   const [isValidatingReferral, setIsValidatingReferral] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -800,7 +803,26 @@ export default function Login() {
                           <FormItem>
                             <FormLabel>Password *</FormLabel>
                             <FormControl>
-                              <Input placeholder="Enter your password" type="password" {...field} />
+                              <div className="relative">
+                                <Input 
+                                  placeholder="Enter your password" 
+                                  type={showLoginPassword ? "text" : "password"} 
+                                  {...field} 
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                  onClick={() => setShowLoginPassword(!showLoginPassword)}
+                                >
+                                  {showLoginPassword ? (
+                                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                  ) : (
+                                    <Eye className="h-4 w-4 text-muted-foreground" />
+                                  )}
+                                </Button>
+                              </div>
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -927,7 +949,26 @@ export default function Login() {
                             <FormItem>
                               <FormLabel>Password *</FormLabel>
                               <FormControl>
-                                <Input placeholder="Create a password" type="password" {...field} />
+                                <div className="relative">
+                                  <Input 
+                                    placeholder="Create a password" 
+                                    type={showSignupPassword ? "text" : "password"} 
+                                    {...field} 
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                    onClick={() => setShowSignupPassword(!showSignupPassword)}
+                                  >
+                                    {showSignupPassword ? (
+                                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                    ) : (
+                                      <Eye className="h-4 w-4 text-muted-foreground" />
+                                    )}
+                                  </Button>
+                                </div>
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -940,7 +981,26 @@ export default function Login() {
                             <FormItem>
                               <FormLabel>Confirm Password *</FormLabel>
                               <FormControl>
-                                <Input placeholder="Confirm your password" type="password" {...field} />
+                                <div className="relative">
+                                  <Input 
+                                    placeholder="Confirm your password" 
+                                    type={showConfirmPassword ? "text" : "password"} 
+                                    {...field} 
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                  >
+                                    {showConfirmPassword ? (
+                                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                                    ) : (
+                                      <Eye className="h-4 w-4 text-muted-foreground" />
+                                    )}
+                                  </Button>
+                                </div>
                               </FormControl>
                               <FormMessage />
                             </FormItem>

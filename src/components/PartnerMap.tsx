@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { MapPin, Send } from 'lucide-react';
 import { toast } from 'sonner';
 // Supabase removed - will use Node.js API
@@ -405,7 +406,7 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
 
     {/* Request Partnership Dialog */}
     <Dialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Request Partnership</DialogTitle>
           <DialogDescription>
@@ -413,7 +414,8 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <ScrollArea className="flex-1 pr-4">
+          <div className="space-y-4 py-4">
           {selectedRequestPartner && <div className="bg-muted/50 rounded-lg p-4 space-y-2">
               <h4 className="font-semibold text-sm">Partner Details:</h4>
               <div className="text-sm space-y-1">
@@ -453,8 +455,8 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
                       htmlFor={`location-${location.id}`}
                       className="text-sm font-normal cursor-pointer leading-tight flex-1"
                     >
-                      <div className="font-medium">{location.name}</div>
-                      <div className="text-muted-foreground text-xs">{location.address}</div>
+                      <div className="font-medium text-sm sm:text-base">{location.name}</div>
+                      <div className="text-foreground/70 text-xs sm:text-sm break-words">{location.address}</div>
                     </Label>
                   </div>
                 ))}
@@ -489,8 +491,9 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
             </Label>
           </div>
         </div>
+        </ScrollArea>
 
-        <DialogFooter>
+        <DialogFooter className="mt-4">
           <Button variant="outline" onClick={() => {
             setShowRequestDialog(false);
             setSelectedMyLocations([]);
@@ -509,7 +512,7 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
 
     {/* Cancel Partnership Dialog */}
     <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Cancel Partnership</DialogTitle>
           <DialogDescription>
@@ -517,7 +520,8 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <ScrollArea className="flex-1 pr-4">
+          <div className="space-y-4 py-4">
           {selectedCancelPartner && <div className="bg-muted/50 rounded-lg p-4 space-y-2">
               <h4 className="font-semibold text-sm">Partnership Details:</h4>
               <div className="text-sm space-y-1">
@@ -538,8 +542,9 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
             </ul>
           </div>
         </div>
+        </ScrollArea>
 
-        <DialogFooter>
+        <DialogFooter className="mt-4">
           <Button variant="outline" onClick={() => {
             setShowCancelDialog(false);
             setSelectedCancelPartner(null);

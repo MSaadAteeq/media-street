@@ -4,6 +4,7 @@ import { useDispatch } from "react-redux";
 import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
 import { get, patch } from "@/services/apis";
+import socketManager from "@/utils/socket";
 // Supabase removed - will use Node.js API
 import {
   Home,
@@ -91,31 +92,40 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
   }, [location.pathname]);
 
   // Fetch user profile and referral code
-  useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        // Fetch user profile
-        const userResponse = await get({ end_point: 'users/me', token: true });
-        if (userResponse.success && userResponse.data) {
-          setCurrentUser(userResponse.data);
+  const fetchUserData = async () => {
+    try {
+      // Fetch user profile
+      const userResponse = await get({ end_point: 'users/me', token: true });
+      if (userResponse.success && userResponse.data) {
+        console.log('🔄 AppLayout: Fetched user data:', userResponse.data);
+        setCurrentUser(userResponse.data);
+        if (userResponse.data.referralCode) {
+          setReferralCode(userResponse.data.referralCode);
+        } else {
+          // Set mock referral code if not available
+          setReferralCode("REF12345");
         }
-      } catch (error) {
-        console.error('Error fetching user profile:', error);
       }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
 
-      try {
-        // TODO: Replace with Node.js API call
-        // const response = await get({ end_point: 'profile/referral-code' });
-        // setReferralCode(response.data.referral_code);
+  useEffect(() => {
+    fetchUserData();
+  }, []);
 
-        // Mock data for now
-        setReferralCode("REF12345");
-      } catch (error) {
-        console.error('Error:', error);
-      }
+  // Listen for profile update events
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      console.log('🔄 AppLayout: Profile updated event received, refreshing user data...');
+      fetchUserData();
     };
 
-    fetchUserData();
+    window.addEventListener('profileUpdated', handleProfileUpdate);
+    return () => {
+      window.removeEventListener('profileUpdated', handleProfileUpdate);
+    };
   }, []);
 
   // Check open offer locations on mount and when route changes
@@ -177,41 +187,150 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
     }
   };
 
-  // Fetch notifications on mount and when location changes
+  // Initialize WebSocket connection for notifications
   useEffect(() => {
-    fetchNotifications();
-    // Poll for new notifications every 30 seconds
-    const interval = setInterval(() => {
+    const token = localStorage.getItem('token');
+    if (token && !socketManager.isConnected()) {
+      socketManager.connect(token);
+    }
+
+    const socket = socketManager.getSocket();
+    if (socket) {
+      // Listen for new notifications in real-time
+      const handleNewNotification = (notification: Notification) => {
+        console.log('🔔 New notification received via WebSocket:', notification);
+        setNotifications(prev => {
+          // Check if notification already exists
+          const exists = prev.some(n => 
+            n._id === notification._id || 
+            n.id === notification.id ||
+            (notification._id && n._id === notification._id)
+          );
+          if (exists) return prev;
+          
+          // Add new notification at the beginning
+          const formattedNotification: Notification = {
+            _id: notification._id || notification.id || '',
+            id: notification._id || notification.id || '',
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            isRead: notification.isRead || false,
+            read: notification.isRead || false,
+            createdAt: notification.createdAt || new Date().toISOString(),
+            timestamp: notification.timestamp || new Date(),
+            relatedEntityId: notification.relatedEntityId,
+            relatedEntityType: notification.relatedEntityType,
+            metadata: notification.metadata
+          };
+          return [formattedNotification, ...prev];
+        });
+        
+        // Update unread count if notification is unread
+        if (!notification.isRead) {
+          setUnreadCount(prev => prev + 1);
+        }
+      };
+
+      // Listen for unread count updates
+      const handleNotificationCount = (data: { count: number }) => {
+        console.log('🔔 Unread count updated via WebSocket:', data.count);
+        setUnreadCount(data.count || 0);
+      };
+
+      // Listen for notifications list (response to fetch request)
+      const handleNotificationsList = (data: { notifications: Notification[], unreadCount: number }) => {
+        console.log('🔔 Notifications list received via WebSocket:', data);
+        if (data.notifications) {
+          const formattedNotifications: Notification[] = data.notifications.map((notif: any) => ({
+            _id: notif._id || notif.id || '',
+            id: notif._id || notif.id || '',
+            type: notif.type,
+            title: notif.title,
+            message: notif.message,
+            isRead: notif.isRead || false,
+            read: notif.isRead || false,
+            createdAt: notif.createdAt || new Date().toISOString(),
+            timestamp: notif.timestamp || new Date(notif.createdAt),
+            relatedEntityId: notif.relatedEntityId,
+            relatedEntityType: notif.relatedEntityType,
+            metadata: notif.metadata
+          }));
+          setNotifications(formattedNotifications);
+        }
+        if (data.unreadCount !== undefined) {
+          setUnreadCount(data.unreadCount);
+        }
+      };
+
+      // Register WebSocket listeners
+      socketManager.onNotification(handleNewNotification);
+      socketManager.onNotificationCount(handleNotificationCount);
+      socket.on('notifications:list', handleNotificationsList);
+
+      // Fetch initial notifications
+      if (socketManager.isConnected()) {
+        socketManager.requestNotifications();
+        socketManager.requestUnreadCount();
+      } else {
+        // Fallback to API if WebSocket not connected
+        fetchNotifications();
+        fetchUnreadCount();
+      }
+
+      return () => {
+        socketManager.offNotification(handleNewNotification);
+        socketManager.offNotificationCount(handleNotificationCount);
+        socket.off('notifications:list', handleNotificationsList);
+      };
+    } else {
+      // Fallback to API if WebSocket not available
+      fetchNotifications();
       fetchUnreadCount();
-    }, 30000);
-    return () => clearInterval(interval);
+    }
   }, [location.pathname]);
 
   const markAsRead = async (notificationId: string) => {
-    try {
-      await patch({
-        end_point: `notifications/${notificationId}/read`,
-        token: true
-      });
+    if (socketManager.isConnected()) {
+      socketManager.markAsRead(notificationId);
       setNotifications(prev =>
         prev.map(n => n._id === notificationId ? { ...n, isRead: true, read: true } : n)
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
+    } else {
+      // Fallback to API
+      try {
+        await patch({
+          end_point: `notifications/${notificationId}/read`,
+          token: true
+        });
+        setNotifications(prev =>
+          prev.map(n => n._id === notificationId ? { ...n, isRead: true, read: true } : n)
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      } catch (error) {
+        console.error('Error marking notification as read:', error);
+      }
     }
   };
 
   const markAllAsRead = async () => {
-    try {
-      await patch({
-        end_point: 'notifications/read-all',
-        token: true
-      });
+    if (socketManager.isConnected()) {
+      socketManager.markAllAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true, read: true })));
       setUnreadCount(0);
-    } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+    } else {
+      // Fallback to API
+      try {
+        await patch({
+          end_point: 'notifications/read-all',
+          token: true
+        });
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true, read: true })));
+        setUnreadCount(0);
+      } catch (error) {
+        console.error('Error marking all notifications as read:', error);
+      }
     }
   };
 
@@ -454,21 +573,33 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
             <Popover>
               <PopoverTrigger asChild>
                 <div
-                  className="w-8 h-8 bg-gradient-to-r from-primary to-accent-green rounded-full cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center relative z-50"
+                  className="w-8 h-8 bg-gradient-to-r from-primary to-accent-green rounded-full cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center relative z-50 overflow-hidden"
                 >
-                  <div className="w-6 h-6 bg-gradient-to-r from-primary to-accent-green rounded-full border-2 border-background">
-                    {currentUser?.fullName ? (
-                      <div className="w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white text-xs font-semibold">
-                        {currentUser.fullName.charAt(0).toUpperCase()}
-                      </div>
-                    ) : (
-                      <img
-                        src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png"
-                        alt={currentUser?.fullName || "User"}
-                        className="w-full h-full rounded-full object-cover"
-                      />
-                    )}
-                  </div>
+                  {currentUser?.avatar ? (
+                    <img
+                      src={currentUser.avatar}
+                      alt={currentUser?.fullName || "User"}
+                      className="w-full h-full rounded-full object-cover"
+                      onError={(e) => {
+                        // Fallback to initial if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          const fallback = document.createElement('div');
+                          fallback.className = 'w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white text-xs font-semibold';
+                          fallback.textContent = currentUser?.fullName?.charAt(0).toUpperCase() || 'U';
+                          parent.appendChild(fallback);
+                        }
+                      }}
+                    />
+                  ) : currentUser?.fullName ? (
+                    <div className="w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white text-xs font-semibold">
+                      {currentUser.fullName.charAt(0).toUpperCase()}
+                    </div>
+                  ) : (
+                    <User className="h-5 w-5 text-white" />
+                  )}
                 </div>
               </PopoverTrigger>
               <PopoverContent
@@ -481,17 +612,31 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
                   <div className="space-y-3">
                     <div className="text-muted-foreground text-sm font-medium">Account</div>
                     <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 bg-gradient-to-r from-primary to-accent-green rounded-full flex items-center justify-center">
-                        {currentUser?.fullName ? (
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white font-semibold">
+                      <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-r from-primary to-accent-green flex items-center justify-center flex-shrink-0">
+                        {currentUser?.avatar ? (
+                          <img
+                            src={currentUser.avatar}
+                            alt={currentUser?.fullName || "User"}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // Fallback to initial if image fails to load
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                              const parent = target.parentElement;
+                              if (parent) {
+                                const fallback = document.createElement('div');
+                                fallback.className = 'w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white font-semibold text-lg';
+                                fallback.textContent = currentUser?.fullName?.charAt(0).toUpperCase() || 'U';
+                                parent.appendChild(fallback);
+                              }
+                            }}
+                          />
+                        ) : currentUser?.fullName ? (
+                          <div className="w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white font-semibold text-lg">
                             {currentUser.fullName.charAt(0).toUpperCase()}
                           </div>
                         ) : (
-                          <img
-                            src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png"
-                            alt={currentUser?.fullName || "User"}
-                            className="w-full h-full rounded-full object-cover"
-                          />
+                          <User className="h-6 w-6 text-white" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">

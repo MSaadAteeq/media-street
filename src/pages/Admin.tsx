@@ -933,39 +933,39 @@ const Admin = () => {
 
         {/* Metric Detail Views */}
         {selectedMetric === 'users' && (
-          <Card>
-            <CardHeader>
+            <Card>
+              <CardHeader>
               <CardTitle>Total Users</CardTitle>
               <CardDescription>All registered users with account and billing information</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Date Joined</TableHead>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Date Joined</TableHead>
                       <TableHead>Store Names</TableHead>
                       <TableHead className="text-right"># Active Partnerships</TableHead>
                       <TableHead className="text-center">Open Offer</TableHead>
                       <TableHead className="text-center">Card (Last 4)</TableHead>
                       <TableHead className="text-center">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {userDetails.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={8} className="text-center text-muted-foreground">
-                          No user data available
-                        </TableCell>
                       </TableRow>
-                    ) : (
-                      userDetails.map((user) => (
-                        <TableRow key={user.id}>
+                    </TableHeader>
+                    <TableBody>
+                      {userDetails.length === 0 ? (
+                        <TableRow>
+                        <TableCell colSpan={8} className="text-center text-muted-foreground">
+                            No user data available
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        userDetails.map((user) => (
+                          <TableRow key={user.id}>
                           <TableCell className="font-medium">{user.name}</TableCell>
-                          <TableCell>{user.email}</TableCell>
-                          <TableCell>{formatDate(user.date_joined)}</TableCell>
+                            <TableCell>{user.email}</TableCell>
+                            <TableCell>{formatDate(user.date_joined)}</TableCell>
                           <TableCell className="max-w-[200px] truncate" title={user.store_names}>
                             {user.store_names}
                           </TableCell>
@@ -994,14 +994,14 @@ const Admin = () => {
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
         )}
 
 
@@ -1425,20 +1425,20 @@ const Admin = () => {
                                     'text-amber-700'
                                   }`}>
                                     #{entry.rank}
-                                  </span>
-                                ) : (
+                                </span>
+                              ) : (
                                   <span className="text-muted-foreground">#{entry.rank}</span>
-                                )}
-                              </TableCell>
+                              )}
+                            </TableCell>
                               <TableCell className="font-medium">{entry.store_name}</TableCell>
                               <TableCell>{entry.user_email}</TableCell>
                               <TableCell className="font-mono text-sm">{entry.referral_code}</TableCell>
                               <TableCell className="text-right font-semibold">{entry.points}</TableCell>
-                            </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
                   </div>
                 </CardContent>
               </Card>
@@ -1669,7 +1669,7 @@ const Admin = () => {
             </Card>
           </TabsContent>
         </Tabs>
-        </div>
+      </div>
       </div>
 
       {/* Delete Location Confirmation */}

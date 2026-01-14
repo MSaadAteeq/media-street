@@ -1453,7 +1453,7 @@ const PartnerRequests = () => {
 
       {/* Authentication Dialog */}
       <Dialog open={showAuthDialog} onOpenChange={setShowAuthDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5" />
@@ -1464,12 +1464,13 @@ const PartnerRequests = () => {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <ScrollArea className="flex-1 pr-4">
+            <div className="space-y-4">
             <div className="space-y-3">
-              <label className="text-sm font-medium">
+              <label className="text-sm sm:text-base font-medium text-foreground">
                 Select Location for Partnership {userLocations.length > 1 && <span className="text-muted-foreground">(Required)</span>}
               </label>
-              <div className="text-xs text-muted-foreground mb-2">
+              <div className="text-xs sm:text-sm text-foreground/70 mb-2">
                 Select which location you want to use for this partnership. One offer can be used for one location per partnership.
               </div>
               <div className="grid grid-cols-1 gap-2">
@@ -1477,50 +1478,55 @@ const PartnerRequests = () => {
                   <Button 
                     key={location.id} 
                     variant={selectedLocationId === location.id ? "default" : "outline"} 
-                    className="w-full justify-start text-left h-auto py-3" 
+                    className="w-full justify-start text-left h-auto py-3 px-4" 
                     onClick={() => setSelectedLocationId(location.id)}
                   >
-                    <div className="flex flex-col items-start">
-                      <span className="font-medium">{location.name}</span>
-                      <span className="text-xs text-muted-foreground">{location.address}</span>
+                    <div className="flex flex-col items-start w-full gap-1">
+                      <span className="font-medium text-sm sm:text-base">{location.name}</span>
+                      <span className={`text-xs sm:text-sm break-words w-full ${
+                        selectedLocationId === location.id 
+                          ? "text-primary-foreground/80" 
+                          : "text-foreground/70"
+                      }`}>{location.address}</span>
                     </div>
                   </Button>
                 ))}
               </div>
               {userLocations.length > 0 && !selectedLocationId && (
-                <p className="text-xs text-red-600">Please select a location to continue</p>
+                <p className="text-xs sm:text-sm text-red-600 dark:text-red-400 font-medium">Please select a location to continue</p>
               )}
             </div>
 
             {/* Payment method check bypassed - payment system disabled */}
 
             <div className="space-y-2">
-              <label htmlFor="promo-code" className="text-sm font-medium">
+              <label htmlFor="promo-code" className="text-sm sm:text-base font-medium text-foreground">
                 Promo Code (Optional)
               </label>
               <div className="space-y-2">
-                <Input id="promo-code" placeholder="Enter promo code to waive partnership fee" value={promoCode} onChange={e => handlePromoCodeChange(e.target.value)} />
-                {promoCode && <div className={`text-xs ${isPromoValid ? 'text-green-600' : 'text-red-600'}`}>
+                <Input id="promo-code" placeholder="Enter promo code to waive partnership fee" value={promoCode} onChange={e => handlePromoCodeChange(e.target.value)} className="text-sm sm:text-base" />
+                {promoCode && <div className={`text-xs sm:text-sm ${isPromoValid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                   {isPromoValid ? '✓ Valid promo code - partnership fee waived!' : '✗ Invalid promo code'}
                 </div>}
               </div>
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-center space-x-2">
+              <div className="flex items-start space-x-2">
                 <Checkbox id="agree-terms" checked={hasAgreed || isPromoValid} onCheckedChange={checked => {
                   if (!isPromoValid) {
                     setHasAgreed(checked as boolean);
                   }
-                }} />
-                <label htmlFor="agree-terms" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                }} className="mt-1" />
+                <label htmlFor="agree-terms" className="text-sm sm:text-base font-medium leading-tight text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex-1">
                   I agree to the partnership terms and understand that this partnership will allow cross-promotion of offers between our stores.
                 </label>
               </div>
             </div>
           </div>
+          </ScrollArea>
 
-          <DialogFooter>
+          <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => {
               setShowAuthDialog(false);
               setHasAgreed(false);

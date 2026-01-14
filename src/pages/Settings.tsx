@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 // Supabase removed - will use Node.js API
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,7 @@ import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import ReferralCodeCard from "@/components/ReferralCodeCard";
 import { AddCardForm } from "@/components/AddCardForm";
 import { get, post, patch, deleteApi } from "@/services/apis";
+import socketManager from "@/utils/socket";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +34,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const Settings = () => {
   const [adsEnabled, setAdsEnabled] = useState(() => {
@@ -48,6 +56,9 @@ const Settings = () => {
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingConversations, setLoadingConversations] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const optimisticTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const [promoCode, setPromoCode] = useState("");
   const [creditBalance, setCreditBalance] = useState<number>(0);
   const [isRedeemingPromo, setIsRedeemingPromo] = useState(false);
@@ -70,6 +81,13 @@ const Settings = () => {
   });
   const [loadingNotificationPrefs, setLoadingNotificationPrefs] = useState(false);
   const [savingNotificationPrefs, setSavingNotificationPrefs] = useState(false);
+  const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [showChangeEmailDialog, setShowChangeEmailDialog] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -317,13 +335,146 @@ const Settings = () => {
     try {
       const response = await get({ end_point: 'users/me', token: true });
       if (response.success && response.data) {
+        console.log('📥 Fetched user profile:', response.data);
         setUserProfile(response.data);
-        setCurrentUserId(response.data.id);
+        setCurrentUserId(response.data.id || response.data._id);
+        setFullName(response.data.fullName || "");
+        setEmail(response.data.email || "");
+        
+        // Set profile picture from avatar field
+        const avatar = response.data.avatar || response.data.profilePicture || null;
+        console.log('🖼️ Setting profile picture from fetch:', avatar ? avatar.substring(0, 50) + '...' : 'null');
+        setProfilePicture(avatar);
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
     } finally {
       setLoadingProfile(false);
+    }
+  };
+
+  const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error("Please select an image file");
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Image size must be less than 5MB");
+        return;
+      }
+
+      setProfilePictureFile(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfilePicture(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleUpdateProfile = async () => {
+    setIsUpdatingProfile(true);
+    try {
+      // First upload profile picture if selected
+      let avatarUrl = profilePicture;
+      
+      if (profilePictureFile) {
+        // Convert file to base64 for now (in production, upload to cloud storage)
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve, reject) => {
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+        });
+        reader.readAsDataURL(profilePictureFile);
+        avatarUrl = await base64Promise;
+        console.log('📸 Converting new profile picture to base64...');
+      }
+
+      // Prepare update body
+      const updateBody: any = {
+        fullName: fullName
+      };
+      
+      // Always send avatar if we have one (either new upload or existing)
+      if (avatarUrl) {
+        updateBody.avatar = avatarUrl;
+        console.log('📸 Sending avatar in update request:', avatarUrl.substring(0, 50) + '...');
+      } else {
+        console.log('⚠️ No avatar to send');
+      }
+
+      console.log('📤 Updating profile with:', { fullName, hasAvatar: !!avatarUrl });
+
+      // Update profile
+      const response = await patch({
+        end_point: 'users/profile',
+        body: updateBody,
+        token: true
+      });
+
+      console.log('📥 Profile update response:', response);
+
+      if (response.success) {
+        toast.success("Profile updated successfully!");
+        
+        // Update state immediately with the response data
+        if (response.data) {
+          console.log('✅ Updating state with response data:', response.data);
+          setUserProfile(response.data);
+          setFullName(response.data.fullName || fullName);
+          
+          // Always update profile picture from response
+          if (response.data.avatar) {
+            console.log('✅ Setting profile picture from response:', response.data.avatar.substring(0, 50) + '...');
+            setProfilePicture(response.data.avatar);
+          } else {
+            console.log('⚠️ No avatar in response data');
+          }
+        }
+        
+        setProfilePictureFile(null);
+        
+        // Also refetch to ensure we have the latest data
+        await fetchUserProfile();
+        
+        // Dispatch event to notify other components (like AppLayout) to refresh user data
+        window.dispatchEvent(new CustomEvent('profileUpdated'));
+      } else {
+        throw new Error(response.message || "Failed to update profile");
+      }
+    } catch (error: any) {
+      console.error("Error updating profile:", error);
+      toast.error(error?.response?.data?.message || error?.message || "Failed to update profile");
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  };
+
+  const handleChangeEmail = async () => {
+    if (!newEmail || !newEmail.includes('@')) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    setIsUpdatingProfile(true);
+    try {
+      // Note: Email change might require verification
+      // For now, we'll just show a message that this feature requires backend support
+      toast.error("Email change functionality requires backend support. Please contact support.");
+      setShowChangeEmailDialog(false);
+      setNewEmail("");
+    } catch (error: any) {
+      console.error("Error changing email:", error);
+      toast.error(error?.response?.data?.message || error?.message || "Failed to change email");
+    } finally {
+      setIsUpdatingProfile(false);
     }
   };
 
@@ -354,26 +505,43 @@ const Settings = () => {
 
   const fetchMessages = async (partnershipId: string) => {
     setLoadingMessages(true);
-    try {
-      const response = await get({ 
-        end_point: `messages/partnership/${partnershipId}`, 
-        token: true 
-      });
-      if (response.success && response.data) {
-        setMessages(response.data || []);
+    
+    // Try WebSocket first
+    if (socketManager.isConnected()) {
+      socketManager.requestMessages(partnershipId);
+      // Messages will be received via WebSocket event
+    } else {
+      // Fallback to API
+      try {
+        const response = await get({ 
+          end_point: `messages/partnership/${partnershipId}`, 
+          token: true 
+        });
+        if (response.success && response.data) {
+          setMessages(response.data || []);
+        }
+      } catch (error) {
+        console.error('Error fetching messages:', error);
+        toast.error('Failed to load messages');
+        setMessages([]);
+      } finally {
+        setLoadingMessages(false);
       }
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-      toast.error('Failed to load messages');
-      setMessages([]);
-    } finally {
-      setLoadingMessages(false);
     }
   };
 
   const handleSelectPartner = (partner: any) => {
+    // Leave previous partnership room if exists
+    if (selectedPartner?.partnership_id && socketManager.isConnected()) {
+      socketManager.leavePartnership(selectedPartner.partnership_id);
+    }
+    
     setSelectedPartner(partner);
     if (partner.partnership_id) {
+      // Join partnership room for real-time messages
+      if (socketManager.isConnected()) {
+        socketManager.joinPartnership(partner.partnership_id);
+      }
       fetchMessages(partner.partnership_id);
     }
   };
@@ -381,29 +549,107 @@ const Settings = () => {
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedPartner) return;
 
-    try {
-      const response = await post({
-        end_point: 'messages',
-        body: {
-          partnershipId: selectedPartner.partnership_id,
-          messageText: newMessage.trim(),
-          recipientId: selectedPartner.partner_id
-        },
-        token: true
-      });
+    const messageText = newMessage.trim();
+    const partnershipId = selectedPartner.partnership_id;
+    const recipientId = selectedPartner.partner_id;
 
-      if (response.success && response.data) {
-        setMessages([...messages, response.data]);
-        setNewMessage("");
-        toast.success('Message sent!');
-        // Refresh conversations to update last message
-        fetchConversations();
-      } else {
-        throw new Error(response.message || 'Failed to send message');
+    // Optimistically add message to UI for instant feedback
+    const optimisticMessage = {
+      id: `temp-${Date.now()}`,
+      sender_id: currentUserId || '',
+      recipient_id: recipientId,
+      partnership_id: partnershipId,
+      message_text: messageText,
+      created_at: new Date().toISOString(),
+      read: false,
+      sender: {
+        id: currentUserId || '',
+        fullName: userProfile?.fullName || 'You',
+        email: userProfile?.email || ''
+      },
+      isOptimistic: true
+    };
+
+    // Add optimistic message immediately for instant UI update
+    setMessages(prev => [...prev, optimisticMessage]);
+    setNewMessage("");
+
+    // Set timeout to remove optimistic message if not confirmed within 10 seconds
+    const optimisticTimeout = setTimeout(() => {
+      setMessages(prev => {
+        const stillOptimistic = prev.find(m => m.id === optimisticMessage.id && m.isOptimistic);
+        if (stillOptimistic) {
+          console.warn('⚠️ Optimistic message not confirmed after 10 seconds, removing');
+          return prev.filter(m => m.id !== optimisticMessage.id);
+        }
+        return prev;
+      });
+      optimisticTimeoutsRef.current.delete(optimisticMessage.id);
+    }, 10000);
+    
+    // Store timeout for cleanup
+    optimisticTimeoutsRef.current.set(optimisticMessage.id, optimisticTimeout);
+
+    // Try WebSocket first for instant delivery
+    if (socketManager.isConnected()) {
+      socketManager.sendMessage({
+        partnershipId,
+        messageText,
+        recipientId
+      });
+      // Message will be confirmed via WebSocket event
+      // Optimistic message will be replaced when real message arrives
+      // Clear timeout when message is confirmed (handled in handleMessageSent)
+    } else {
+      // Fallback to API
+      try {
+        const response = await post({
+          end_point: 'messages',
+          body: {
+            partnershipId,
+            messageText,
+            recipientId
+          },
+          token: true
+        });
+
+        if (response.success && response.data) {
+          // Clear timeout since message was sent successfully
+          const timeout = optimisticTimeoutsRef.current.get(optimisticMessage.id);
+          if (timeout) {
+            clearTimeout(timeout);
+            optimisticTimeoutsRef.current.delete(optimisticMessage.id);
+          }
+          
+          // Replace optimistic message with real one
+          setMessages(prev => {
+            const filtered = prev.filter(m => m.id !== optimisticMessage.id);
+            return [...filtered, response.data];
+          });
+          toast.success('Message sent!');
+          // Refresh conversations to update last message
+          fetchConversations();
+        } else {
+          // Clear timeout and remove optimistic message on error
+          const timeout = optimisticTimeoutsRef.current.get(optimisticMessage.id);
+          if (timeout) {
+            clearTimeout(timeout);
+            optimisticTimeoutsRef.current.delete(optimisticMessage.id);
+          }
+          setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
+          throw new Error(response.message || 'Failed to send message');
+        }
+      } catch (error: any) {
+        // Clear timeout and remove optimistic message on error
+        const timeout = optimisticTimeoutsRef.current.get(optimisticMessage.id);
+        if (timeout) {
+          clearTimeout(timeout);
+          optimisticTimeoutsRef.current.delete(optimisticMessage.id);
+        }
+        setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
+        console.error('Error sending message:', error);
+        toast.error(error?.response?.data?.message || 'Failed to send message');
       }
-    } catch (error: any) {
-      console.error('Error sending message:', error);
-      toast.error(error?.response?.data?.message || 'Failed to send message');
     }
   };
 
@@ -463,6 +709,194 @@ const Settings = () => {
   const handleTabChange = (value: string) => {
     navigate(`/settings/${value}`);
   };
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
+  // Initialize WebSocket connection for messages
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token && !socketManager.isConnected()) {
+      socketManager.connect(token);
+    }
+
+    const socket = socketManager.getSocket();
+    if (socket) {
+      // Listen for incoming messages
+      const handleIncomingMessage = (message: any) => {
+        console.log('📨 Received WebSocket message:', message);
+        
+        // Only add if it's for the current partnership
+        const messagePartnershipId = message.partnership_id || message.partnershipId;
+        const currentPartnershipId = selectedPartner?.partnership_id || selectedPartner?.id;
+        
+        if (currentPartnershipId && 
+            (messagePartnershipId === currentPartnershipId || 
+             messagePartnershipId?.toString() === currentPartnershipId?.toString())) {
+          
+          setMessages(prev => {
+            const messageId = message.id || message._id;
+            const messageText = message.message_text || message.messageText || message.text || '';
+            const messageSenderId = message.sender_id || message.senderId || message.sender?.id;
+            
+            // Check if this is our own message (to replace optimistic)
+            const isOwnMessage = messageSenderId === currentUserId || 
+                               messageSenderId?.toString() === currentUserId ||
+                               (typeof messageSenderId === 'object' && messageSenderId?.toString() === currentUserId);
+            
+            // Remove optimistic message if this is the real one (same text and from same sender)
+            let filtered = prev;
+            if (isOwnMessage) {
+              // Remove optimistic messages with matching text
+              filtered = prev.filter(m => {
+                if (m.isOptimistic && m.message_text === messageText) {
+                  console.log('🔄 Replacing optimistic message with real one');
+                  return false; // Remove optimistic message
+                }
+                return true;
+              });
+            }
+            
+            // Check if message already exists (avoid duplicates)
+            const exists = filtered.some(m => {
+              const existingId = m.id || m._id;
+              return existingId === messageId || 
+                     existingId === message._id ||
+                     (existingId && messageId && existingId.toString() === messageId.toString());
+            });
+            
+            if (exists) {
+              console.log('⚠️ Message already exists, skipping');
+              return filtered;
+            }
+            
+            console.log('✅ Adding new message to chat');
+            return [...filtered, message];
+          });
+          
+          // Auto-scroll to bottom when new message arrives
+          setTimeout(() => {
+            if (messagesEndRef.current) {
+              messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+            }
+          }, 100);
+        } else {
+          console.log('⚠️ Message not for current partnership:', {
+            messagePartnershipId,
+            currentPartnershipId,
+            selectedPartner
+          });
+        }
+      };
+
+      // Listen for messages list (response to fetch request)
+      const handleMessagesList = (data: { partnershipId: string, messages: any[] }) => {
+        if (selectedPartner?.partnership_id === data.partnershipId || 
+            selectedPartner?.partnership_id?.toString() === data.partnershipId) {
+          setMessages(data.messages || []);
+          setLoadingMessages(false);
+        }
+      };
+
+      // Listen for message sent confirmation (for sender)
+      const handleMessageSent = (message: any) => {
+        console.log('✅ Message sent confirmation received:', message);
+        const messagePartnershipId = message.partnership_id || message.partnershipId;
+        const currentPartnershipId = selectedPartner?.partnership_id || selectedPartner?.id;
+        
+        if (currentPartnershipId && 
+            (messagePartnershipId === currentPartnershipId || 
+             messagePartnershipId?.toString() === currentPartnershipId?.toString())) {
+          
+          setMessages(prev => {
+            const messageText = message.message_text || message.messageText || message.text || '';
+            const messageId = message.id || message._id;
+            
+            // Remove optimistic message and replace with real one
+            const filtered = prev.filter(m => {
+              // Remove optimistic messages with matching text
+              if (m.isOptimistic && m.message_text === messageText) {
+                console.log('🔄 Replacing optimistic message with confirmed message');
+                // Clear timeout for this optimistic message
+                const timeout = optimisticTimeoutsRef.current.get(m.id);
+                if (timeout) {
+                  clearTimeout(timeout);
+                  optimisticTimeoutsRef.current.delete(m.id);
+                }
+                return false;
+              }
+              // Remove duplicates
+              const existingId = m.id || m._id;
+              if (existingId && messageId) {
+                if (existingId.toString() === messageId.toString()) {
+                  return false;
+                }
+              }
+              return true;
+            });
+            
+            // Check if message already exists
+            const exists = filtered.some(m => {
+              const existingId = m.id || m._id;
+              return existingId && messageId && existingId.toString() === messageId.toString();
+            });
+            
+            if (!exists) {
+              console.log('✅ Adding confirmed message to chat');
+              return [...filtered, message];
+            }
+            
+            console.log('⚠️ Message already exists, skipping');
+            return filtered;
+          });
+          
+          // Auto-scroll to bottom
+          setTimeout(() => {
+            if (messagesEndRef.current) {
+              messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+            }
+          }, 100);
+        }
+      };
+
+      // Listen for message send errors
+      const handleMessageError = (error: any) => {
+        console.error('❌ Message send error:', error);
+        const currentPartnershipId = selectedPartner?.partnership_id || selectedPartner?.id;
+        
+        if (error.partnershipId === currentPartnershipId || 
+            error.partnershipId?.toString() === currentPartnershipId?.toString()) {
+          // Remove optimistic message on error
+          setMessages(prev => {
+            // Remove the most recent optimistic message
+            const optimisticMessages = prev.filter(m => m.isOptimistic);
+            if (optimisticMessages.length > 0) {
+              const lastOptimistic = optimisticMessages[optimisticMessages.length - 1];
+              return prev.filter(m => m.id !== lastOptimistic.id);
+            }
+            return prev;
+          });
+          toast.error(error.error || 'Failed to send message');
+        }
+      };
+
+      socketManager.onMessage(handleIncomingMessage);
+      socket.on('messages:list', handleMessagesList);
+      socket.on('message:sent', handleMessageSent);
+      socket.on('message:error', handleMessageError);
+
+      return () => {
+        socketManager.offMessage(handleIncomingMessage);
+        socket.off('messages:list', handleMessagesList);
+        socket.off('message:sent', handleMessageSent);
+        socket.off('message:error', handleMessageError);
+      };
+    }
+  }, [selectedPartner?.partnership_id, currentUserId]);
   
   return (
     <div className="min-h-screen bg-background">
@@ -521,14 +955,33 @@ const Settings = () => {
                   <label className="text-sm font-medium">Your Photo</label>
                   <p className="text-sm text-muted-foreground">This will be displayed on your profile</p>
                   <div className="flex items-center gap-6">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center">
-                      <User className="h-8 w-8 text-white" />
+                    <div className="w-16 h-16 rounded-full overflow-hidden bg-gradient-to-r from-primary to-accent-green flex items-center justify-center">
+                      {profilePicture ? (
+                        <img 
+                          key={profilePicture.substring(0, 50)} 
+                          src={profilePicture} 
+                          alt="Profile" 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            console.error('Error loading profile picture:', e);
+                            setProfilePicture(null);
+                          }}
+                        />
+                      ) : (
+                        <User className="h-8 w-8 text-white" />
+                      )}
                     </div>
-                    <div className="border-2 border-dashed border-border rounded-lg p-8 flex-1 flex flex-col items-center">
+                    <label className="border-2 border-dashed border-border rounded-lg p-8 flex-1 flex flex-col items-center cursor-pointer hover:border-primary transition-colors">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleProfilePictureChange}
+                        className="hidden"
+                      />
                       <Upload className="h-8 w-8 text-muted-foreground mb-2" />
                       <p className="text-sm text-muted-foreground mb-1">Click to upload or drag and drop</p>
-                      <p className="text-xs text-muted-foreground">SVG, PNG, JPG (max. 800x400px)</p>
-                    </div>
+                      <p className="text-xs text-muted-foreground">SVG, PNG, JPG (max. 5MB)</p>
+                    </label>
                   </div>
                 </div>
 
@@ -536,9 +989,11 @@ const Settings = () => {
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Name</label>
                   <Input 
-                    defaultValue={userProfile?.fullName || ""} 
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
                     className="max-w-md" 
-                    disabled={loadingProfile}
+                    disabled={loadingProfile || isUpdatingProfile}
+                    placeholder="Enter your full name"
                   />
                 </div>
 
@@ -547,12 +1002,19 @@ const Settings = () => {
                   <label className="text-sm font-medium">Email Address</label>
                   <div className="flex items-center gap-2 max-w-md">
                     <Input 
-                      defaultValue={userProfile?.email || ""} 
+                      value={email}
                       readOnly 
                       className="flex-1" 
-                      disabled={loadingProfile}
+                      disabled={loadingProfile || isUpdatingProfile}
                     />
-                    <Button variant="outline" size="sm" disabled>Change</Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setShowChangeEmailDialog(true)}
+                      disabled={loadingProfile || isUpdatingProfile}
+                    >
+                      Change
+                    </Button>
                   </div>
                 </div>
 
@@ -567,7 +1029,13 @@ const Settings = () => {
                 </div>
 
                 <div className="flex justify-end">
-                  <Button className="bg-primary hover:bg-primary/90">Update Profile</Button>
+                  <Button 
+                    className="bg-primary hover:bg-primary/90"
+                    onClick={handleUpdateProfile}
+                    disabled={loadingProfile || isUpdatingProfile}
+                  >
+                    {isUpdatingProfile ? "Updating..." : "Update Profile"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -577,131 +1045,240 @@ const Settings = () => {
 
           {/* Messages Tab */}
           <TabsContent value="messages" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Partner Messages</CardTitle>
+            <Card className="h-[calc(100vh-200px)] sm:h-[calc(100vh-250px)] min-h-[500px] sm:min-h-[600px] flex flex-col">
+              <CardHeader className="border-b flex-shrink-0">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Partner Messages
+                </CardTitle>
                 <p className="text-sm text-muted-foreground">Message your active partners</p>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[500px]">
+              <CardContent className="p-0 flex-1 flex flex-col overflow-hidden">
+                <div className={`grid h-full ${selectedPartner ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1'} flex-1 overflow-hidden`}>
                   {/* Partner List */}
-                  <div className="md:col-span-1 border-r pr-4">
-                    <ScrollArea className="h-full">
+                  <div className={`${selectedPartner ? 'hidden md:flex' : 'flex'} md:col-span-1 flex-col border-r border-border bg-muted/30 overflow-hidden`}>
+                    <div className="p-4 border-b border-border flex-shrink-0">
+                      <h3 className="font-semibold text-sm">Conversations</h3>
+                    </div>
+                    <ScrollArea className="flex-1">
                       {loadingConversations ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                          Loading conversations...
+                        <div className="text-center py-12 text-muted-foreground">
+                          <div className="animate-pulse space-y-2">
+                            <div className="h-4 bg-muted rounded w-3/4 mx-auto"></div>
+                            <div className="h-4 bg-muted rounded w-1/2 mx-auto"></div>
+                          </div>
+                          <p className="text-sm mt-4">Loading conversations...</p>
                         </div>
                       ) : activePartnerships.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                          <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                          <p className="text-sm">No active partnerships yet</p>
+                        <div className="text-center py-12 text-muted-foreground">
+                          <MessageSquare className="h-16 w-16 mx-auto mb-4 opacity-30" />
+                          <p className="text-sm font-medium mb-1">No active partnerships</p>
+                          <p className="text-xs">Start a partnership to begin messaging</p>
                         </div>
                       ) : (
-                        <div className="space-y-2">
-                          {activePartnerships.map((partner) => (
-                            <div
-                              key={partner.id}
-                              onClick={() => handleSelectPartner(partner)}
-                              className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                                selectedPartner?.id === partner.id
-                                  ? 'bg-primary/10 border border-primary'
-                                  : 'hover:bg-muted border border-transparent'
-                              }`}
-                            >
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <p className="font-medium truncate">{partner.partner_name}</p>
-                                    {partner.unread_count > 0 && (
-                                      <span className="bg-primary text-primary-foreground text-xs rounded-full px-2 py-0.5">
-                                        {partner.unread_count}
-                                      </span>
+                        <div className="divide-y divide-border">
+                          {activePartnerships.map((partner) => {
+                            const isSelected = selectedPartner?.partnership_id === partner.partnership_id || 
+                                             selectedPartner?.id === partner.id;
+                            return (
+                              <div
+                                key={partner.id || partner.partnership_id}
+                                onClick={() => handleSelectPartner(partner)}
+                                className={`p-4 cursor-pointer transition-all ${
+                                  isSelected
+                                    ? 'bg-primary/10 border-l-2 border-l-primary'
+                                    : 'hover:bg-muted/50 border-l-2 border-l-transparent'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <p className="font-semibold text-sm truncate">{partner.partner_name || 'Partner'}</p>
+                                      {partner.unread_count > 0 && (
+                                        <Badge className="bg-primary text-primary-foreground text-xs h-5 min-w-5 px-1.5 flex items-center justify-center rounded-full">
+                                          {partner.unread_count}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {partner.last_message && (
+                                      <p className="text-xs text-muted-foreground truncate mb-1">
+                                        {partner.last_message}
+                                      </p>
+                                    )}
+                                    {partner.last_message_time && (
+                                      <p className="text-xs text-muted-foreground">
+                                        {new Date(partner.last_message_time).toLocaleDateString('en-US', {
+                                          month: 'short',
+                                          day: 'numeric',
+                                          hour: 'numeric',
+                                          minute: '2-digit'
+                                        })}
+                                      </p>
                                     )}
                                   </div>
-                                  {partner.last_message && (
-                                    <p className="text-xs text-muted-foreground truncate mt-1">
-                                      {partner.last_message}
-                                    </p>
-                                  )}
-                                  {partner.last_message_time && (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      {new Date(partner.last_message_time).toLocaleTimeString()}
-                                    </p>
-                                  )}
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </ScrollArea>
                   </div>
 
                   {/* Conversation Area */}
-                  <div className="md:col-span-2 flex flex-col">
+                  <div className={`${selectedPartner ? 'flex' : 'hidden md:flex'} md:col-span-2 flex-col h-full overflow-hidden`}>
                     {!selectedPartner ? (
-                      <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                        <div className="text-center">
-                          <MessageSquare className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                          <p>Select a partner to start messaging</p>
+                      <div className="flex-1 flex items-center justify-center text-muted-foreground bg-muted/20">
+                        <div className="text-center max-w-sm px-4">
+                          <MessageSquare className="h-20 w-20 mx-auto mb-4 opacity-30" />
+                          <p className="text-base font-medium mb-2">Select a partner to start messaging</p>
+                          <p className="text-sm">Choose a conversation from the list to view and send messages</p>
                         </div>
                       </div>
                     ) : (
                       <>
                         {/* Conversation Header */}
-                        <div className="border-b pb-3 mb-4 flex items-center justify-between">
-                          <div>
-                            <h3 className="font-semibold">{selectedPartner.partner_name}</h3>
-                            <p className="text-xs text-muted-foreground">Active Partnership</p>
+                        <div className="border-b border-border p-3 sm:p-4 bg-background flex items-center justify-between flex-shrink-0">
+                          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                            {/* Back button for mobile */}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                if (selectedPartner?.partnership_id && socketManager.isConnected()) {
+                                  socketManager.leavePartnership(selectedPartner.partnership_id);
+                                }
+                                setSelectedPartner(null);
+                                setMessages([]);
+                              }}
+                              className="h-8 w-8 md:hidden flex-shrink-0"
+                            >
+                              <ArrowLeft className="h-4 w-4" />
+                            </Button>
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-semibold text-sm sm:text-base truncate">{selectedPartner.partner_name || 'Partner'}</h3>
+                              <p className="text-xs text-muted-foreground">Active Partnership</p>
+                            </div>
                           </div>
                           <Button 
                             variant="ghost" 
                             size="icon"
-                            onClick={() => setSelectedPartner(null)}
-                            className="h-8 w-8"
+                            onClick={() => {
+                              if (selectedPartner?.partnership_id && socketManager.isConnected()) {
+                                socketManager.leavePartnership(selectedPartner.partnership_id);
+                              }
+                              setSelectedPartner(null);
+                              setMessages([]);
+                            }}
+                            className="h-8 w-8 hidden md:flex flex-shrink-0"
                           >
                             <X className="h-4 w-4" />
                           </Button>
                         </div>
 
                         {/* Messages */}
-                        <ScrollArea className="flex-1 pr-4 mb-4">
+                        <ScrollArea className="flex-1 p-3 sm:p-4 bg-muted/10 min-h-0">
                           {loadingMessages ? (
-                            <div className="text-center py-8 text-muted-foreground">Loading messages...</div>
+                            <div className="text-center py-12 text-muted-foreground">
+                              <div className="animate-pulse space-y-3">
+                                <div className="flex justify-start">
+                                  <div className="h-12 bg-muted rounded-lg w-48"></div>
+                                </div>
+                                <div className="flex justify-end">
+                                  <div className="h-12 bg-primary/20 rounded-lg w-48"></div>
+                                </div>
+                              </div>
+                              <p className="text-sm mt-4">Loading messages...</p>
+                            </div>
                           ) : messages.length === 0 ? (
-                            <div className="text-center py-8 text-muted-foreground">No messages yet. Start the conversation!</div>
+                            <div className="text-center py-12 text-muted-foreground">
+                              <MessageSquare className="h-16 w-16 mx-auto mb-4 opacity-30" />
+                              <p className="text-sm font-medium mb-1">No messages yet</p>
+                              <p className="text-xs">Start the conversation by sending a message below</p>
+                            </div>
                           ) : (
-                            <div className="space-y-4">
-                              {messages.map((msg) => {
-                                const isOwnMessage = msg.sender_id === currentUserId || msg.sender_id === 'current-user-id';
-                                return (
-                                  <div key={msg.id} className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[70%] rounded-lg p-3 ${
-                                      isOwnMessage ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                                    }`}>
-                                      <p className="text-sm">{msg.message_text}</p>
-                                      <p className={`text-xs mt-1 ${isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                                        {new Date(msg.created_at).toLocaleTimeString()}
-                                      </p>
+                            <div className="space-y-3" ref={messagesContainerRef}>
+                              {messages
+                                .sort((a, b) => {
+                                  const timeA = new Date(a.created_at || a.createdAt || 0).getTime();
+                                  const timeB = new Date(b.created_at || b.createdAt || 0).getTime();
+                                  return timeA - timeB;
+                                })
+                                .map((msg, index) => {
+                                  const messageId = msg.id || msg._id || `msg-${index}`;
+                                  const isOwnMessage = msg.sender_id === currentUserId || 
+                                                     msg.sender?.id === currentUserId ||
+                                                     (typeof msg.sender_id === 'object' && msg.sender_id?.toString() === currentUserId);
+                                  const messageTime = msg.created_at || msg.createdAt || new Date();
+                                  const messageText = msg.message_text || msg.messageText || msg.text || '';
+                                  
+                                  return (
+                                    <div key={messageId} className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} group`}>
+                                    <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[65%] rounded-lg p-2.5 sm:p-3 shadow-sm ${
+                                      isOwnMessage 
+                                        ? 'bg-primary text-primary-foreground rounded-br-sm' 
+                                        : 'bg-background border border-border rounded-bl-sm'
+                                    } ${msg.isOptimistic ? 'opacity-70' : ''}`}>
+                                        {!isOwnMessage && msg.sender?.fullName && (
+                                          <p className="text-[10px] sm:text-xs font-medium mb-1 text-foreground/80">
+                                            {msg.sender.fullName}
+                                          </p>
+                                        )}
+                                        <p className={`text-xs sm:text-sm whitespace-pre-wrap break-words ${
+                                          isOwnMessage ? 'text-primary-foreground' : 'text-foreground'
+                                        }`}>
+                                          {messageText}
+                                        </p>
+                                        <p className={`text-[10px] sm:text-xs mt-1 ${
+                                          isOwnMessage ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                                        }`}>
+                                          {new Date(messageTime).toLocaleTimeString('en-US', {
+                                            hour: 'numeric',
+                                            minute: '2-digit',
+                                            hour12: true
+                                          })}
+                                          {msg.isOptimistic && ' • Sending...'}
+                                        </p>
+                                      </div>
                                     </div>
-                                  </div>
-                                );
-                              })}
+                                  );
+                                })}
+                              <div ref={messagesEndRef} />
                             </div>
                           )}
                         </ScrollArea>
 
                         {/* Message Input */}
-                        <div className="flex gap-2 border-t pt-4">
-                          <Input
-                            placeholder="Type your message..."
-                            value={newMessage}
-                            onChange={(e) => setNewMessage(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                          />
-                          <Button onClick={handleSendMessage} disabled={!newMessage.trim()}>
-                            <Send className="h-4 w-4" />
-                          </Button>
+                        <div className="border-t border-border p-3 sm:p-4 bg-background flex-shrink-0">
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Type your message..."
+                              value={newMessage}
+                              onChange={(e) => setNewMessage(e.target.value)}
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleSendMessage();
+                                }
+                              }}
+                              className="flex-1 text-sm sm:text-base"
+                              disabled={loadingMessages}
+                            />
+                            <Button 
+                              onClick={handleSendMessage} 
+                              disabled={!newMessage.trim() || loadingMessages}
+                              className="shrink-0 h-10 w-10 sm:h-auto sm:w-auto sm:px-4"
+                              size="icon"
+                            >
+                              <Send className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-2 hidden sm:block">
+                            Press Enter to send, Shift+Enter for new line
+                          </p>
                         </div>
                       </>
                     )}
@@ -1117,7 +1694,7 @@ const Settings = () => {
                 </div>
 
                 {/* Security Alerts */}
-                <div className="space-y-4">
+                {/* <div className="space-y-4">
                   <div>
                     <h3 className="font-medium">Security Alerts</h3>
                     <p className="text-sm text-muted-foreground">Get alerts for logins from new devices or locations</p>
@@ -1140,7 +1717,7 @@ const Settings = () => {
                       />
                     </div>
                   </div>
-                </div>
+                </div> */}
 
                 {/* Monthly Insights */}
                 <div className="space-y-4">
@@ -1169,7 +1746,7 @@ const Settings = () => {
                 </div>
 
                 {/* Newsletter */}
-                <div className="border-t pt-6">
+                {/* <div className="border-t pt-6">
                   <div className="bg-secondary/50 rounded-lg p-6 space-y-4">
                     <h3 className="font-medium">Stay in the loop with Media Street Minute</h3>
                     <p className="text-sm text-muted-foreground">A quick weekly rundown of all the latest industry trends along with exciting Media Street updates and offers.</p>
@@ -1184,7 +1761,7 @@ const Settings = () => {
                       </Button>
                     </div>
                   </div>
-                </div>
+                </div> */}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1217,6 +1794,43 @@ const Settings = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Change Email Dialog */}
+      <Dialog open={showChangeEmailDialog} onOpenChange={setShowChangeEmailDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Email Address</DialogTitle>
+            <DialogDescription>
+              Enter your new email address. You'll need to verify it before the change takes effect.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">New Email Address</label>
+              <Input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="Enter new email address"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowChangeEmailDialog(false);
+                  setNewEmail("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleChangeEmail} disabled={isUpdatingProfile}>
+                {isUpdatingProfile ? "Changing..." : "Change Email"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

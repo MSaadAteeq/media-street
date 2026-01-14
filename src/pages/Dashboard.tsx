@@ -11,8 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import Logo from "@/components/Logo";
-import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, TrendingDown, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2, CheckCircle } from "lucide-react";
+import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, TrendingDown, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2, CheckCircle, User } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,6 +30,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
 import { get, post } from "@/services/apis";
+import * as XLSX from 'xlsx';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -86,6 +89,13 @@ const Dashboard = () => {
   const [locationAnalytics, setLocationAnalytics] = useState<any[]>([]);
   const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
   
+  // Display method state - default to "carousel" (Partner Carousel)
+  const [displayMethod, setDisplayMethod] = useState<string>(() => {
+    // Initialize from localStorage, default to "carousel" if not set
+    const saved = localStorage.getItem('displayMethod');
+    return saved || 'carousel';
+  });
+  
   // 30-day metrics state
   const [monthlyMetrics, setMonthlyMetrics] = useState({
     inboundViewsMonth: 0,
@@ -108,6 +118,146 @@ const Dashboard = () => {
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  // Initialize display method from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('displayMethod');
+    if (!saved) {
+      // Set default to "carousel" if not set
+      localStorage.setItem('displayMethod', 'carousel');
+      setDisplayMethod('carousel');
+    } else {
+      setDisplayMethod(saved);
+    }
+  }, []);
+
+  // Update localStorage when display method changes
+  const handleDisplayMethodChange = (value: string) => {
+    setDisplayMethod(value);
+    localStorage.setItem('displayMethod', value);
+    // Also update the old localStorage keys for backward compatibility
+    if (value === 'carousel') {
+      localStorage.setItem('displayCarousel', 'true');
+      localStorage.setItem('displayQR', 'false');
+    } else if (value === 'qr') {
+      localStorage.setItem('displayCarousel', 'false');
+      localStorage.setItem('displayQR', 'true');
+    }
+  };
+
+  // Export location analytics data to Excel
+  const handleExportToExcel = () => {
+    if (!locationAnalytics || locationAnalytics.length === 0) {
+      toast({
+        title: "No Data to Export",
+        description: "There is no location data available to export.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Prepare data for Excel export
+      const excelData = locationAnalytics.map((location: any) => {
+        const totalImpressions = (location.inboundImpressions || 0) + (location.outboundImpressions || 0);
+        const totalRedemptions = (location.inboundRedemptions || 0) + (location.outboundRedemptions || 0);
+        
+        // Format dates
+        let offerDates = '-';
+        if (location.currentOffer?.createdAt && location.currentOffer?.expiresAt) {
+          const startDate = new Date(location.currentOffer.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          });
+          const endDate = new Date(location.currentOffer.expiresAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          });
+          offerDates = `${startDate} - ${endDate}`;
+        } else if (location.currentOffer?.createdAt) {
+          const startDate = new Date(location.currentOffer.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          });
+          offerDates = `${startDate} - N/A`;
+        }
+
+        return {
+          'Location Name': location.name || '-',
+          'Address': location.address || '-',
+          'Current Offer': location.currentOffer ? 'Yes' : 'No',
+          'Offer Start Date': location.currentOffer?.createdAt 
+            ? new Date(location.currentOffer.createdAt).toLocaleDateString('en-US')
+            : '-',
+          'Offer End Date': location.currentOffer?.expiresAt 
+            ? new Date(location.currentOffer.expiresAt).toLocaleDateString('en-US')
+            : '-',
+          'Offer Dates': offerDates,
+          'Inbound Impressions': location.inboundImpressions || 0,
+          'Inbound Redemptions': location.inboundRedemptions || 0,
+          'Outbound Impressions': location.outboundImpressions || 0,
+          'Outbound Redemptions': location.outboundRedemptions || 0,
+          'Total Impressions': totalImpressions,
+          'Total Redemptions': totalRedemptions,
+          'Active Partners': location.partners || 0,
+          'Open Offer': location.isOpenOffer ? 'Yes' : 'No',
+          'Location Created': location.createdAt 
+            ? new Date(location.createdAt).toLocaleDateString('en-US')
+            : '-'
+        };
+      });
+
+      // Create a new workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+
+      // Set column widths
+      const colWidths = [
+        { wch: 25 }, // Location Name
+        { wch: 40 }, // Address
+        { wch: 15 }, // Current Offer
+        { wch: 18 }, // Offer Start Date
+        { wch: 18 }, // Offer End Date
+        { wch: 25 }, // Offer Dates
+        { wch: 20 }, // Inbound Impressions
+        { wch: 20 }, // Inbound Redemptions
+        { wch: 20 }, // Outbound Impressions
+        { wch: 20 }, // Outbound Redemptions
+        { wch: 18 }, // Total Impressions
+        { wch: 18 }, // Total Redemptions
+        { wch: 18 }, // Active Partners
+        { wch: 12 }, // Open Offer
+        { wch: 18 }  // Location Created
+      ];
+      ws['!cols'] = colWidths;
+
+      // Add the worksheet to the workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Location Analytics');
+
+      // Generate filename with current date
+      const today = new Date();
+      const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+      const filename = `Media_Street_Location_Analytics_${dateStr}.xlsx`;
+
+      // Write the file
+      XLSX.writeFile(wb, filename);
+
+      toast({
+        title: "Export Successful",
+        description: `Location analytics data has been exported to ${filename}`,
+      });
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      toast({
+        title: "Export Failed",
+        description: "An error occurred while exporting the data. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Listen for location toggle events to update hasOpenOffer state
   useEffect(() => {
@@ -278,29 +428,77 @@ const Dashboard = () => {
       const outboundViewsLastMonth = outboundImpressionsPrevious30Days.length;
 
       // Calculate redemptions (inbound and outbound)
+      // Inbound: User's offers redeemed at other locations
+      // Outbound: Other users' offers redeemed at user's locations
       const inboundRedemptionsMonth = currentUserId ? redemptionsLast30Days.filter((r: any) => {
-        const offerUserId = r.offer?.userId?._id?.toString() || r.offer?.userId?.toString() || r.offer?.userId;
-        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || r.redeemedAtLocationId?.userId?.toString() || r.redeemedAtLocationId?.userId;
-        return offerUserId && locationUserId && offerUserId === currentUserId && offerUserId !== locationUserId;
+        // Get offer owner ID
+        const offerUserId = r.offerId?.userId?._id?.toString() || 
+                           r.offerId?.userId?.toString() || 
+                           r.offer?.userId?._id?.toString() || 
+                           r.offer?.userId?.toString() || 
+                           r.offer?.userId;
+        
+        // Get location owner ID (where redemption happened)
+        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || 
+                              r.redeemedAtLocationId?.userId?.toString() || 
+                              r.redeemedAtLocationId?.userId ||
+                              (r.redeemedAtLocationId && typeof r.redeemedAtLocationId === 'object' ? r.redeemedAtLocationId.userId : null);
+        
+        // Inbound: offer belongs to current user, but redeemed at different location
+        return offerUserId && 
+               locationUserId && 
+               offerUserId === currentUserId && 
+               locationUserId !== currentUserId;
       }).length : 0;
 
       const inboundRedemptionsLastMonth = currentUserId ? redemptionsPrevious30Days.filter((r: any) => {
-        const offerUserId = r.offer?.userId?._id?.toString() || r.offer?.userId?.toString() || r.offer?.userId;
-        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || r.redeemedAtLocationId?.userId?.toString() || r.redeemedAtLocationId?.userId;
-        return offerUserId && locationUserId && offerUserId === currentUserId && offerUserId !== locationUserId;
+        const offerUserId = r.offerId?.userId?._id?.toString() || 
+                           r.offerId?.userId?.toString() || 
+                           r.offer?.userId?._id?.toString() || 
+                           r.offer?.userId?.toString() || 
+                           r.offer?.userId;
+        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || 
+                              r.redeemedAtLocationId?.userId?.toString() || 
+                              r.redeemedAtLocationId?.userId ||
+                              (r.redeemedAtLocationId && typeof r.redeemedAtLocationId === 'object' ? r.redeemedAtLocationId.userId : null);
+        return offerUserId && 
+               locationUserId && 
+               offerUserId === currentUserId && 
+               locationUserId !== currentUserId;
       }).length : 0;
 
       // Calculate outbound redemptions (partner offers redeemed at user's locations)
       const outboundRedemptionsMonth = currentUserId ? redemptionsLast30Days.filter((r: any) => {
-        const offerUserId = r.offer?.userId?._id?.toString() || r.offer?.userId?.toString() || r.offer?.userId;
-        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || r.redeemedAtLocationId?.userId?.toString() || r.redeemedAtLocationId?.userId;
-        return offerUserId && locationUserId && locationUserId === currentUserId && offerUserId !== locationUserId;
+        const offerUserId = r.offerId?.userId?._id?.toString() || 
+                           r.offerId?.userId?.toString() || 
+                           r.offer?.userId?._id?.toString() || 
+                           r.offer?.userId?.toString() || 
+                           r.offer?.userId;
+        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || 
+                              r.redeemedAtLocationId?.userId?.toString() || 
+                              r.redeemedAtLocationId?.userId ||
+                              (r.redeemedAtLocationId && typeof r.redeemedAtLocationId === 'object' ? r.redeemedAtLocationId.userId : null);
+        // Outbound: redemption happened at current user's location, but offer belongs to different user
+        return offerUserId && 
+               locationUserId && 
+               locationUserId === currentUserId && 
+               offerUserId !== currentUserId;
       }).length : 0;
 
       const outboundRedemptionsLastMonth = currentUserId ? redemptionsPrevious30Days.filter((r: any) => {
-        const offerUserId = r.offer?.userId?._id?.toString() || r.offer?.userId?.toString() || r.offer?.userId;
-        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || r.redeemedAtLocationId?.userId?.toString() || r.redeemedAtLocationId?.userId;
-        return offerUserId && locationUserId && locationUserId === currentUserId && offerUserId !== locationUserId;
+        const offerUserId = r.offerId?.userId?._id?.toString() || 
+                           r.offerId?.userId?.toString() || 
+                           r.offer?.userId?._id?.toString() || 
+                           r.offer?.userId?.toString() || 
+                           r.offer?.userId;
+        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || 
+                              r.redeemedAtLocationId?.userId?.toString() || 
+                              r.redeemedAtLocationId?.userId ||
+                              (r.redeemedAtLocationId && typeof r.redeemedAtLocationId === 'object' ? r.redeemedAtLocationId.userId : null);
+        return offerUserId && 
+               locationUserId && 
+               locationUserId === currentUserId && 
+               offerUserId !== currentUserId;
       }).length : 0;
 
       setMonthlyMetrics({
@@ -1035,7 +1233,16 @@ const Dashboard = () => {
       return;
     }
 
-    setIsLoading(true);
+    if (!couponVerification?.valid) {
+      toast({
+        title: "Invalid Coupon",
+        description: "Please verify the coupon code before redeeming",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsRedeeming(true);
     try {
       // Redeem coupon code - location will be automatically determined from the redemption record
       const response = await post({
@@ -1055,8 +1262,8 @@ const Dashboard = () => {
 
         setCouponCode("");
         setCouponVerification(null);
-        // Refresh dashboard data
-        fetchDashboardData();
+        // Refresh dashboard data to update redemption counts
+        await fetchDashboardData();
       } else {
         throw new Error(response.message || 'Failed to redeem coupon');
       }
@@ -1067,7 +1274,7 @@ const Dashboard = () => {
         variant: "destructive"
       });
     } finally {
-      setIsLoading(false);
+      setIsRedeeming(false);
     }
   };
 
@@ -1223,16 +1430,31 @@ const Dashboard = () => {
               </Popover>
               <Popover>
                 <PopoverTrigger asChild>
-                  <div className="w-8 h-8 bg-gradient-to-r from-primary to-accent-green rounded-full cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center relative z-50">
-                    <div className="w-6 h-6 bg-gradient-to-r from-primary to-accent-green rounded-full border-2 border-background">
-                      {currentUser?.fullName ? (
-                        <div className="w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white text-xs font-semibold">
-                          {currentUser.fullName.charAt(0).toUpperCase()}
-                        </div>
-                      ) : (
-                        <img src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" alt={currentUser?.fullName || "User"} className="w-full h-full rounded-full object-cover" />
-                      )}
-                    </div>
+                  <div className="w-8 h-8 bg-gradient-to-r from-primary to-accent-green rounded-full cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center relative z-50 overflow-hidden">
+                    {currentUser?.avatar ? (
+                      <img
+                        src={currentUser.avatar}
+                        alt={currentUser?.fullName || "User"}
+                        className="w-full h-full rounded-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          const parent = target.parentElement;
+                          if (parent) {
+                            const fallback = document.createElement('div');
+                            fallback.className = 'w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white text-xs font-semibold';
+                            fallback.textContent = currentUser?.fullName?.charAt(0).toUpperCase() || 'U';
+                            parent.appendChild(fallback);
+                          }
+                        }}
+                      />
+                    ) : currentUser?.fullName ? (
+                      <div className="w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white text-xs font-semibold">
+                        {currentUser.fullName.charAt(0).toUpperCase()}
+                      </div>
+                    ) : (
+                      <User className="h-5 w-5 text-white" />
+                    )}
                   </div>
                 </PopoverTrigger>
                 <PopoverContent align="end" sideOffset={8} className="w-80 p-0 bg-card border-border shadow-lg z-[100]">
@@ -1241,13 +1463,30 @@ const Dashboard = () => {
                     <div className="space-y-3">
                       <div className="text-muted-foreground text-sm font-medium">Account</div>
                       <div className="flex items-center space-x-3">
-                        <div className="w-12 h-12 bg-gradient-to-r from-primary to-accent-green rounded-full flex items-center justify-center">
-                          {currentUser?.fullName ? (
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white font-semibold">
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-gradient-to-r from-primary to-accent-green flex items-center justify-center flex-shrink-0">
+                          {currentUser?.avatar ? (
+                            <img
+                              src={currentUser.avatar}
+                              alt={currentUser?.fullName || "User"}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                const parent = target.parentElement;
+                                if (parent) {
+                                  const fallback = document.createElement('div');
+                                  fallback.className = 'w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white font-semibold text-lg';
+                                  fallback.textContent = currentUser?.fullName?.charAt(0).toUpperCase() || 'U';
+                                  parent.appendChild(fallback);
+                                }
+                              }}
+                            />
+                          ) : currentUser?.fullName ? (
+                            <div className="w-full h-full rounded-full bg-gradient-to-r from-primary to-accent-green flex items-center justify-center text-white font-semibold text-lg">
                               {currentUser.fullName.charAt(0).toUpperCase()}
                             </div>
                           ) : (
-                            <img src="/lovable-uploads/3c4bccb9-97d2-4019-b7e2-fb8f77dae9ad.png" alt={currentUser?.fullName || "User"} className="w-10 h-10 rounded-full object-cover" />
+                            <User className="h-6 w-6 text-white" />
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -1468,9 +1707,14 @@ const Dashboard = () => {
                     <Button
                       size="sm"
                       onClick={handleLogRedemption}
-                      disabled={!couponCode.trim() || couponCode.length !== 6 || isLoading || !couponVerification?.valid}
+                      disabled={!couponCode.trim() || couponCode.length !== 6 || isLoading || isRedeeming || !couponVerification?.valid}
                     >
-                      {isLoading ? "Processing..." : "Redeem"}
+                      {isRedeeming ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 inline-block"></div>
+                          Redeeming...
+                        </>
+                      ) : "Redeem"}
                     </Button>
                   </div>
 
@@ -1603,13 +1847,10 @@ const Dashboard = () => {
                   <div className="bg-muted/30 rounded-lg p-4 border border-border/50">
                     <div className="mb-3">
                       <p className="text-sm font-medium text-foreground">Please select your in-store display method:</p>
-                      <p className="text-xs text-muted-foreground mt-1">Both methods are recommended</p>
                     </div>
-                    <div className="flex flex-col sm:flex-row gap-3">
+                    <RadioGroup value={displayMethod} onValueChange={handleDisplayMethodChange} className="flex flex-col sm:flex-row gap-3">
                       <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-background flex-1">
-                        <Checkbox id="dashboard-carousel" className="h-4 w-4" onCheckedChange={checked => {
-                          localStorage.setItem('displayCarousel', String(checked));
-                        }} defaultChecked={localStorage.getItem('displayCarousel') === 'true'} />
+                        <RadioGroupItem value="carousel" id="dashboard-carousel" className="h-4 w-4" />
                         <label htmlFor="dashboard-carousel" className="flex items-center gap-2 text-sm font-medium cursor-pointer flex-1">
                           <Monitor className="h-4 w-4" />
                           <span>Partner Carousel <span className="text-muted-foreground font-normal">(Best)</span></span>
@@ -1620,9 +1861,7 @@ const Dashboard = () => {
                       </div>
 
                       <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-background flex-1">
-                        <Checkbox id="dashboard-qr" className="h-4 w-4" onCheckedChange={checked => {
-                          localStorage.setItem('displayQR', String(checked));
-                        }} defaultChecked={localStorage.getItem('displayQR') === 'true'} />
+                        <RadioGroupItem value="qr" id="dashboard-qr" className="h-4 w-4" />
                         <label htmlFor="dashboard-qr" className="flex items-center gap-2 text-sm font-medium cursor-pointer flex-1">
                           <Printer className="h-4 w-4" />
                           <span>QR Codes <span className="text-muted-foreground font-normal">(Easiest)</span></span>
@@ -1631,7 +1870,7 @@ const Dashboard = () => {
                           Print
                         </Button>
                       </div>
-                    </div>
+                    </RadioGroup>
                   </div>
                 </div>
               </CardContent>
@@ -1881,7 +2120,12 @@ const Dashboard = () => {
                 <Button variant="default" className="bg-primary hover:bg-primary/90" onClick={() => navigate('/offers')}>
                   Manage Your Offers
                 </Button>
-                <Button variant="outline" className="border-border hover:bg-secondary">
+                <Button 
+                  variant="outline" 
+                  className="border-border hover:bg-secondary"
+                  onClick={handleExportToExcel}
+                  disabled={!locationAnalytics || locationAnalytics.length === 0}
+                >
                   <Download className="h-4 w-4 mr-2" />
                   Export
                 </Button>
