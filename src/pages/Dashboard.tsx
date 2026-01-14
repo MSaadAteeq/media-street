@@ -52,6 +52,7 @@ const Dashboard = () => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [supportDialogOpen, setSupportDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedeeming, setIsRedeeming] = useState(false);
   const [openOfferDialogOpen, setOpenOfferDialogOpen] = useState(false);
   const [selectedLocationForOO, setSelectedLocationForOO] = useState<any>(null);
   const [togglingOpenOffer, setTogglingOpenOffer] = useState(false);
