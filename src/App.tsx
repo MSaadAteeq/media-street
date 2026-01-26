@@ -32,9 +32,15 @@ import Carousel from "./pages/Carousel";
 import LocationQR from "./pages/LocationQR";
 import Insights from "./pages/Insights";
 import NYCDeals from "./pages/NYCDeals";
+import OpenOffers from "./pages/OpenOffers";
 import AdvertiserSignup from "./pages/AdvertiserSignup";
 import AdvertiserDashboard from "./pages/AdvertiserDashboard";
 import AdvertiserCampaignCreate from "./pages/AdvertiserCampaignCreate";
+import TopOffers from "./pages/TopOffers";
+import MobileCoupons from "./pages/MobileCoupons";
+import EmailPreview from "./pages/EmailPreview";
+import PartnershipEmailPreview from "./pages/PartnershipEmailPreview";
+import AdminRedemptions from "./pages/AdminRedemptions";
 
 const queryClient = new QueryClient();
 
@@ -51,19 +57,9 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/advertiser/signup" element={<AdvertiserSignup />} />
+              <Route path="/advertiser/dashboard" element={<ProtectedRoute><AdvertiserDashboard /></ProtectedRoute>} />
+              <Route path="/advertiser/campaign/create" element={<ProtectedRoute><AdvertiserCampaignCreate /></ProtectedRoute>} />
               <Route path="/reset-password" element={<PasswordReset />} />
-              <Route path="/terms-of-service" element={<TermsOfService />} />
-              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-              <Route path="/faq" element={<FAQ />} />
-              <Route path="/nyc-deals" element={<NYCDeals />} />
-              <Route path="/redeem/:offerCode/:locationId?" element={<Redeem />} />
-              <Route path="/redeem/:offerCode/confirm" element={<RedeemConfirm />} />
-              <Route path="/location-qr" element={<ProtectedRoute><LocationQR /></ProtectedRoute>} />
-              <Route path="/location-qr/:locationId" element={<ProtectedRoute><LocationQR /></ProtectedRoute>} />
-              <Route path="/locations/:locationId/qr" element={<LocationQR />} />
-              <Route path="/carousel/:locationId" element={<Carousel />} />
-              
-              {/* Protected Routes - Require Authentication */}
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/locations" element={<ProtectedRoute><Locations /></ProtectedRoute>} />
               <Route path="/offers" element={<ProtectedRoute><Offers /></ProtectedRoute>} />
@@ -72,9 +68,9 @@ const App = () => (
               <Route path="/offerx" element={<ProtectedRoute><OfferX /></ProtectedRoute>} />
               <Route path="/display" element={<ProtectedRoute><InStoreDisplay /></ProtectedRoute>} />
               <Route path="/requests" element={<ProtectedRoute><PartnerRequests /></ProtectedRoute>} />
-              <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
-              <Route path="/advertiser/dashboard" element={<ProtectedRoute><AdvertiserDashboard /></ProtectedRoute>} />
-              <Route path="/advertiser/campaign/create" element={<ProtectedRoute><AdvertiserCampaignCreate /></ProtectedRoute>} />
+              <Route path="/admin" element={<RoleProtectedRoute allowedRoles={["admin"]}><Admin /></RoleProtectedRoute>} />
+              <Route path="/admin/redemptions" element={<RoleProtectedRoute allowedRoles={["admin"]}><AdminRedemptions /></RoleProtectedRoute>} />
+              <Route path="/insights" element={<ProtectedRoute><TopOffers /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               <Route path="/settings/profile" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               <Route path="/settings/messages" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
@@ -82,10 +78,23 @@ const App = () => (
               <Route path="/settings/security" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               <Route path="/settings/notifications" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               <Route path="/settings/content" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-              
-              {/* Admin Routes - Require Admin Role */}
-              <Route path="/admin" element={<RoleProtectedRoute allowedRoles={["admin"]}><Admin /></RoleProtectedRoute>} />
-              
+              <Route path="/terms-of-service" element={<TermsOfService />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="/faq" element={<FAQ />} />
+              <Route path="/redeem" element={<Redeem />} />
+              <Route path="/redeem/confirm" element={<RedeemConfirm />} />
+              <Route path="/redeem/:offerCode" element={<Redeem />} />
+              <Route path="/redeem/:offerCode/confirm" element={<RedeemConfirm />} />
+              <Route path="/location-qr" element={<ProtectedRoute><LocationQR /></ProtectedRoute>} />
+              <Route path="/location-qr/:locationId" element={<ProtectedRoute><LocationQR /></ProtectedRoute>} />
+              <Route path="/locations/:locationId/qr" element={<LocationQR />} />
+              <Route path="/location-qr/:locationId" element={<LocationQR />} />
+              <Route path="/carousel/:locationId" element={<Carousel />} />
+              <Route path="/coupons/:locationId" element={<MobileCoupons />} />
+              <Route path="/nyc-deals" element={<NYCDeals />} />
+              <Route path="/open-offers" element={<OpenOffers />} />
+              <Route path="/email-preview" element={<EmailPreview />} />
+              <Route path="/email-preview/partnership" element={<PartnershipEmailPreview />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

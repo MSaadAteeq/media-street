@@ -53,7 +53,7 @@ const Hero = () => {
 
             {/* Floating Stats Cards */}
             <div className="absolute -top-2 sm:-top-4 -right-2 sm:-right-4 bg-card p-2 sm:p-3 md:p-4 rounded-lg shadow-medium border animate-slide-up">
-              <div className="text-lg sm:text-xl md:text-2xl font-bold text-accent-green">2,847</div>
+              <div className="text-lg sm:text-xl md:text-2xl font-bold text-accent-green">5,847</div>
               <div className="text-xs sm:text-sm text-muted-foreground">Referrals Made</div>
             </div>
 

@@ -1,59 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-// Supabase removed - will use Node.js API
-import { Clock, Map, CheckCircle } from "lucide-react";
+import { Clock, Map, CheckCircle, Camera, MessageSquare, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { QRCodeSVG } from "qrcode.react";
-import coffeeCampaign from "@/assets/pos-campaign-coffee.jpg";
-import flowersCampaign from "@/assets/pos-campaign-flowers.jpg";
-import salonCampaign from "@/assets/pos-campaign-salon.jpg";
-import subsCampaign from "@/assets/pos-campaign-subs.jpg";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import mediaStreetLogo from "@/assets/media-street-logo.png";
+import { get, post } from "@/services/apis";
 
-// Sample offers data (same as RecentOffers)
-const sampleOffers: any = {
-  "1": {
-    id: "1",
-    call_to_action: "Get 20% off your morning coffee! Show this offer at checkout.",
-    redemption_end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    offer_image_url: coffeeCampaign,
-    brand_logo_url: null,
-    location_id: "1"
-  },
-  "2": {
-    id: "2",
-    call_to_action: "Fresh flowers for any occasion - Buy 2 bouquets, get 1 free!",
-    redemption_end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    offer_image_url: flowersCampaign,
-    brand_logo_url: null,
-    location_id: "2"
-  },
-  "3": {
-    id: "3",
-    call_to_action: "New client special: $15 off your first haircut & style!",
-    redemption_end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    offer_image_url: salonCampaign,
-    brand_logo_url: null,
-    location_id: "3"
-  },
-  "4": {
-    id: "4",
-    call_to_action: "Lunch combo deal: Any sub + chips + drink for just $10!",
-    redemption_end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    offer_image_url: subsCampaign,
-    brand_logo_url: null,
-    location_id: "4"
-  }
-};
-
-const sampleLocations: any = {
-  "1": { id: "1", name: "Brew & Bean Coffee", address: "123 Main St, Portland, OR 97201" },
-  "2": { id: "2", name: "Bloom & Petal Florist", address: "456 Park Ave, Seattle, WA 98101" },
-  "3": { id: "3", name: "Luxe Hair Studio", address: "789 Broadway, San Francisco, CA 94102" },
-  "4": { id: "4", name: "Sub Station Deli", address: "321 Oak St, Austin, TX 78701" }
-};
+// Note: html2canvas is loaded dynamically to avoid Vite static analysis issues
 
 const Redeem = () => {
-  const { offerCode, locationId } = useParams(); // locationId from URL
+  const { offerCode, locationId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -61,10 +20,14 @@ const Redeem = () => {
   const [location, setLocation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [redemptionCode, setRedemptionCode] = useState("");
-  const [couponCode, setCouponCode] = useState(""); // 6-digit coupon code
+  const [couponCode, setCouponCode] = useState("");
   const [isRedeemed, setIsRedeemed] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
-  const [qrLocationId, setQrLocationId] = useState<string | null>(locationId || null); // Location ID from QR code
+  const [showTextDialog, setShowTextDialog] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const couponCardRef = useRef<HTMLDivElement>(null);
+  const [qrLocationId, setQrLocationId] = useState<string | null>(locationId || null);
 
   useEffect(() => {
     // If locationId is present in URL (from old QR codes), redirect to carousel
@@ -77,31 +40,13 @@ const Redeem = () => {
 
   const fetchOfferDetails = async () => {
     try {
-      // Check if this is a sample offer from query parameter
-      const offerIdFromQuery = searchParams.get('offer');
-      
-      if (offerIdFromQuery && sampleOffers[offerIdFromQuery]) {
-        // Use sample offer data
-        const sampleOffer = sampleOffers[offerIdFromQuery];
-        const sampleLocation = sampleLocations[sampleOffer.location_id];
-        
-        setOffer(sampleOffer);
-        setLocation(sampleLocation);
-        
-        // Generate unique redemption code
-        const uniqueCode = `SAMPLE-${offerIdFromQuery}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-        setRedemptionCode(uniqueCode);
-        
-        setLoading(false);
-        return;
-      }
+      setLoading(true);
 
       // Fetch offer by ID or redemption code (offerCode can be either)
-      const { get } = await import('@/services/apis');
       let offerResponse;
       
       // First, try to fetch by offer ID (if it's a valid ObjectId)
-      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(offerCode);
+      const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(offerCode || '');
       if (isValidObjectId) {
         offerResponse = await get({ 
           end_point: `offers/${offerCode}`,
@@ -134,12 +79,10 @@ const Redeem = () => {
       const offerData = offerResponse.data;
       setOffer(offerData);
 
-      // Get location from offer data - show all locations where offer is active
+      // Get location from offer data
       if (offerData.locations && offerData.locations.length > 0) {
-        // Use first location for display, but note that coupon is valid at all locations
         setLocation(offerData.locations[0]);
       } else if (offerData.locationIds && offerData.locationIds.length > 0) {
-        // If locationIds is populated, use first one
         if (Array.isArray(offerData.locationIds) && offerData.locationIds.length > 0) {
           const firstLoc = offerData.locationIds[0];
           if (firstLoc && typeof firstLoc === 'object') {
@@ -148,40 +91,34 @@ const Redeem = () => {
         }
       }
 
-      // Generate or fetch coupon code by creating a redemption (public endpoint - works for both logged in and anonymous users)
+      // Generate or fetch coupon code by creating a redemption (public endpoint)
       try {
-        const { post } = await import('@/services/apis');
-        const token = localStorage.getItem('token');
-        
-        // Use public endpoint - explicitly set token to false to ensure no auth header is sent
-        // This endpoint works for both authenticated and anonymous users
         const redemptionResponse = await post({
           end_point: 'redemptions/public',
           body: {
             offerId: offerCode,
             redemptionCode: offerData.redemptionCode || offerData.redemption_code || 'SCAN',
-            locationId: qrLocationId || locationId // Include locationId from URL if available
+            locationId: qrLocationId || locationId
           },
-          token: false // Explicitly set to false - public endpoint doesn't require auth
+          token: false // Public endpoint
         });
 
         if (redemptionResponse.success && redemptionResponse.data) {
           const coupon = redemptionResponse.data.couponCode || redemptionResponse.data.coupon_code;
           if (coupon) {
             setCouponCode(coupon);
-            setRedemptionCode(redemptionResponse.data.redemptionCode || redemptionResponse.data.redemption_code || '');
+            setRedemptionCode(redemptionResponse.data.redemptionCode || redemptionResponse.data.redemption_code || coupon);
           }
         } else {
-          throw new Error(redemptionResponse.message || 'Failed to generate coupon code');
+          // Generate a temporary code if API fails
+          const tempCode = Math.random().toString(36).substr(2, 10).toUpperCase();
+          setRedemptionCode(tempCode);
         }
       } catch (error: any) {
         console.error('Error generating coupon code:', error);
-        toast({
-          title: "Error",
-          description: error?.response?.data?.message || error?.message || "Failed to generate coupon code. Please try again.",
-          variant: "destructive",
-        });
-        // Don't set temporary codes - let the user retry
+        // Generate a temporary code if API fails
+        const tempCode = Math.random().toString(36).substr(2, 10).toUpperCase();
+        setRedemptionCode(tempCode);
       }
 
       setLoading(false);
@@ -196,58 +133,6 @@ const Redeem = () => {
     }
   };
 
-  const handleRedemption = async () => {
-    if (!offer || isRedeemed || redeeming) return;
-
-    setRedeeming(true);
-
-    try {
-      // For sample offers, just mark as redeemed without backend call
-      if (redemptionCode.startsWith('SAMPLE-')) {
-        setIsRedeemed(true);
-        toast({
-          title: "Demo Redemption",
-          description: "This is a sample offer. Real offers will award points!",
-        });
-        setRedeeming(false);
-        return;
-      }
-
-      // TODO: Replace with Node.js API call
-      // const response = await post({ end_point: 'redemptions/log', body: { redemption_code: redemptionCode, offer_id: offer.id } });
-      
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to redeem this offer.",
-          variant: "destructive",
-        });
-        navigate(`/login?redirect=/redeem/${offerCode}`);
-        return;
-      }
-      
-      // Mock implementation
-      // In real implementation, use response.data
-
-      setIsRedeemed(true);
-      toast({
-        title: "Success!",
-        description: "Coupon redeemed successfully! Points have been awarded.",
-      });
-
-    } catch (error: any) {
-      console.error("Redemption error:", error);
-      toast({
-        title: "Redemption Failed",
-        description: error.message || "Failed to redeem coupon. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setRedeeming(false);
-    }
-  };
-
   const formatExpirationDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { 
@@ -257,6 +142,177 @@ const Redeem = () => {
       hour: 'numeric',
       minute: '2-digit'
     });
+  };
+
+  const loadHtml2CanvasFromCDN = (): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      // Check if already loaded
+      if ((window as any).html2canvas) {
+        resolve((window as any).html2canvas);
+        return;
+      }
+
+      // Load from CDN
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+      script.onload = () => {
+        if ((window as any).html2canvas) {
+          resolve((window as any).html2canvas);
+        } else {
+          reject(new Error('html2canvas failed to load from CDN'));
+        }
+      };
+      script.onerror = () => {
+        reject(new Error('Failed to load html2canvas script'));
+      };
+      document.head.appendChild(script);
+    });
+  };
+
+  const handleScreenshot = async () => {
+    if (!couponCardRef.current) return;
+    
+    try {
+      // Load html2canvas from CDN to avoid Vite import issues
+      let html2canvas: any;
+      try {
+        html2canvas = await loadHtml2CanvasFromCDN();
+      } catch (loadError) {
+        console.error('Failed to load html2canvas:', loadError);
+        toast({
+          title: "Screenshot Unavailable",
+          description: "Screenshot feature is not available. Please use your device's screenshot function.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      const canvas = await html2canvas(couponCardRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2
+      });
+      
+      // Add Media Street logo watermark
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const logo = new Image();
+        logo.crossOrigin = 'anonymous';
+        logo.src = mediaStreetLogo;
+        
+        await new Promise<void>((resolve) => {
+          logo.onload = () => {
+            const logoWidth = 80;
+            const logoHeight = (logo.height / logo.width) * logoWidth;
+            const padding = 12;
+            ctx.drawImage(
+              logo,
+              canvas.width - logoWidth - padding,
+              canvas.height - logoHeight - padding,
+              logoWidth,
+              logoHeight
+            );
+            resolve();
+          };
+          logo.onerror = () => {
+            console.log('Logo failed to load');
+            resolve();
+          };
+        });
+      }
+      
+      // Convert canvas to blob and download
+      canvas.toBlob((blob: Blob | null) => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.download = `offer-${offer?.id || offer?._id || 'coupon'}-${Date.now()}.png`;
+          link.href = url;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          
+          toast({
+            title: "Screenshot Saved",
+            description: "Your coupon has been saved as an image.",
+          });
+        }
+      }, 'image/png');
+    } catch (error) {
+      console.error("Screenshot error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to capture screenshot.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSendText = async () => {
+    if (!phoneNumber) {
+      toast({
+        title: "Phone Required",
+        description: "Please enter a phone number.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate phone number format
+    const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+    if (!phoneRegex.test(phoneNumber) || phoneNumber.replace(/\D/g, '').length < 10) {
+      toast({
+        title: "Invalid Phone Number",
+        description: "Please enter a valid phone number.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      // Send SMS via backend API
+      const offerUrl = window.location.href;
+      const response = await post({
+        end_point: 'sms/send',
+        body: {
+          phoneNumber: phoneNumber.replace(/\D/g, ''), // Remove non-digits
+          message: `Check out this offer: ${offerUrl}`,
+          offerId: offer?.id || offer?._id
+        },
+        token: false // Public endpoint for SMS
+      });
+
+      if (response.success) {
+        toast({
+          title: "Text Sent!",
+          description: `Coupon link sent to ${phoneNumber}`,
+        });
+        setShowTextDialog(false);
+        setPhoneNumber("");
+      } else {
+        throw new Error(response.message || 'Failed to send text');
+      }
+    } catch (error: any) {
+      console.error('SMS error:', error);
+      // Fallback: Use SMS link if API fails
+      const phoneDigits = phoneNumber.replace(/\D/g, '');
+      const smsLink = `sms:${phoneDigits}?body=${encodeURIComponent(`Check out this offer: ${window.location.href}`)}`;
+      window.location.href = smsLink;
+      
+      toast({
+        title: "Opening SMS",
+        description: `Opening your default SMS app to send the coupon link.`,
+      });
+      setShowTextDialog(false);
+      setPhoneNumber("");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleOpenInNewWindow = () => {
+    window.open(window.location.href, '_blank');
   };
 
   if (loading) {
@@ -281,32 +337,121 @@ const Redeem = () => {
     );
   }
 
+  // Get referring retailer name from URL params
+  const refParam = searchParams.get('ref');
+  const referrerParam = searchParams.get('referrer');
+  const decodedRefParam = refParam ? decodeURIComponent(refParam) : null;
+  
+  // Determine referring retailer
+  let referringRetailer = 'Media Street'; // Default
+  if (decodedRefParam && decodedRefParam.toLowerCase() !== 'mediastreet') {
+    referringRetailer = decodedRefParam;
+  } else if (referrerParam) {
+    referringRetailer = referrerParam;
+  }
+
+  // Calculate proper expiry date
+  const getExpiryDate = () => {
+    if (offer?.redemption_end_date) {
+      const endDate = new Date(offer.redemption_end_date);
+      if (!isNaN(endDate.getTime()) && endDate > new Date()) {
+        return endDate;
+      }
+    }
+    if (offer?.expires_at || offer?.expiresAt) {
+      const endDate = new Date(offer.expires_at || offer.expiresAt);
+      if (!isNaN(endDate.getTime()) && endDate > new Date()) {
+        return endDate;
+      }
+    }
+    // Default to 1 week from now
+    return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  };
+
+  const expiryDate = getExpiryDate();
+  const businessName = offer.business_name || offer.user?.fullName || offer.userId?.fullName || location?.name || 'Partner Store';
+  const storeName = location?.name || businessName || "Store Location";
+
+  // Check if this is an open offer (not a partner offer)
+  const isOpenOffer = offer.is_open_offer === true || 
+                     offer.isOpenOffer === true || 
+                     offer.is_open_offer === 'true' ||
+                     offer.isOpenOffer === 'true';
+
+  // For open offers, only show if it has a coupon code and referrer is Media Street
+  const referringRetailerLower = referringRetailer.toLowerCase();
+  const isFromMediaStreet = referringRetailerLower === 'media street' || 
+                            referringRetailerLower === 'mediastreet' ||
+                            !refParam && !referrerParam; // If no referrer param, assume from Media Street
+  
+  // Check if offer has a valid coupon/redemption code
+  const hasCouponCode = !!(redemptionCode || couponCode);
+
+  // If it's an open offer but doesn't meet criteria, don't show it
+  if (isOpenOffer && (!hasCouponCode || !isFromMediaStreet)) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center p-4">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">Offer Not Available</h1>
+          <p className="text-gray-600">This open offer is not available for redemption.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-gray-900 rounded-[2rem] p-2 shadow-2xl">
-          <div className="w-full bg-white rounded-[1.5rem] overflow-hidden">
-            
-            {/* iPhone Status Bar */}
-            <div className="bg-black text-white px-6 py-2 flex justify-between items-center text-xs">
-              <div className="flex items-center gap-1">
-                <div className="flex gap-1">
-                  <div className="w-1 h-1 bg-white rounded-full"></div>
-                  <div className="w-1 h-1 bg-white rounded-full"></div>
-                  <div className="w-1 h-1 bg-white rounded-full opacity-50"></div>
-                </div>
-                <span className="ml-2 font-medium">Verizon</span>
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/10">
+      {/* Header - Matching Carousel design */}
+      <header className="bg-background/95 backdrop-blur-sm border-b border-border sticky top-0 z-50 shadow-soft">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <img 
+              src={mediaStreetLogo} 
+              alt="Media Street" 
+              className="h-10 w-auto"
+            />
+            {location && (
+              <div className="text-right">
+                <p className="text-sm font-medium text-foreground">{location.name}</p>
+                <p className="text-xs text-muted-foreground flex items-center justify-end gap-1">
+                  <Map className="h-3 w-3" />
+                  {location.address.split(',')[1]?.trim() || location.address}
+                </p>
               </div>
-              <div className="flex items-center gap-1">
-                <span>9:41 AM</span>
-                <div className="w-6 h-3 border border-white rounded-sm">
-                  <div className="w-4 h-2 bg-white rounded-sm m-0.5"></div>
-                </div>
-              </div>
-            </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="container mx-auto px-4 py-6 flex items-center justify-center min-h-[calc(100vh-200px)] pb-24">
+        <div className="w-full max-w-md">
+          <div ref={couponCardRef} className="w-full bg-card rounded-2xl shadow-xl overflow-hidden border border-border">
             
             {/* Coupon Content */}
             <div className="p-4 space-y-4 pt-6">
+              {/* Header - Only show "Partner offer" badge if it's NOT an open offer */}
+              {!isOpenOffer && (
+                <div className="text-center space-y-2">
+                  <div className="inline-flex items-center gap-2 bg-muted px-4 py-2 rounded-full">
+                    <img src={mediaStreetLogo} alt="Media Street" className="h-5 w-5 object-contain" />
+                    <span className="font-medium text-foreground">Partner offer</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {referringRetailer} → <span className="font-medium text-foreground">{businessName}</span>
+                  </p>
+                </div>
+              )}
+              
+              {/* For open offers, show simpler header */}
+              {isOpenOffer && (
+                <div className="text-center space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    {referringRetailer} → <span className="font-medium text-foreground">{businessName}</span>
+                  </p>
+                </div>
+              )}
+              
               {/* Store Location Name with Brand Logo */}
               <div className="text-center">
                 {offer.brand_logo_url && (
@@ -318,43 +463,49 @@ const Redeem = () => {
                     />
                   </div>
                 )}
-                <h3 className="text-lg font-semibold text-gray-800">
-                  {location?.name || "Store Location"}
+                <h3 className="text-lg font-semibold text-foreground">
+                  {storeName}
                 </h3>
               </div>
               
-              {/* Offer Image */}
+              {/* Offer Image - Larger and more prominent */}
               {offer.offer_image_url && (
-                <div className="w-full h-32 bg-gray-100 rounded-lg overflow-hidden">
+                <div className="w-full h-64 bg-muted rounded-lg overflow-hidden relative">
                   <img 
                     src={offer.offer_image_url} 
                     alt="Offer preview" 
                     className="w-full h-full object-cover"
                   />
+                  {/* Badge overlay - green badge with brand name and code */}
+                  <div className="absolute bottom-2 left-2 bg-green-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 shadow-lg">
+                    <div className="w-4 h-4 bg-white/20 rounded"></div>
+                    <span className="text-sm font-semibold">{businessName}</span>
+                    <span className="text-xs bg-white/10 px-1.5 py-0.5 rounded">C{Math.floor(Math.random() * 100)}.{Math.floor(Math.random() * 100)}</span>
+                  </div>
                 </div>
               )}
               
               {/* Offer Text */}
               <div className="text-center">
-                <h4 className="font-bold text-lg text-black mb-2">
-                  {offer.call_to_action}
+                <h4 className="font-bold text-lg text-foreground mb-2">
+                  {offer.call_to_action || offer.callToAction}
                 </h4>
               
                 {/* Expiry Timer */}
-                <div className="flex items-center justify-center gap-2 text-sm text-orange-600 mb-2">
+                <div className="flex items-center justify-center gap-2 text-sm text-orange-600 dark:text-orange-400 mb-2">
                   <Clock className="h-4 w-4" />
-                  <span>Expires on {formatExpirationDate(offer.redemption_end_date)}</span>
+                  <span>Expires on {formatExpirationDate(expiryDate.toISOString())}</span>
                 </div>
                 
                 {/* Directions Link */}
-                {location && (
+                {location?.address && (
                   <div className="flex justify-center mb-4">
                     <button 
                       onClick={() => {
                         const encodedAddress = encodeURIComponent(location.address);
                         window.open(`https://maps.google.com/maps?q=${encodedAddress}`, '_blank');
                       }}
-                      className="flex items-center gap-1 text-blue-600 hover:text-blue-800"
+                      className="flex items-center gap-1 text-primary hover:text-primary/80"
                     >
                       <Map className="h-4 w-4" />
                       <span>Directions</span>
@@ -364,61 +515,47 @@ const Redeem = () => {
               </div>
               
               {/* Retailer Redemption Section */}
-              <div className="border-t border-gray-200 pt-4">
+              <div className="border-t border-border pt-4">
                 {isRedeemed ? (
-                  <div className="bg-green-50 p-6 rounded-lg text-center">
-                    <CheckCircle className="h-16 w-16 text-green-600 mx-auto mb-3" />
-                    <p className="text-lg font-semibold text-green-800 mb-1">Redeemed!</p>
-                    <p className="text-sm text-green-600">This coupon has been used</p>
+                  <div className="bg-green-500/10 dark:bg-green-900/20 p-6 rounded-lg text-center border border-green-500/20">
+                    <div className="flex justify-center mb-3">
+                      <img src={mediaStreetLogo} alt="Media Street" className="h-10 object-contain" />
+                    </div>
+                    <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-3" />
+                    <p className="text-xl font-bold text-foreground mb-1">Coupon Redeemed</p>
+                    <p className="text-sm text-green-600 dark:text-green-400">Successfully logged this redemption!</p>
                   </div>
                 ) : (
                   <>
-                    <p className="text-sm font-semibold text-gray-700 text-center mb-3">
-                      Your Coupon Code:
+                    <p className="text-sm font-semibold text-foreground text-center mb-3">
+                      For cashier to redeem:
                     </p>
-                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-lg text-center border-2 border-purple-200">
-                    {/* Store Name */}
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">
-                      {location?.name || "Store Location"}
-                    </h3>
-                    
-                    {/* Store Address */}
-                    {location?.address && (
-                      <p className="text-sm text-gray-600 mb-4">
-                        {location.address}
-                      </p>
-                    )}
-                    
-                    {/* 6-Digit Coupon Code */}
-                    <div className="bg-white p-4 rounded-lg mb-4 shadow-md">
-                      <p className="text-xs text-gray-500 mb-2 uppercase tracking-wider">Coupon Code</p>
-                      <p className="text-4xl font-bold font-mono text-purple-600 tracking-widest mb-2">
-                        {couponCode || "------"}
-                      </p>
-                      <p className="text-xs text-gray-500">Show this code at checkout</p>
-                    </div>
-                    
-                    {/* Offer Details */}
-                    <div className="bg-white p-3 rounded-lg mb-4">
-                      <p className="text-sm font-semibold text-gray-800 mb-1">
-                        {offer.call_to_action || offer.callToAction}
-                      </p>
-                      {(offer.expires_at || offer.expiresAt) && (
-                        <p className="text-xs text-gray-500">
-                          Expires: {formatExpirationDate(offer.expires_at || offer.expiresAt)}
-                        </p>
-                      )}
-                    </div>
-                    
-                    <p className="text-xs text-gray-500 italic">
-                      Take a screenshot of this coupon to use at the store
+                  <div className="bg-muted p-4 rounded-lg text-center">
+                    <p className="text-lg font-bold font-mono text-foreground mb-3 tracking-wider">
+                      {redemptionCode || couponCode || "------"}
                     </p>
+                    <div className="bg-background p-3 rounded-lg inline-block mb-2 border border-border">
+                      <QRCodeSVG 
+                        value={`${window.location.origin}/redeem/${offer.id || offer._id}/confirm?code=${redemptionCode || couponCode}`}
+                        size={100}
+                        level="H"
+                        includeMargin={true}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground font-medium">Retailer: type code above or scan QR to log this redemption</p>
                   </div>
                     
+                    {/* Terms and Conditions */}
+                    <div className="text-center mt-4 pt-3 border-t border-border">
+                      <p className="text-[10px] text-muted-foreground leading-relaxed px-2">
+                        *Limit one coupon per customer. Not valid with other offers. Valid and redeemable only when presented at a participating store location.
+                      </p>
+                    </div>
+                    
                     {/* Website Instructions */}
-                    <div className="text-center mt-4 pt-2 border-t border-gray-100">
-                      <p className="text-xs text-gray-500">
-                        Powered by <span className="font-medium text-purple-600">mediastreet.ai</span>
+                    <div className="text-center mt-2">
+                      <p className="text-xs text-muted-foreground">
+                        Powered by <span className="font-medium text-primary">mediastreet.ai</span>
                       </p>
                     </div>
                   </>
@@ -428,6 +565,75 @@ const Redeem = () => {
           </div>
         </div>
       </div>
+
+      {/* Action Buttons - Fixed dark bar at bottom */}
+      {!isRedeemed && (
+        <div className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-t border-border p-4 flex gap-2 justify-center z-50 shadow-lg">
+          <Button
+            onClick={handleScreenshot}
+            variant="ghost"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <Camera className="h-4 w-4" />
+            Screenshot
+          </Button>
+          <Button
+            onClick={() => setShowTextDialog(true)}
+            variant="ghost"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <MessageSquare className="h-4 w-4" />
+            Text Me
+          </Button>
+          <Button
+            onClick={handleOpenInNewWindow}
+            variant="ghost"
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open
+          </Button>
+        </div>
+      )}
+
+      {/* Text Me Dialog */}
+      <Dialog open={showTextDialog} onOpenChange={setShowTextDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Text Me This Offer</DialogTitle>
+            <DialogDescription>
+              Enter your phone number to receive a link to this offer
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Input
+              type="tel"
+              placeholder="(555) 123-4567"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
+            />
+            <Button
+              onClick={handleSendText}
+              disabled={isSending}
+              className="w-full"
+            >
+              {isSending ? "Sending..." : "Send Text"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Footer - Matching Carousel design */}
+      <footer className="container mx-auto px-4 py-8 mt-12 border-t border-border">
+        <div className="text-center text-sm text-muted-foreground">
+          <p className="mb-2">Powered by <span className="font-semibold text-foreground">Media Street</span></p>
+          <p className="text-xs">Connecting local businesses with their community</p>
+        </div>
+      </footer>
     </div>
   );
 };

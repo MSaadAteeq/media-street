@@ -125,7 +125,7 @@ const ReferralCodeCard = () => {
               Share this code with other retailers. You'll get 3 points when they sign up!
             </p>
           </div>
-          <div className="text-right space-y-2">
+          {/* <div className="text-right space-y-2">
             <div className="flex items-center gap-2 justify-end">
               {rank !== null && (
                 <div className="flex items-center gap-1 text-primary">
@@ -142,7 +142,7 @@ const ReferralCodeCard = () => {
               <div className="text-2xl font-bold text-green-600">${credit.toFixed(2)}</div>
               <div className="text-xs text-muted-foreground">Credit</div>
             </div>
-          </div>
+          </div> */}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

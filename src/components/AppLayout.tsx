@@ -47,6 +47,7 @@ interface LayoutProps {
 interface Notification {
   _id: string;
   id?: string;
+  userId?: string;
   type: string;
   title: string;
   message: string;
@@ -151,20 +152,30 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
       setLoadingNotifications(true);
       const response = await get({ end_point: 'notifications', token: true });
       if (response.success && response.data) {
-        const formattedNotifications: Notification[] = response.data.map((notif: any) => ({
-          _id: notif._id,
-          id: notif._id,
-          type: notif.type,
-          title: notif.title,
-          message: notif.message,
-          isRead: notif.isRead,
-          read: notif.isRead,
-          createdAt: notif.createdAt,
-          timestamp: new Date(notif.createdAt),
-          relatedEntityId: notif.relatedEntityId,
-          relatedEntityType: notif.relatedEntityType,
-          metadata: notif.metadata
-        }));
+        const currentUserId = currentUser?._id || currentUser?.id;
+        const formattedNotifications: Notification[] = response.data
+          .map((notif: any) => ({
+            _id: notif._id,
+            id: notif._id,
+            userId: notif.userId?.toString() || notif.userId,
+            type: notif.type,
+            title: notif.title,
+            message: notif.message,
+            isRead: notif.isRead,
+            read: notif.isRead,
+            createdAt: notif.createdAt,
+            timestamp: new Date(notif.createdAt),
+            relatedEntityId: notif.relatedEntityId,
+            relatedEntityType: notif.relatedEntityType,
+            metadata: notif.metadata
+          }))
+          .filter((notif: Notification) => {
+            // Only show notifications that belong to the current user
+            if (!currentUserId) return false;
+            const notifUserId = notif.userId?.toString();
+            const userStr = currentUserId.toString();
+            return notifUserId === userStr;
+          });
         setNotifications(formattedNotifications);
         setUnreadCount(response.unreadCount || 0);
       }
@@ -199,6 +210,25 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
       // Listen for new notifications in real-time
       const handleNewNotification = (notification: Notification) => {
         console.log('🔔 New notification received via WebSocket:', notification);
+        
+        // Get current user ID
+        const currentUserId = currentUser?._id || currentUser?.id;
+        if (!currentUserId) {
+          console.warn('⚠️ Cannot verify notification ownership: current user not loaded');
+          return;
+        }
+        
+        // Verify notification belongs to current user
+        const notifUserId = notification.userId?.toString() || (notification as any).userId?.toString();
+        const userStr = currentUserId.toString();
+        if (notifUserId !== userStr) {
+          console.log('🚫 Ignoring notification not belonging to current user:', {
+            notificationUserId: notifUserId,
+            currentUserId: userStr
+          });
+          return;
+        }
+        
         setNotifications(prev => {
           // Check if notification already exists
           const exists = prev.some(n => 
@@ -212,6 +242,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
           const formattedNotification: Notification = {
             _id: notification._id || notification.id || '',
             id: notification._id || notification.id || '',
+            userId: notifUserId,
             type: notification.type,
             title: notification.title,
             message: notification.message,
@@ -242,20 +273,30 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
       const handleNotificationsList = (data: { notifications: Notification[], unreadCount: number }) => {
         console.log('🔔 Notifications list received via WebSocket:', data);
         if (data.notifications) {
-          const formattedNotifications: Notification[] = data.notifications.map((notif: any) => ({
-            _id: notif._id || notif.id || '',
-            id: notif._id || notif.id || '',
-            type: notif.type,
-            title: notif.title,
-            message: notif.message,
-            isRead: notif.isRead || false,
-            read: notif.isRead || false,
-            createdAt: notif.createdAt || new Date().toISOString(),
-            timestamp: notif.timestamp || new Date(notif.createdAt),
-            relatedEntityId: notif.relatedEntityId,
-            relatedEntityType: notif.relatedEntityType,
-            metadata: notif.metadata
-          }));
+          const currentUserId = currentUser?._id || currentUser?.id;
+          const formattedNotifications: Notification[] = data.notifications
+            .map((notif: any) => ({
+              _id: notif._id || notif.id || '',
+              id: notif._id || notif.id || '',
+              userId: notif.userId?.toString() || notif.userId,
+              type: notif.type,
+              title: notif.title,
+              message: notif.message,
+              isRead: notif.isRead || false,
+              read: notif.isRead || false,
+              createdAt: notif.createdAt || new Date().toISOString(),
+              timestamp: notif.timestamp || new Date(notif.createdAt),
+              relatedEntityId: notif.relatedEntityId,
+              relatedEntityType: notif.relatedEntityType,
+              metadata: notif.metadata
+            }))
+            .filter((notif: Notification) => {
+              // Only show notifications that belong to the current user
+              if (!currentUserId) return false;
+              const notifUserId = notif.userId?.toString();
+              const userStr = currentUserId.toString();
+              return notifUserId === userStr;
+            });
           setNotifications(formattedNotifications);
         }
         if (data.unreadCount !== undefined) {
@@ -268,14 +309,16 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
       socketManager.onNotificationCount(handleNotificationCount);
       socket.on('notifications:list', handleNotificationsList);
 
-      // Fetch initial notifications
-      if (socketManager.isConnected()) {
-        socketManager.requestNotifications();
-        socketManager.requestUnreadCount();
-      } else {
-        // Fallback to API if WebSocket not connected
-        fetchNotifications();
-        fetchUnreadCount();
+      // Fetch initial notifications only if user is loaded
+      if (currentUser) {
+        if (socketManager.isConnected()) {
+          socketManager.requestNotifications();
+          socketManager.requestUnreadCount();
+        } else {
+          // Fallback to API if WebSocket not connected
+          fetchNotifications();
+          fetchUnreadCount();
+        }
       }
 
       return () => {
@@ -288,7 +331,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
       fetchNotifications();
       fetchUnreadCount();
     }
-  }, [location.pathname]);
+  }, [location.pathname, currentUser]);
 
   const markAsRead = async (notificationId: string) => {
     if (socketManager.isConnected()) {
@@ -389,13 +432,14 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
       onClick: () => navigate('/requests'),
       disabled: false
     },
-    {
+    // Only include Open Offer navigation item if user has at least one location with Open Offer enabled
+    ...(hasOpenOfferLocation ? [{
       icon: Bot,
       tooltip: "Open Offer",
       path: "/openoffer",
       onClick: () => navigate('/openoffer'),
-      disabled: !hasOpenOfferLocation
-    },
+      disabled: false
+    }] : []),
     {
       icon: Monitor,
       tooltip: "In-Store Display",

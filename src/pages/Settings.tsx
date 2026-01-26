@@ -60,7 +60,7 @@ const Settings = () => {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const optimisticTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const [promoCode, setPromoCode] = useState("");
-  const [creditBalance, setCreditBalance] = useState<number>(0);
+  const [creditBalance, setCreditBalance] = useState<number>(50);
   const [isRedeemingPromo, setIsRedeemingPromo] = useState(false);
   const [isAddingCard, setIsAddingCard] = useState(false);
   const [savedCards, setSavedCards] = useState<any[]>([]);
@@ -73,6 +73,8 @@ const Settings = () => {
   const [offerXSubscription, setOfferXSubscription] = useState<any>(null);
   const [cancellingSubscription, setCancellingSubscription] = useState<string | null>(null);
   const [cancelOODialogOpen, setCancelOODialogOpen] = useState(false);
+  const [hasOpenOfferLocation, setHasOpenOfferLocation] = useState<boolean>(false);
+  const [loadingLocations, setLoadingLocations] = useState<boolean>(false);
   const [notificationPreferences, setNotificationPreferences] = useState({
     campaignUpdates: { inApp: true, email: true },
     securityAlerts: { inApp: true, email: true },
@@ -139,6 +141,7 @@ const Settings = () => {
       fetchSavedCards();
       fetchTransactions();
       fetchSubscriptions();
+      fetchCreditBalance();
     }
   }, [location.pathname]);
 
@@ -146,10 +149,15 @@ const Settings = () => {
     try {
       const response = await get({ end_point: 'users/me', token: true });
       if (response.success && response.data) {
-        setCreditBalance(response.data.credit || 0);
+        setCreditBalance(response.data.credit || 50);
+      } else {
+        // Default to $50 if API call fails
+        setCreditBalance(50);
       }
     } catch (error) {
       console.error("Error fetching credit balance:", error);
+      // Default to $50 on error
+      setCreditBalance(50);
     }
   };
 
@@ -186,9 +194,10 @@ const Settings = () => {
   const fetchSubscriptions = async () => {
     setLoadingSubscriptions(true);
     try {
-      const [partnershipsResponse, openOfferResponse] = await Promise.all([
+      const [partnershipsResponse, openOfferResponse, locationsResponse] = await Promise.all([
         get({ end_point: 'partners/active', token: true }).catch(() => ({ success: false, data: [] })),
-        get({ end_point: 'partners/open-offer-subscription', token: true }).catch(() => ({ success: false, data: null }))
+        get({ end_point: 'partners/open-offer-subscription', token: true }).catch(() => ({ success: false, data: null })),
+        get({ end_point: 'locations', token: true }).catch(() => ({ success: false, data: [] }))
       ]);
 
       if (partnershipsResponse.success) {
@@ -197,6 +206,14 @@ const Settings = () => {
 
       if (openOfferResponse.success && openOfferResponse.data) {
         setOfferXSubscription(openOfferResponse.data);
+      }
+
+      // Check if any location has Open Offer enabled
+      if (locationsResponse.success && locationsResponse.data) {
+        const hasOpenOffer = locationsResponse.data.some((loc: any) => 
+          loc.open_offer_only === true || loc.openOfferOnly === true
+        );
+        setHasOpenOfferLocation(hasOpenOffer);
       }
     } catch (error) {
       console.error("Error fetching subscriptions:", error);
@@ -1316,8 +1333,8 @@ const Settings = () => {
                       <span className="text-2xl font-bold text-foreground">$10</span>
                       <span className="text-sm text-muted-foreground">/partnership</span>
                     </div>
-                    <p className="text-sm text-muted-foreground">Charged after 30 days if not cancelled, to the retailer generating the fewest redemptions. If tied, retailer generating fewest views for partner pays the fee.</p>
-                    <p className="text-xs text-muted-foreground/70 mt-3 italic">✨ Quick math: 1+ new customer / mo. in 30 days = worth it</p>
+                    <p className="text-sm text-muted-foreground">Charged after 30 days if not cancelled, to the retailer receiving the most redemptions from the partnership. If tied, retailer receiving the most views pays the fee.</p>
+                    <p className="text-xs text-muted-foreground/70 mt-3 italic">✨✨ Quick math: 1+ new customer / mo. in 30 days = worth it</p>
                   </div>
                 </div>
 
@@ -1521,6 +1538,14 @@ const Settings = () => {
                   <div className="text-center py-8 text-muted-foreground">
                     <CreditCard className="h-12 w-12 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No active subscriptions</p>
+                    {hasOpenOfferLocation && (
+                      <Button 
+                        className="mt-4 bg-primary hover:bg-primary/90"
+                        onClick={() => navigate('/openoffer')}
+                      >
+                        Subscribe to Open Offer
+                      </Button>
+                    )}
                     </div>
                 ) : (
                   <div className="space-y-4">

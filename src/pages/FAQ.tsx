@@ -47,7 +47,7 @@ const FAQ = () => {
   }, {
     id: "billing",
     question: "How does billing work?",
-    answer: "Open Offer is charged at the beginning of each month at $25 per enrolled store location. You also earn $1 in promo credits for each referral you generate for other Open Offer retailers. Partnership billing is $10/partnership, charged after 30 days if not cancelled, to the retailer generating the fewest redemptions (if tied, the retailer generating fewest views for their partner pays the fee)."
+    answer: "Open Offer is charged at the beginning of each month at $25 per enrolled store location. You earn $1 in promo credits for each referral you generate for other Open Offer retailers which are applied as discounts to future charges. Partnership billing is $10/partnership, charged after 30 days, to the retailer receiving the most redemption from the partnership (if tied, the retailer receiving more views pays the fee). Both Open Offer and partnerships can be cancelled at any time."
   }, {
     id: "cancellation",
     question: "Can I cancel anytime?",
@@ -69,83 +69,83 @@ const FAQ = () => {
     question: "Who's behind Media Street?",
     answer: null,
     jsxAnswer: <>
-          <a href="https://www.linkedin.com/in/krismathis" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">Kris Mathis</a>, previously founder of SponsorPitch.com which helps events find sponsors, started Media Street to help his favorite NYC retailers win new customers. Show some love by giving the team a follow on the{" "}
-          <a href="https://www.linkedin.com/company/media-street-ai" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">Media Street LinkedIn</a>{" "}
-          page. Even better, send us feedback and we'll get you some swag!
-        </>
+      <a href="https://www.linkedin.com/in/krismathis" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">Kris Mathis</a>, previously founder of SponsorPitch.com which helps events find sponsors, started Media Street to help his favorite NYC retailers win new customers. Show some love by giving the team a follow on the{" "}
+      <a href="https://www.linkedin.com/company/media-street-ai" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">Media Street LinkedIn</a>{" "}
+      page. Even better, send us feedback and we'll get you some swag!
+    </>
   }, {
     id: "vision",
     question: "What's the vision for Media Street?",
     answer: null,
     jsxAnswer: <>
-          We believe online retail, while efficient, has made us all a little lonely. We believe in the power of human connections and retail's important role in helping us not only discover new products and services, but feel a little more human. You know, the coffee shop that knows your order before you order. The dry cleaner that knows your number. The salon that asks about your kids by name. We're here to help consumers discover a little more of that. And we won't stop til we reach our goal of <span className="font-semibold text-primary">$1 billion in customer referrals</span> (and even then we probably won't). Our North Star is helping the real world small businesses that believe in our vision and want to grow together with other retailers like them.
-        </>
+      We believe online retail, while efficient, has made us all a little lonely. We believe in the power of human connections and retail's important role in helping us not only discover new products and services, but feel a little more human. You know, the coffee shop that knows your order before you order. The dry cleaner that knows your number. The salon that asks about your kids by name. We're here to help consumers discover a little more of that. And we won't stop til we reach our goal of <span className="font-semibold text-primary">$1 billion in customer referrals</span> (and even then we probably won't). Our North Star is helping the real world small businesses that believe in our vision and want to grow together with other retailers like them.
+    </>
   }];
   return <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
-            <Link to="/">
-              <Button variant="ghost" size="sm" className="gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Back to Home
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="py-16">
-        <div className="container mx-auto px-4 max-w-4xl">
-          {/* Page Header */}
-          <div className="text-center mb-16 space-y-4">
-            <Badge variant="secondary" className="px-4 py-2 text-sm font-medium">
-              Frequently Asked Questions
-            </Badge>
-            <h1 className="text-3xl md:text-5xl font-bold text-foreground">
-              Everything You Need to Know About
-              <span className="gradient-hero bg-clip-text text-transparent"> Media Street</span>
-            </h1>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">Find answers to common questions about our little retail partnership platform, our goals, pricing, and how to get started.</p>
-          </div>
-
-          {/* FAQ Accordion */}
-          <div className="space-y-4">
-            <Accordion type="single" collapsible className="space-y-4">
-              {faqs.map(faq => <AccordionItem key={faq.id} value={faq.id} className="border border-border rounded-lg px-6 bg-card/50">
-                  <AccordionTrigger className="text-left hover:no-underline py-6">
-                    <span className="text-lg font-semibold text-foreground pr-4">
-                      {faq.question}
-                    </span>
-                  </AccordionTrigger>
-                  <AccordionContent className="pb-6 pt-2">
-                    <p className="text-muted-foreground leading-relaxed">
-                      {faq.jsxAnswer || faq.answer}
-                    </p>
-                  </AccordionContent>
-                </AccordionItem>)}
-            </Accordion>
-          </div>
-
-          {/* Contact CTA */}
-          <div className="mt-16 text-center space-y-6">
-            <h2 className="text-2xl font-bold text-foreground">
-              Still have questions?
-            </h2>
-            <p className="text-muted-foreground">
-              Our team is here to help you understand how Media Street can grow your business.
-            </p>
-            <Button variant="default" size="lg" className="gap-2" asChild>
-              <a href="mailto:hi@mediastreet.ai">
-                <Mail className="h-4 w-4" />
-                Contact Support
-              </a>
+    {/* Header */}
+    <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+      <div className="container mx-auto px-4 py-4">
+        <div className="flex items-center gap-4">
+          <Link to="/">
+            <Button variant="ghost" size="sm" className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Home
             </Button>
-          </div>
+          </Link>
         </div>
-      </main>
-    </div>;
+      </div>
+    </header>
+
+    {/* Main Content */}
+    <main className="py-16">
+      <div className="container mx-auto px-4 max-w-4xl">
+        {/* Page Header */}
+        <div className="text-center mb-16 space-y-4">
+          <Badge variant="secondary" className="px-4 py-2 text-sm font-medium">
+            Frequently Asked Questions
+          </Badge>
+          <h1 className="text-3xl md:text-5xl font-bold text-foreground">
+            Everything You Need to Know About
+            <span className="gradient-hero bg-clip-text text-transparent"> Media Street</span>
+          </h1>
+          <p className="text-xl text-muted-foreground max-w-3xl mx-auto">Find answers to common questions about our little retail partnership platform, our goals, pricing, and how to get started.</p>
+        </div>
+
+        {/* FAQ Accordion */}
+        <div className="space-y-4">
+          <Accordion type="single" collapsible className="space-y-4">
+            {faqs.map(faq => <AccordionItem key={faq.id} value={faq.id} className="border border-border rounded-lg px-6 bg-card/50">
+              <AccordionTrigger className="text-left hover:no-underline py-6">
+                <span className="text-lg font-semibold text-foreground pr-4">
+                  {faq.question}
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="pb-6 pt-2">
+                <p className="text-muted-foreground leading-relaxed">
+                  {faq.jsxAnswer || faq.answer}
+                </p>
+              </AccordionContent>
+            </AccordionItem>)}
+          </Accordion>
+        </div>
+
+        {/* Contact CTA */}
+        <div className="mt-16 text-center space-y-6">
+          <h2 className="text-2xl font-bold text-foreground">
+            Still have questions?
+          </h2>
+          <p className="text-muted-foreground">
+            Our team is here to help you understand how Media Street can grow your business.
+          </p>
+          <Button variant="default" size="lg" className="gap-2" asChild>
+            <a href="mailto:hi@mediastreet.ai">
+              <Mail className="h-4 w-4" />
+              Contact Support
+            </a>
+          </Button>
+        </div>
+      </div>
+    </main>
+  </div>;
 };
 export default FAQ;

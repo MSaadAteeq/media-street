@@ -8,7 +8,8 @@ const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/
 
 let logoutTimeoutId = null;
 
-console.log(baseURL)
+console.log("🔗 API Base URL:", baseURL);
+console.log("💡 Make sure the backend server is running on http://localhost:3000");
 
 const apiHandler = async ({
   token = false,
@@ -53,6 +54,7 @@ const apiHandler = async ({
       ...(tokenValue && { Authorization: `Bearer ${tokenValue}` }),
       ...configuration,
     },
+    withCredentials: true, // Important for CORS with credentials
   });
 
   const createError = (message, status) => {
@@ -117,10 +119,11 @@ const apiHandler = async ({
         );
       }
     } else if (error.request) {
-      throw createError(
-        "No response from the server. Please check your connection.",
-        503
-      );
+      // Network error - backend might not be running
+      const errorMessage = error.code === 'ECONNREFUSED' 
+        ? "Cannot connect to backend server. Please make sure the backend is running on http://localhost:3000"
+        : "No response from the server. Please check your connection and ensure the backend server is running.";
+      throw createError(errorMessage, 503);
     } else {
       throw createError(error.message || "An unexpected error occurred.", 500);
     }

@@ -722,12 +722,16 @@ export default function Login() {
       }
     }
     
+    // Mark that this is a new signup so dashboard shows welcome dialog
+    sessionStorage.setItem('showWelcomeCreditsDialog', 'true');
     completeSignup();
     navigate("/dashboard");
   };
 
   const handleWelcomeDialogClose = () => {
     setShowWelcomeCreditsDialog(false);
+    // Mark that this is a new signup so dashboard shows welcome dialog
+    sessionStorage.setItem('showWelcomeCreditsDialog', 'true');
     completeSignup();
     navigate("/dashboard");
   };
@@ -1257,7 +1261,7 @@ export default function Login() {
                           Create Your <span className="text-primary">First Offer</span>
                         </h3>
                         <p className="text-muted-foreground">
-                          Create an offer to attract new customers from partner retailers. (Optional)
+                          Create an offer to attract new customers from partner retailers.
                         </p>
                       </div>
                       

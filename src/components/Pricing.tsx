@@ -12,16 +12,13 @@ const Pricing = () => {
             The Network
           </Badge>
           <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground px-2">
-            Join
-            <span className="gradient-hero bg-clip-text text-transparent"> The Network</span>
+            Performance-based <span className="gradient-hero bg-clip-text text-transparent">Pricing</span>
           </h2>
-          <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto px-4">
-            Connect with retailers and businesses in your area
-          </p>
+          <p className="text-base sm:text-lg md:text-xl text-muted-foreground max-w-3xl mx-auto px-4">Pay less (or nothing) for leads if you promote other businesses in your area</p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6 sm:gap-8 max-w-5xl mx-auto">
-          {/* Open Offer Plan */}
+          {/* Individual Partnerships Plan */}
           <Card className="relative border-primary/20 shadow-strong">
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
               <Badge variant="default" className="bg-accent-green text-accent-green-foreground px-4 py-2">
@@ -31,12 +28,6 @@ const Pricing = () => {
             </div>
             
             <CardContent className="p-8 text-center space-y-6">
-              {/* <div className="space-y-2">
-                <div className="text-4xl font-bold text-foreground">
-                  $7<span className="text-lg text-muted-foreground"> per partnership / mo</span>
-                </div>
-              </div> */}
-
               <div className="space-y-4">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent-green/10 border border-accent-green/30">
                   <span className="text-accent-green font-semibold">Profitable partnerships start here.</span>
@@ -76,14 +67,15 @@ const Pricing = () => {
                     Find Your First Partner for Free
                   </Button>
                 </RequestInviteForm>
-                <p className="text-sm text-muted-foreground mt-3">
-                  Minimal setup required • No contracts • Free
-                </p>
+                <div className="text-sm text-muted-foreground mt-3 space-y-2">
+                  <p className="font-medium text-foreground">$10/month per partnership</p>
+                  <p>Minimal setup required • Cancel anytime • Free if you drive more conversions for your partner</p>
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* OpenOffer Plan */}
+          {/* Open Offer Plan */}
           <Card className="relative border-primary/20 shadow-strong">
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
               <Badge variant="default" className="bg-accent-green text-accent-green-foreground px-4 py-2">
@@ -93,12 +85,6 @@ const Pricing = () => {
             </div>
             
             <CardContent className="p-8 text-center space-y-6">
-              {/* <div className="space-y-2">
-                <div className="text-4xl font-bold text-foreground">
-                  $20<span className="text-lg text-muted-foreground"> / mo</span>
-                </div>
-              </div> */}
-
               <div className="space-y-4">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent-green/10 border border-accent-green/30">
                   <span className="text-accent-green font-semibold">Max reach for your offer, minimal effort</span>
@@ -115,12 +101,12 @@ const Pricing = () => {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="text-muted-foreground inline-flex items-center gap-1.5 cursor-help">
-                            AI offer schedulling optimization
+                            AI offer scheduling optimization
                             <Info className="h-4 w-4" />
                           </span>
                         </TooltipTrigger>
                         <TooltipContent className="max-w-xs">
-                          <p>OpenOffer utilizes AI to continuously refine a delivery schedule for your offer that optimizes conversions based on criteria such as time of day, retailer compatibility, foot traffic and other factors.</p>
+                          <p>Open Offer utilizes AI to continuously refine a delivery schedule for your offer that optimizes conversions based on criteria such as time of day, retailer compatibility, foot traffic and other factors</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -135,11 +121,11 @@ const Pricing = () => {
                   </li>
                   <li className="flex items-center gap-3">
                     <Check className="h-5 w-5 text-accent-green" />
-                    <span className="text-muted-foreground">Cancel anytime</span>
+                    <span className="text-muted-foreground">OO credit for referrals to other retailers</span>
                   </li>
                   <li className="flex items-center gap-3">
                     <Check className="h-5 w-5 text-accent-green" />
-                    <span className="text-muted-foreground">Free if you promote the network in-store</span>
+                    <span className="text-muted-foreground">Cancel subscription any time</span>
                   </li>
                 </ul>
               </div>
@@ -150,9 +136,11 @@ const Pricing = () => {
                     Join Open Offer by Media Street
                   </Button>
                 </RequestInviteForm>
-                <p className="text-sm text-muted-foreground mt-3">
-                  Automatic distribution • AI-powered • Cancel anytime
-                </p>
+                <div className="text-sm text-muted-foreground mt-3 space-y-2">
+                  <p className="font-medium text-foreground">$25/month subscription</p>
+                  <p></p>
+                  <p className="text-sm">Automatic distribution • AI-powered • Cancel anytime • Discounts or free when you promote the network</p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -160,7 +148,7 @@ const Pricing = () => {
 
         <div className="text-center mt-12">
           <p className="text-muted-foreground">
-            Questions about pricing? <a href="mailto:hi@mediastreet.ai" className="text-primary hover:underline">Contact us</a>
+            Questions about pricing?  Contact us <a href="mailto:hi@mediastreet.ai" className="text-primary hover:underline">Contact us</a>
           </p>
         </div>
       </div>

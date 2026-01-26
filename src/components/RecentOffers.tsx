@@ -3,14 +3,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MapPin, Sparkles, QrCode } from "lucide-react";
+import { MapPin, Sparkles, QrCode, Zap, ArrowRight, Store } from "lucide-react";
 import { get } from "@/services/apis";
 import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from "@/components/ui/carousel";
 import { QRCodeSVG } from "qrcode.react";
-import coffeeCampaign from "@/assets/pos-campaign-coffee.jpg";
-import flowersCampaign from "@/assets/pos-campaign-flowers.jpg";
-import salonCampaign from "@/assets/pos-campaign-salon.jpg";
-import subsCampaign from "@/assets/pos-campaign-subs.jpg";
+import { Link } from "react-router-dom";
+
 interface Offer {
   id: string;
   call_to_action: string;
@@ -18,103 +16,65 @@ interface Offer {
   location_id: string;
   offer_image_url: string | null;
   brand_logo_url: string | null;
+  locations?: {
+    id: string;
+    name: string;
+    address: string;
+  };
 }
-interface Location {
-  id: string;
-  name: string;
-  address: string;
-}
-// Sample campaigns data
-const sampleCampaigns = [
-  {
-    id: "1",
-    call_to_action: "Get 20% off your morning coffee! Show this offer at checkout.",
-    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    location_id: "1",
-    offer_image_url: coffeeCampaign,
-    brand_logo_url: null,
-    locations: {
-      id: "1",
-      name: "Brew & Bean Coffee",
-      address: "123 Main St, Portland, OR 97201"
-    }
-  },
-  {
-    id: "2",
-    call_to_action: "Fresh flowers for any occasion - Buy 2 bouquets, get 1 free!",
-    created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-    location_id: "2",
-    offer_image_url: flowersCampaign,
-    brand_logo_url: null,
-    locations: {
-      id: "2",
-      name: "Bloom & Petal Florist",
-      address: "456 Park Ave, Seattle, WA 98101"
-    }
-  },
-  {
-    id: "3",
-    call_to_action: "New client special: $15 off your first haircut & style!",
-    created_at: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
-    location_id: "3",
-    offer_image_url: salonCampaign,
-    brand_logo_url: null,
-    locations: {
-      id: "3",
-      name: "Luxe Hair Studio",
-      address: "789 Broadway, San Francisco, CA 94102"
-    }
-  },
-  {
-    id: "4",
-    call_to_action: "Lunch combo deal: Any sub + chips + drink for just $10!",
-    created_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-    location_id: "4",
-    offer_image_url: subsCampaign,
-    brand_logo_url: null,
-    locations: {
-      id: "4",
-      name: "Sub Station Deli",
-      address: "321 Oak St, Austin, TX 78701"
-    }
-  }
-];
 
 const RecentOffers = () => {
-  const [offers, setOffers] = useState<any[]>(sampleCampaigns);
+  const [offers, setOffers] = useState<Offer[]>([]);
   const [searchLocation, setSearchLocation] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<any | null>(null);
   const [isQRDialogOpen, setIsQRDialogOpen] = useState(false);
   useEffect(() => {
-    // Try to fetch from database, fallback to sample data
     fetchRecentOffers();
   }, []);
+  
   const fetchRecentOffers = async (location?: string) => {
     try {
       setLoading(true);
       const response = await get({ end_point: 'offers/recent', token: false });
       
-      let filteredData = response.success && response.data ? response.data : [];
+      let filteredData: Offer[] = [];
       
-      // Filter by location if search is provided
-      if (location && filteredData.length > 0) {
-        filteredData = filteredData.filter((offer: any) => {
-          const searchLower = location.toLowerCase();
-          return offer.locations?.name?.toLowerCase().includes(searchLower) || 
-                 offer.locations?.address?.toLowerCase().includes(searchLower);
+      if (response.success && response.data && Array.isArray(response.data)) {
+        // Process the API response to match our interface
+        filteredData = response.data.map((offer: any) => {
+          // Handle different response formats
+          const location = offer.locations || offer.locationIds?.[0] || offer.location;
+          
+          return {
+            id: offer._id?.toString() || offer.id?.toString() || '',
+            call_to_action: offer.callToAction || offer.call_to_action || '',
+            created_at: offer.createdAt || offer.created_at || new Date().toISOString(),
+            offer_image_url: offer.offerImage || offer.offer_image || offer.offerImageUrl || offer.offer_image_url || null,
+            brand_logo_url: offer.brandLogo || offer.brand_logo || null,
+            location_id: location?._id?.toString() || location?.id?.toString() || '',
+            locations: location ? {
+              id: location._id?.toString() || location.id?.toString() || '',
+              name: location.name || 'Store',
+              address: location.address || ''
+            } : undefined
+          };
         });
-      }
-      
-      // Fallback to sample data if API fails or returns empty
-      if (filteredData.length === 0) {
-        filteredData = sampleCampaigns;
+        
+        // Filter by location if search is provided
+        if (location && filteredData.length > 0) {
+          filteredData = filteredData.filter((offer: Offer) => {
+            const searchLower = location.toLowerCase();
+            return offer.locations?.name?.toLowerCase().includes(searchLower) || 
+                   offer.locations?.address?.toLowerCase().includes(searchLower);
+          });
+        }
       }
       
       setOffers(filteredData);
     } catch (error) {
       console.error("Error fetching offers:", error);
-      setOffers(sampleCampaigns);
+      setOffers([]);
     } finally {
       setLoading(false);
     }
@@ -138,8 +98,12 @@ const RecentOffers = () => {
     setIsQRDialogOpen(true);
   };
 
-  const getRedemptionUrl = (offerId: string) => {
-    return `${window.location.origin}/redeem?offer=${offerId}`;
+  const getRedemptionUrl = (offer: Offer) => {
+    // Use carousel route if location_id is available, otherwise use redeem route
+    if (offer.location_id) {
+      return `${window.location.origin}/carousel/${offer.location_id}`;
+    }
+    return `${window.location.origin}/redeem?offer=${offer.id}`;
   };
 
   return <section id="search-offers" className="py-20 bg-gradient-to-b from-background to-secondary/20">
@@ -150,7 +114,14 @@ const RecentOffers = () => {
             <span className="text-sm font-medium text-primary">Live Offers</span>
           </div>
           <h2 className="text-4xl font-bold mb-4">Get a Great Deal to Try Something New</h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">Discover new local businesses and get the latest deals on Media Street</p>
+          <p className="text-muted-foreground text-lg max-w-2xl mx-auto mb-6">Discover new local businesses and get the latest deals on Media Street</p>
+          <Link to="/open-offers">
+            <Button variant="outline" size="lg" className="gap-2">
+              <Zap className="h-4 w-4" />
+              Scan Open Offers
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
         </div>
 
         <div className="max-w-md mx-auto mb-12">
@@ -176,13 +147,17 @@ const RecentOffers = () => {
                     className="h-full overflow-hidden group hover:shadow-2xl transition-all duration-300 hover:scale-[1.02] cursor-pointer"
                     onClick={() => handleOfferClick(offer)}
                   >
-                    <div className="relative h-48 overflow-hidden">
-                      {offer.offer_image_url && (
+                    <div className="relative h-48 overflow-hidden bg-gradient-to-br from-primary/20 to-primary/5">
+                      {offer.offer_image_url ? (
                         <img 
                           src={offer.offer_image_url} 
                           alt={offer.locations?.name || "Offer"}
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                         />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <Store className="h-12 w-12 text-primary/30" />
+                        </div>
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
                       <div className="absolute top-3 right-3 bg-primary/90 backdrop-blur-sm px-3 py-1 rounded-full">
@@ -217,7 +192,13 @@ const RecentOffers = () => {
             <CarouselPrevious />
             <CarouselNext />
           </Carousel> : <div className="text-center py-12">
-            <p className="text-muted-foreground">No offers found for this location</p>
+            <Store className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-xl font-semibold mb-2">No Active Offers Available</h3>
+            <p className="text-muted-foreground">
+              {searchLocation 
+                ? "No offers found for this location. Try a different search." 
+                : "Check back soon for new deals from local businesses!"}
+            </p>
           </div>}
       </div>
 
@@ -230,7 +211,7 @@ const RecentOffers = () => {
             <div className="flex flex-col items-center gap-6 py-4">
               <div className="bg-white p-6 rounded-xl shadow-lg">
                 <QRCodeSVG 
-                  value={getRedemptionUrl(selectedOffer.id)}
+                  value={getRedemptionUrl(selectedOffer)}
                   size={256}
                   level="H"
                   includeMargin

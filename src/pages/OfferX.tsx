@@ -208,11 +208,9 @@ const OfferX = () => {
 
   const toggleLocationOfferX = async (locationId: string, enable: boolean) => {
     if (enable) {
-      const hasDisplayOption = await checkDisplayOptions();
-      if (!hasDisplayOption) {
-        setPendingOfferXLocationId(locationId);
-        setShowDisplayOptionCheck(true);
-        return;
+      // Set display options to default (tablet) if not already set
+      if (localStorage.getItem('displayCarousel') === null) {
+        localStorage.setItem('displayCarousel', 'true');
       }
       
       // Check if this specific location already has a subscription

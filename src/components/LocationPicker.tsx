@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import mapboxgl from 'mapbox-gl';
+import mapboxgl from '@/utils/mapbox-gl-wrapper';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { MapPin, Search, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';

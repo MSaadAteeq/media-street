@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 // Supabase removed - will use Node.js API
-import LocationQRDisplay from "@/components/LocationQRDisplay";
+const LocationQRDisplay = lazy(() => import("@/components/LocationQRDisplay"));
+const StorePlacementTips = lazy(() => import("@/components/StorePlacementTips"));
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, QrCode, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import AppLayout from "@/components/AppLayout";
 
 interface Location {
@@ -28,6 +29,7 @@ const LocationQR = () => {
     } else {
       loadAllLocations();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationId]);
 
   const loadLocation = async () => {
@@ -152,7 +154,7 @@ const LocationQR = () => {
                 <Card 
                   key={loc.id} 
                   className="cursor-pointer hover:border-primary transition-colors" 
-                  onClick={() => navigate(`/location-qr/${loc.id}`)}
+                  onClick={() => navigate(`/locations/${loc.id}/qr`)}
                 >
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-lg">
@@ -228,11 +230,13 @@ const LocationQR = () => {
         </div>
 
         {/* QR Code Display Component */}
-        <LocationQRDisplay 
-          locationId={location.id} 
-          locationName={location.name}
-          locationAddress={location.address}
-        />
+        <Suspense fallback={<div className="flex items-center justify-center h-64"><div className="text-muted-foreground">Loading QR code...</div></div>}>
+          <LocationQRDisplay 
+            locationId={location.id} 
+            locationName={location.name}
+            locationAddress={location.address}
+          />
+        </Suspense>
 
         {/* Usage Instructions */}
         <Card className="mt-8 p-6 bg-card border-border">
@@ -256,6 +260,13 @@ const LocationQR = () => {
             </li>
           </ol>
         </Card>
+
+        {/* Store Placement Tips */}
+        <div className="mt-8">
+          <Suspense fallback={<div className="flex items-center justify-center h-32"><div className="text-muted-foreground">Loading tips...</div></div>}>
+            <StorePlacementTips displayType="qr" />
+          </Suspense>
+        </div>
       </div>
     </div>
   );

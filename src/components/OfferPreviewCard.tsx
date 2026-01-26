@@ -59,14 +59,39 @@ const OfferPreviewCard = ({
           <img src={mediaStreetLogo} alt="Media Street" className="w-6 h-6 opacity-50" />
         </div>
 
-        {/* Offer Image */}
-        <div className="relative aspect-[16/9] bg-muted">
+        {/* Offer Image with Overlay */}
+        <div className="relative aspect-[4/3] bg-muted overflow-hidden">
           {offerImageUrl ? (
-            <img 
-              src={offerImageUrl} 
-              alt="Offer" 
-              className="w-full h-full object-cover"
-            />
+            <>
+              <img 
+                src={offerImageUrl} 
+                alt="Offer" 
+                className="w-full h-full object-cover"
+              />
+              {/* Gradient overlay for better text readability */}
+              <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-transparent to-transparent" />
+              
+              {/* Business Name Overlay on Left */}
+              <div className="absolute left-6 top-1/2 -translate-y-1/2 z-10 max-w-[50%]">
+                <h2 className="text-white font-serif text-2xl md:text-3xl lg:text-4xl font-bold drop-shadow-2xl leading-tight">
+                  {businessName.toUpperCase()}
+                </h2>
+              </div>
+              
+              {/* QR Code Overlay on Top Right */}
+              <div className="absolute right-4 top-4 z-10 flex flex-col items-center gap-2 bg-black/60 backdrop-blur-sm p-3 rounded-lg shadow-xl">
+                <QRCodeSVG 
+                  value="https://mediastreet.ai" 
+                  size={100}
+                  level="L"
+                  bgColor="transparent"
+                  fgColor="white"
+                />
+                <p className="text-white text-xs font-medium text-center max-w-[140px]">
+                  Scan to redeem at {redemptionStoreName || businessName}
+                </p>
+              </div>
+            </>
           ) : (
             <div 
               className="w-full h-full flex items-center justify-center"
@@ -83,41 +108,31 @@ const OfferPreviewCard = ({
               type="button"
               variant="secondary"
               size="sm"
-              className="absolute bottom-2 right-2 gap-1"
+              className="absolute bottom-3 right-3 gap-1.5 bg-black/60 hover:bg-black/80 text-white border-0 shadow-lg backdrop-blur-sm"
               onClick={onChangeImage}
               disabled={isChangingImage}
             >
               {isChangingImage ? (
-                <RefreshCw className="h-3 w-3 animate-spin" />
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <ImagePlus className="h-3 w-3" />
+                <ImagePlus className="h-3.5 w-3.5" />
               )}
               Change Image
             </Button>
           )}
         </div>
 
-        {/* Call to Action */}
+        {/* Call to Action at Bottom */}
         <div 
           className="p-4 text-center"
-          style={{ backgroundColor: brandColors.primary }}
+          style={{ 
+            backgroundColor: brandColors.primary || '#6366f1',
+            background: `linear-gradient(135deg, ${brandColors.primary || '#6366f1'}, ${brandColors.secondary || '#4f46e5'})`
+          }}
         >
           <p className="text-white font-bold text-lg leading-tight">
             {callToAction}
           </p>
-        </div>
-
-        {/* QR Code placeholder */}
-        <div className="p-3 flex items-center justify-center gap-3 bg-white">
-          <QRCodeSVG 
-            value="https://mediastreet.ai" 
-            size={48}
-            level="L"
-          />
-          <div className="text-xs text-muted-foreground text-center">
-            <p className="font-medium">Scan here to redeem</p>
-            <p>at {redemptionStoreName || businessName}</p>
-          </div>
         </div>
       </CardContent>
     </Card>

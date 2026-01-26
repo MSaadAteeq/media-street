@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { MapPin, Heart, Store, ArrowLeft, Search, Navigation, X, Clock, QrCode } from "lucide-react";
+import { MapPin, Heart, Store, ArrowLeft, Search, Navigation, X, Clock, QrCode, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useNavigate } from "react-router-dom";
 import Footer from "@/components/Footer";
@@ -33,41 +33,6 @@ interface Offer {
   distance?: number;
 }
 
-const isNYCAddress = (address: string): boolean => {
-  const addressUpper = address.toUpperCase();
-  return addressUpper.includes(', NY ') || 
-         addressUpper.includes(' NY ') ||
-         addressUpper.includes('NEW YORK');
-};
-
-const extractZipFromAddress = (address: string): string => {
-  const zipMatch = address.match(/\b(\d{5})\b/);
-  return zipMatch ? zipMatch[1] : '';
-};
-
-const getBoroughFromZip = (address: string): string => {
-  const zipCode = extractZipFromAddress(address);
-  if (!zipCode) return "NYC";
-  
-  const zip = parseInt(zipCode);
-  const NYC_ZIP_CODES = {
-    manhattan: { min: 10001, max: 10282 },
-    bronx: { min: 10451, max: 10475 },
-    brooklyn: { min: 11201, max: 11256 },
-    queens1: { min: 11004, max: 11109 },
-    queens2: { min: 11351, max: 11697 },
-    statenIsland: { min: 10301, max: 10314 }
-  };
-  
-  if (zip >= NYC_ZIP_CODES.manhattan.min && zip <= NYC_ZIP_CODES.manhattan.max) return "Manhattan";
-  if (zip >= NYC_ZIP_CODES.bronx.min && zip <= NYC_ZIP_CODES.bronx.max) return "Bronx";
-  if (zip >= NYC_ZIP_CODES.brooklyn.min && zip <= NYC_ZIP_CODES.brooklyn.max) return "Brooklyn";
-  if ((zip >= NYC_ZIP_CODES.queens1.min && zip <= NYC_ZIP_CODES.queens1.max) ||
-      (zip >= NYC_ZIP_CODES.queens2.min && zip <= NYC_ZIP_CODES.queens2.max)) return "Queens";
-  if (zip >= NYC_ZIP_CODES.statenIsland.min && zip <= NYC_ZIP_CODES.statenIsland.max) return "Staten Island";
-  return "NYC";
-};
-
 const formatTimeAgo = (dateString: string) => {
   const date = new Date(dateString);
   const now = new Date();
@@ -83,12 +48,11 @@ const formatTimeAgo = (dateString: string) => {
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXMtbWFwYm94MjAyNSIsImEiOiJjbWd0cHZhc20wNGc1Mm1xMmZwY2NnbjdwIn0.vAUXdUR3_gZwu35mLimvCg';
 
-const NYCDeals = () => {
+const OpenOffers = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedBorough, setSelectedBorough] = useState<string>("all");
   const [searchAddress, setSearchAddress] = useState("");
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
@@ -98,26 +62,8 @@ const NYCDeals = () => {
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
 
-  // Dynamically get boroughs from offers
-  const getAvailableBoroughs = () => {
-    const boroughSet = new Set<string>();
-    offers.forEach(offer => {
-      const borough = getBoroughFromZip(offer.location.address);
-      if (borough && borough !== "NYC") {
-        boroughSet.add(borough);
-      }
-    });
-    return ["all", ...Array.from(boroughSet).sort()];
-  };
-
-  const boroughs = getAvailableBoroughs();
-
-  const filteredOffers = selectedBorough === "all" 
-    ? offers 
-    : offers.filter(offer => getBoroughFromZip(offer.location.address) === selectedBorough);
-
   useEffect(() => {
-    fetchNYCOffers();
+    fetchOpenOffers();
   }, []);
 
   useEffect(() => {
@@ -128,8 +74,8 @@ const NYCDeals = () => {
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/light-v11',
-      center: [-73.9857, 40.7484],
-      zoom: 11,
+      center: [-98.5795, 39.8283], // Center of USA
+      zoom: 4,
     });
 
     map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
@@ -150,13 +96,13 @@ const NYCDeals = () => {
     const bounds = new mapboxgl.LngLatBounds();
     let hasValidCoords = false;
 
-    filteredOffers.forEach((offer) => {
+    offers.forEach((offer) => {
       if (offer.location.latitude && offer.location.longitude) {
         hasValidCoords = true;
         const el = document.createElement('div');
         el.className = 'w-8 h-8 bg-primary rounded-full flex items-center justify-center cursor-pointer shadow-lg border-2 border-white hover:scale-110 transition-transform';
         el.style.backgroundColor = 'hsl(262.1 83.3% 57.8%)';
-        el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>';
+        el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>';
 
         const popup = new mapboxgl.Popup({ offset: 25, closeButton: false }).setHTML(`
           <div class="p-2 min-w-[200px]">
@@ -200,9 +146,9 @@ const NYCDeals = () => {
     }
 
     if (hasValidCoords && !bounds.isEmpty()) {
-      map.current.fitBounds(bounds, { padding: 50, maxZoom: 14 });
+      map.current.fitBounds(bounds, { padding: 50, maxZoom: 10 });
     }
-  }, [filteredOffers, userLocation]);
+  }, [offers, userLocation]);
 
   const geocodeAddress = async (address: string): Promise<{ lat: number; lng: number } | null> => {
     try {
@@ -220,7 +166,7 @@ const NYCDeals = () => {
     return null;
   };
 
-  const fetchNYCOffers = async () => {
+  const fetchOpenOffers = async () => {
     try {
       setLoading(true);
       // Fetch open offers from backend (public endpoint)
@@ -230,54 +176,49 @@ const NYCDeals = () => {
       });
 
       if (response.success && response.data && Array.isArray(response.data)) {
-        // Filter for NYC addresses and process offers
-        const nycOffers = await Promise.all(
-          response.data
-            .filter((offer: any) => {
-              const location = offer.locations?.[0] || offer.locationIds?.[0];
-              return location && isNYCAddress(location.address || '');
-            })
-            .map(async (offer: any) => {
-              const location = offer.locations?.[0] || offer.locationIds?.[0];
-              
-              // Geocode if coordinates are missing
-              let latitude = location?.latitude;
-              let longitude = location?.longitude;
-              
-              if (!latitude || !longitude) {
-                const coords = await geocodeAddress(location?.address || '');
-                if (coords) {
-                  latitude = coords.lat;
-                  longitude = coords.lng;
-                }
+        // Process offers
+        const processedOffers = await Promise.all(
+          response.data.map(async (offer: any) => {
+            const location = offer.locations?.[0] || offer.locationIds?.[0];
+            
+            // Geocode if coordinates are missing
+            let latitude = location?.latitude;
+            let longitude = location?.longitude;
+            
+            if (!latitude || !longitude) {
+              const coords = await geocodeAddress(location?.address || '');
+              if (coords) {
+                latitude = coords.lat;
+                longitude = coords.lng;
               }
+            }
 
-              return {
-                id: offer._id?.toString() || offer.id?.toString() || '',
-                call_to_action: offer.callToAction || offer.call_to_action || '',
-                created_at: offer.createdAt || offer.created_at || new Date().toISOString(),
-                offer_image_url: offer.offerImage || offer.offer_image || offer.offerImageUrl || offer.offer_image_url || null,
-                business_name: location?.name || null,
-                redemption_code: offer.redemptionCode || offer.redemption_code || null,
-                location: {
-                  id: location?._id?.toString() || location?.id?.toString() || '',
-                  name: location?.name || 'Store',
-                  address: location?.address || '',
-                  latitude,
-                  longitude,
-                },
-                is_active: offer.isActive !== false && offer.is_active !== false,
-                redemption_count: offer.redemptionCount || offer.redemption_count || 0,
-              } as Offer;
-            })
+            return {
+              id: offer._id?.toString() || offer.id?.toString() || '',
+              call_to_action: offer.callToAction || offer.call_to_action || '',
+              created_at: offer.createdAt || offer.created_at || new Date().toISOString(),
+              offer_image_url: offer.offerImage || offer.offer_image || offer.offerImageUrl || offer.offer_image_url || null,
+              business_name: location?.name || null,
+              redemption_code: offer.redemptionCode || offer.redemption_code || null,
+              location: {
+                id: location?._id?.toString() || location?.id?.toString() || '',
+                name: location?.name || 'Store',
+                address: location?.address || '',
+                latitude,
+                longitude,
+              },
+              is_active: offer.isActive !== false && offer.is_active !== false,
+              redemption_count: offer.redemptionCount || offer.redemption_count || 0,
+            } as Offer;
+          })
         );
 
-        setOffers(nycOffers);
+        setOffers(processedOffers);
       } else {
         setOffers([]);
       }
     } catch (error) {
-      console.error("Error fetching NYC offers:", error);
+      console.error("Error fetching open offers:", error);
       setOffers([]);
       toast({
         title: "Error",
@@ -301,7 +242,7 @@ const NYCDeals = () => {
 
     try {
       const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(searchAddress)}.json?access_token=${MAPBOX_TOKEN}&limit=1&bbox=-74.26,40.49,-73.70,40.92`
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(searchAddress)}.json?access_token=${MAPBOX_TOKEN}&limit=1`
       );
       const data = await response.json();
 
@@ -317,7 +258,6 @@ const NYCDeals = () => {
         })).sort((a, b) => (a.distance || 999) - (b.distance || 999));
 
         setOffers(offersWithDistance);
-        setSelectedBorough("all");
 
         toast({
           title: "Location found",
@@ -327,7 +267,7 @@ const NYCDeals = () => {
         // Zoom into the searched location
         map.current?.flyTo({
           center: [lng, lat],
-          zoom: 15,
+          zoom: 12,
           duration: 1500,
         });
 
@@ -353,7 +293,7 @@ const NYCDeals = () => {
   const clearSearch = () => {
     setSearchAddress("");
     setUserLocation(null);
-    fetchNYCOffers();
+    fetchOpenOffers();
   };
 
   if (loading) {
@@ -361,7 +301,7 @@ const NYCDeals = () => {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-2 text-muted-foreground">Loading NYC deals...</p>
+          <p className="mt-2 text-muted-foreground">Loading open offers...</p>
         </div>
       </div>
     );
@@ -392,11 +332,15 @@ const NYCDeals = () => {
       <section className="py-8 bg-gradient-to-b from-primary/5 to-background">
         <div className="container mx-auto px-4">
           <div className="text-center max-w-3xl mx-auto space-y-4">
+            <div className="inline-flex items-center gap-2 bg-primary/10 px-4 py-2 rounded-full mb-4">
+              <Zap className="w-5 h-5 text-primary" />
+              <span className="text-sm font-medium text-primary">Open Offers</span>
+            </div>
             <h1 className="text-4xl md:text-5xl font-bold text-foreground">
-              New York City Deals & Discounts
+              Discover Open Offers Near You
             </h1>
             <p className="text-lg text-muted-foreground">
-              Discover exclusive offers from local NYC businesses across all five boroughs
+              Browse exclusive offers from local businesses participating in the Open Offer network
             </p>
             <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-2">
@@ -499,42 +443,22 @@ const NYCDeals = () => {
         </div>
       </section>
 
-      {/* Borough Filter */}
-      <section className="py-4 border-b bg-card/30">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-wrap justify-center gap-2">
-            {boroughs.map((borough) => (
-              <Button
-                key={borough}
-                variant={selectedBorough === borough ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedBorough(borough)}
-              >
-                {borough === "all" ? "All Boroughs" : borough}
-              </Button>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Offers Grid */}
       <section className="py-12">
         <div className="container mx-auto px-4">
-          {filteredOffers.length === 0 ? (
+          {offers.length === 0 ? (
             <Card className="text-center py-12">
               <CardContent>
                 <Store className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-xl font-semibold mb-2">No offers available</h3>
+                <h3 className="text-xl font-semibold mb-2">No open offers available</h3>
                 <p className="text-muted-foreground">
-                  {selectedBorough === "all" 
-                    ? "Check back soon for new deals!" 
-                    : `No offers currently available in ${selectedBorough}`}
+                  Check back soon for new deals from local businesses!
                 </p>
               </CardContent>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredOffers.map((offer) => (
+              {offers.map((offer) => (
                 <Card 
                   key={offer.id} 
                   className={`overflow-hidden hover:shadow-lg transition-all cursor-pointer ${
@@ -560,7 +484,7 @@ const NYCDeals = () => {
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <Store className="h-12 w-12 text-primary/30" />
+                        <Zap className="h-12 w-12 text-primary/30" />
                       </div>
                     )}
                     {offer.created_at && (
@@ -571,6 +495,11 @@ const NYCDeals = () => {
                         </span>
                       </div>
                     )}
+                    <div className="absolute top-2 left-2">
+                      <Badge className="bg-blue-600 hover:bg-blue-700">
+                        Open Offer
+                      </Badge>
+                    </div>
                   </div>
                   <CardHeader className="bg-primary/5 pb-2">
                     <CardTitle className="text-lg">{offer.call_to_action}</CardTitle>
@@ -586,8 +515,8 @@ const NYCDeals = () => {
                     
                     <div className="flex items-center gap-2">
                       <MapPin className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">
-                        {getBoroughFromZip(offer.location.address)} • {extractZipFromAddress(offer.location.address)}
+                      <span className="text-sm text-muted-foreground">
+                        {offer.location.address}
                       </span>
                       {offer.distance && (
                         <Badge variant="outline" className="ml-auto text-xs">
@@ -676,5 +605,4 @@ const NYCDeals = () => {
   );
 };
 
-export default NYCDeals;
-
+export default OpenOffers;

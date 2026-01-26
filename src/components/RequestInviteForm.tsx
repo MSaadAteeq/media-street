@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowRight, Zap, Globe, SkipForward, Check, AlertCircle, CreditCard } from "lucide-react";
+import { ArrowRight, Zap, Globe, SkipForward, Check, AlertCircle, CreditCard, Gift } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 // import OfferPreviewCard from "@/components/OfferPreviewCard";
 import OfferPreviewCard from "./OfferPreviewCard";
@@ -598,6 +598,9 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
 
       toast.success("Open Offer subscription activated! Your offer will be distributed to local retailers.");
 
+      // Mark that this is a new signup so dashboard shows welcome dialog
+      sessionStorage.setItem('showWelcomeCreditsDialog', 'true');
+      
       // Navigate to dashboard
       setOpen(false);
       form.reset();
@@ -620,6 +623,9 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
   };
 
   const handleSkipToDashboard = () => {
+    // Mark that this is a new signup so dashboard shows welcome dialog
+    sessionStorage.setItem('showWelcomeCreditsDialog', 'true');
+    
     setOpen(false);
     form.reset();
     offerForm.reset();
@@ -657,12 +663,12 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
           <DialogTitle className="text-2xl font-bold gradient-hero bg-clip-text text-transparent">
             {currentStep === 1 && "Join Media Street"}
             {currentStep === 2 && "Create Your First Offer"}
-            {currentStep === 3 && "Subscribe to Open Offer"}
+            {currentStep === 3 && (showCardForm ? "Congratulations!" : "Subscribe to Open Offer")}
           </DialogTitle>
           <DialogDescription>
             {currentStep === 1 && "Join the Media Street™ network as a retail location and start cross-promoting with nearby retailers today."}
-            {currentStep === 2 && "Create an offer to attract new customers from partner retailers. (Optional)"}
-            {currentStep === 3 && "Get your offer distributed to local retailers for maximum visibility."}
+            {currentStep === 2 && "Create an offer to attract new customers from partner retailers."}
+            {currentStep === 3 && (showCardForm ? "You've been selected for $50 in credits!" : "Get your offer distributed to local retailers for maximum visibility.")}
           </DialogDescription>
 
           {/* Step Indicator */}
@@ -998,6 +1004,28 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
         {/* Step 3: Open Offer Subscription */}
         {currentStep === 3 && (
           <div className="space-y-6">
+            {/* Congratulations Section - Show when card form is displayed */}
+            {showCardForm && (
+              <div className="text-center space-y-4">
+                <div className="flex justify-center">
+                  <div className="rounded-full bg-orange-500 p-4">
+                    <Gift className="h-8 w-8 text-white" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-bold">
+                    🎉 Congratulations! 🎉
+                  </h3>
+                  <p className="text-lg text-primary font-semibold">
+                    You've been selected for $50 in credits!
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Use your promo credits to try Open Offer risk-free. You won't be charged until credits run out.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {showCardForm ? (
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-primary">
@@ -1005,7 +1033,7 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
                   <h4 className="font-semibold">Add Payment Method</h4>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Add a card to subscribe to Open Offer. Your card will be charged $25/month.
+                  Add a card to complete your subscription. Your promo credits will be used first — you'll only be charged after they're exhausted.
                 </p>
                 <AddCardForm
                   onSuccess={handleCardAdded}
@@ -1014,6 +1042,26 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
               </div>
             ) : (
               <>
+                {/* Congratulations Section */}
+                <div className="text-center space-y-4">
+                  <div className="flex justify-center">
+                    <div className="rounded-full bg-orange-500 p-4">
+                      <Gift className="h-8 w-8 text-white" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-bold">
+                      🎉 Congratulations! 🎉
+                    </h3>
+                    <p className="text-lg text-primary font-semibold">
+                      You've been selected for $50 in credits!
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Use your promo credits to try Open Offer risk-free. You won't be charged until credits run out.
+                    </p>
+                  </div>
+                </div>
+
                 <Card className="border-primary/20 bg-primary/5">
                   <CardContent className="pt-6 space-y-4">
                     <div className="flex items-start gap-3">
@@ -1031,11 +1079,11 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
                       <ul className="space-y-2 text-sm">
                         <li className="flex items-start gap-2">
                           <Check className="h-4 w-4 text-green-500 mt-0.5" />
-                          <span>Show your offer at other nearby OO retailers</span>
+                          <span>Show your offer at other nearby retailers</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <Check className="h-4 w-4 text-green-500 mt-0.5" />
-                          <span>Show non-competing OO retailer offers at yours</span>
+                          <span>Show non-competing retailer offers at yours</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <Check className="h-4 w-4 text-green-500 mt-0.5" />
@@ -1043,7 +1091,7 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
                         </li>
                         <li className="flex items-start gap-2">
                           <Check className="h-4 w-4 text-green-500 mt-0.5" />
-                          <span>Start a <strong>$25/month</strong> subscription for this location</span>
+                          <span>Use AI to match you with complementary retailers to maximize conversion</span>
                         </li>
                       </ul>
                     </div>

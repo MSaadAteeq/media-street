@@ -24,6 +24,7 @@ interface Location {
   offerXActive?: boolean;
   openOfferActive?: boolean;
   canToggleOpenOffer?: boolean; // Only show toggle if no non-open offer exists
+  hasActiveOffer?: boolean; // Whether location has any active (non-expired) offer
   activePartnerships: number;
   maxPartnerships: number;
   posConnected?: boolean;
@@ -110,18 +111,31 @@ const OfferAI = () => {
           
           // Find active offer for this location
           // Check both locationIds (array) and location_ids (array) fields
+          const now = new Date();
           const locationOffers = offersData.filter((offer: any) => {
             const offerLocationIds = offer.locationIds || offer.location_ids || [];
             const locationIdStr = locationId;
-            return offerLocationIds.some((lid: any) => {
+            const isLocationMatch = offerLocationIds.some((lid: any) => {
               const lidStr = lid?._id?.toString() || lid?.toString() || lid;
               return lidStr === locationIdStr;
-            }) && (offer.is_active || offer.isActive);
+            });
+            
+            // Check if offer is active
+            const isActive = offer.is_active === true || offer.isActive === true;
+            
+            // Check if offer is not expired
+            const expiresAt = offer.expiresAt || offer.expiration_date || offer.expires_at;
+            const notExpired = !expiresAt || new Date(expiresAt) > now;
+            
+            return isLocationMatch && isActive && notExpired;
           });
           
           const currentOffer = locationOffers.length > 0 
             ? (locationOffers[0].call_to_action || locationOffers[0].callToAction) 
             : null;
+          
+          // Check if location has any active (non-expired) offer
+          const hasActiveOffer = locationOffers.length > 0;
           
           // Check if location has open offer active
           const hasOpenOffer = locationOffers.some((offer: any) => 
@@ -151,6 +165,7 @@ const OfferAI = () => {
             offerXActive: false, // TODO: Implement OfferX feature
             openOfferActive: hasOpenOffer,
             canToggleOpenOffer: canToggleOpenOffer, // Only show toggle if no non-open offer exists
+            hasActiveOffer: hasActiveOffer, // Whether location has any active (non-expired) offer
             activePartnerships: locationPartnerships.length,
             maxPartnerships: 5,
             posConnected: false // TODO: Implement POS connection check
@@ -465,7 +480,27 @@ const OfferAI = () => {
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <div className="text-sm font-medium text-muted-foreground">Open Offer</div>
-                        <Switch checked={location.openOfferActive} onCheckedChange={checked => handleOpenOfferToggle(location.id, checked)} />
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div>
+                                <Switch 
+                                  checked={location.openOfferActive} 
+                                  onCheckedChange={checked => handleOpenOfferToggle(location.id, checked)}
+                                  disabled={location.hasActiveOffer}
+                                />
+                              </div>
+                            </TooltipTrigger>
+                            {location.hasActiveOffer && (
+                              <TooltipContent>
+                                <p className="text-sm">
+                                  This toggle is disabled because there is an active offer running on this location. 
+                                  Please wait until the offer expires to toggle Open Offer.
+                                </p>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TooltipProvider>
                       </div>
                     </div>
                   )}

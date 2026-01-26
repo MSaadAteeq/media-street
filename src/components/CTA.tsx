@@ -24,7 +24,7 @@ const CTA = () => {
 
   const stats = [
     { label: "Active Retailers", value: "100+", icon: Store },
-    { label: "Weekly Scans", value: "25K+", icon: TrendingUp }, 
+    { label: "Weekly Referrals", value: "2K+", icon: TrendingUp }, 
     { label: "Avg Rating", value: "4.8★", icon: Star },
     { label: "Setup Time", value: "5min", icon: Clock }
   ];

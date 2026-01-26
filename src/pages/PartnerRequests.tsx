@@ -15,10 +15,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { Store, Check, X, Plus, Send, UserPlus, ArrowDown, ArrowUp, Eye, ChevronRight, Gift, Map as MapIcon, Building2, Trash2, MessageSquare, Lightbulb } from "lucide-react";
+import { Store, Check, X, Plus, Send, UserPlus, ArrowDown, ArrowUp, Eye, ChevronRight, Gift, Map as MapIcon, Building2, Trash2, MessageSquare, Lightbulb, Monitor, Printer } from "lucide-react";
 import AppLayout from "@/components/AppLayout";
 import PartnerMap from "@/components/PartnerMap";
 import DisplayOptionCheck from "@/components/DisplayOptionCheck";
+import PartnershipAnalyticsDialog from "@/components/PartnershipAnalyticsDialog";
 import { checkDisplayOptions } from "@/utils/displayOptions";
 
 // Import POS campaign images
@@ -98,6 +99,8 @@ const PartnerRequests = () => {
   const [selectedPartnership, setSelectedPartnership] = useState<PartnerRequest | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [showAnalyticsDialog, setShowAnalyticsDialog] = useState(false);
+  const [selectedRequestForAnalytics, setSelectedRequestForAnalytics] = useState<PartnerRequest | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   useEffect(() => {
@@ -551,35 +554,105 @@ const PartnerRequests = () => {
       
       if (response && response.success && response.data) {
         console.log(`✅ Received ${response.data.length} partner requests`);
+        
+        // Fetch all offers to get offer details for each request
+        let allOffers: any[] = [];
+        try {
+          const offersResponse = await get({
+            end_point: 'offers',
+            token: true
+          });
+          if (offersResponse.success && offersResponse.data) {
+            allOffers = offersResponse.data;
+            console.log(`✅ Fetched ${allOffers.length} offers for matching`);
+          }
+        } catch (offerError) {
+          console.warn('⚠️ Could not fetch offers:', offerError);
+        }
+        
         // Format requests to match interface and include offer images
-        const formattedRequests = response.data.map((req: any) => ({
-          id: req._id?.toString() || req.id?.toString(),
-          sender_id: req.senderId?.toString() || req.sender_id?.toString() || req.senderId || req.sender_id,
-          recipient_id: req.recipientId?.toString() || req.recipient_id?.toString() || req.recipientId || req.recipient_id,
-          status: req.status || 'pending',
-          created_at: req.createdAt || req.created_at || new Date().toISOString(),
-          updated_at: req.updatedAt || req.updated_at || new Date().toISOString(),
-          sender_profile: req.senderProfile || req.sender_profile || {
-            store_name: req.sender?.fullName || 'Unknown',
-            first_name: req.sender?.fullName?.split(' ')[0] || '',
-            last_name: req.sender?.fullName?.split(' ').slice(1).join(' ') || '',
-            retail_address: req.senderLocation?.address || ''
-          },
-          recipient_profile: req.recipientProfile || req.recipient_profile || {
-            store_name: req.recipient?.fullName || 'Unknown',
-            first_name: req.recipient?.fullName?.split(' ')[0] || '',
-            last_name: req.recipient?.fullName?.split(' ').slice(1).join(' ') || '',
-            retail_address: req.recipientLocation?.address || ''
-          },
-          // Include offer images from backend
-          sender_offer_image: req.senderOfferImage || req.sender_offer_image || req.senderOffer?.offerImage || null,
-          recipient_offer_image: req.recipientOfferImage || req.recipient_offer_image || req.recipientOffer?.offerImage || null,
-          sender_offer: req.senderOffer || null,
-          recipient_offer: req.recipientOffer || null
+        const formattedRequests = await Promise.all(response.data.map(async (req: any) => {
+          const senderId = req.senderId?.toString() || req.sender_id?.toString() || req.senderId || req.sender_id;
+          const recipientId = req.recipientId?.toString() || req.recipient_id?.toString() || req.recipientId || req.recipient_id;
+          
+          // Find offers for sender and recipient
+          let senderOffer = req.senderOffer || req.sender_offer || null;
+          let recipientOffer = req.recipientOffer || req.recipient_offer || null;
+          
+          console.log(`🔍 Processing request ${req._id || req.id}:`, {
+            status: req.status,
+            senderId,
+            recipientId,
+            hasSenderOffer: !!senderOffer,
+            hasRecipientOffer: !!recipientOffer,
+            senderOfferImage: req.senderOfferImage || req.sender_offer_image,
+            recipientOfferImage: req.recipientOfferImage || req.recipient_offer_image
+          });
+          
+          // If offers not included in response, try to find them from allOffers
+          if (!senderOffer && senderId && allOffers.length > 0) {
+            senderOffer = allOffers.find((offer: any) => {
+              const offerUserId = offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
+              return offerUserId === senderId;
+            });
+            if (senderOffer) {
+              console.log(`✅ Found sender offer from allOffers:`, senderOffer._id || senderOffer.id);
+            }
+          }
+          
+          if (!recipientOffer && recipientId && allOffers.length > 0) {
+            recipientOffer = allOffers.find((offer: any) => {
+              const offerUserId = offer.userId?._id?.toString() || offer.userId?.toString() || offer.userId;
+              return offerUserId === recipientId;
+            });
+            if (recipientOffer) {
+              console.log(`✅ Found recipient offer from allOffers:`, recipientOffer._id || recipientOffer.id);
+            }
+          }
+          
+          // Get offer images - try multiple possible field names
+          const senderOfferImage = req.senderOfferImage || req.sender_offer_image || 
+            senderOffer?.offer_image || senderOffer?.offerImage || 
+            senderOffer?.image || senderOffer?.offer_image_url || null;
+          
+          const recipientOfferImage = req.recipientOfferImage || req.recipient_offer_image || 
+            recipientOffer?.offer_image || recipientOffer?.offerImage || 
+            recipientOffer?.image || recipientOffer?.offer_image_url || null;
+          
+          console.log(`📸 Offer images for request ${req._id || req.id}:`, {
+            senderOfferImage,
+            recipientOfferImage
+          });
+          
+          return {
+            id: req._id?.toString() || req.id?.toString(),
+            sender_id: senderId,
+            recipient_id: recipientId,
+            status: req.status || 'pending',
+            created_at: req.createdAt || req.created_at || new Date().toISOString(),
+            updated_at: req.updatedAt || req.updated_at || new Date().toISOString(),
+            sender_profile: req.senderProfile || req.sender_profile || {
+              store_name: req.sender?.fullName || 'Unknown',
+              first_name: req.sender?.fullName?.split(' ')[0] || '',
+              last_name: req.sender?.fullName?.split(' ').slice(1).join(' ') || '',
+              retail_address: req.senderLocation?.address || ''
+            },
+            recipient_profile: req.recipientProfile || req.recipient_profile || {
+              store_name: req.recipient?.fullName || 'Unknown',
+              first_name: req.recipient?.fullName?.split(' ')[0] || '',
+              last_name: req.recipient?.fullName?.split(' ').slice(1).join(' ') || '',
+              retail_address: req.recipientLocation?.address || ''
+            },
+            // Include offer images and full offer objects
+            sender_offer_image: senderOfferImage,
+            recipient_offer_image: recipientOfferImage,
+            sender_offer: senderOffer,
+            recipient_offer: recipientOffer
+          };
         }));
         
         setRequests(formattedRequests);
-        console.log(`✅ Set ${formattedRequests.length} formatted requests to state`);
+        console.log(`✅ Set ${formattedRequests.length} formatted requests to state with offer details`);
       } else {
         console.warn('⚠️ No data in response or response not successful:', response);
         setRequests([]);
@@ -817,15 +890,11 @@ const PartnerRequests = () => {
       
       console.log('Final recipientId to send request to:', recipientId);
 
-      // Check if user has selected display options
-      const hasDisplayOption = await checkDisplayOptions();
-      if (!hasDisplayOption) {
-        setPendingAction(() => async () => {
-          await sendPartnerRequestFinal(currentUserId || 'current-user-id', recipientId);
-        });
-        setShowDisplayOptionCheck(true);
-        return;
+      // Set display options to default (tablet) if not already set
+      if (localStorage.getItem('displayCarousel') === null) {
+        localStorage.setItem('displayCarousel', 'true');
       }
+      
       await sendPartnerRequestFinal(currentUserId || 'current-user-id', recipientId);
     } catch (error) {
       console.error('Error sending partner request:', error);
@@ -885,17 +954,9 @@ const PartnerRequests = () => {
     }
   };
   const handleApproveRequest = async (requestId: string) => {
-    const hasDisplayOption = await checkDisplayOptions();
-    if (!hasDisplayOption) {
-      const request = requests.find(r => r.id === requestId);
-      if (request) {
-        setPendingAction(() => async () => {
-          setPendingBillingRequest(request);
-          setShowBillingConfirmDialog(true);
-        });
-        setShowDisplayOptionCheck(true);
-      }
-      return;
+    // Set display options to default (tablet) if not already set
+    if (localStorage.getItem('displayCarousel') === null) {
+      localStorage.setItem('displayCarousel', 'true');
     }
     const request = requests.find(r => r.id === requestId);
     if (request) {
@@ -1263,13 +1324,14 @@ const PartnerRequests = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Type</TableHead>
-                      <TableHead>Request Type</TableHead>
-                      <TableHead>Partner/Advertiser</TableHead>
+                      <TableHead>Partner</TableHead>
                       <TableHead>Your Store</TableHead>
                       <TableHead>Distance</TableHead>
-                      <TableHead>Their Ad</TableHead>
-                      <TableHead>Your Ad</TableHead>
+                      <TableHead>Their Offer</TableHead>
+                      <TableHead>Your Offer</TableHead>
+                      <TableHead>X-Promo Assets</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Analytics</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
@@ -1331,9 +1393,20 @@ const PartnerRequests = () => {
                     const getPartnerOfferImage = (request: any) => {
                       // For outgoing requests, show recipient's offer image
                       // For incoming requests, show sender's offer image
-                      const offerImage = requestType === 'outgoing' 
+                      let offerImage = requestType === 'outgoing' 
                         ? request.recipient_offer_image 
                         : request.sender_offer_image;
+                      
+                      // If no direct image, try to get from offer object
+                      if (!offerImage) {
+                        const offer = requestType === 'outgoing' 
+                          ? request.recipient_offer 
+                          : request.sender_offer;
+                        
+                        if (offer) {
+                          offerImage = offer.offer_image || offer.offerImage || offer.image || null;
+                        }
+                      }
                       
                       if (offerImage) {
                         return offerImage;
@@ -1355,23 +1428,47 @@ const PartnerRequests = () => {
                       }
                     };
                     
+                    // Get your offer image
+                    const getYourOfferImage = (request: any) => {
+                      // For outgoing requests, show sender's offer image
+                      // For incoming requests, show recipient's offer image
+                      let offerImage = requestType === 'outgoing' 
+                        ? request.sender_offer_image 
+                        : request.recipient_offer_image;
+                      
+                      // If no direct image, try to get from offer object
+                      if (!offerImage) {
+                        const offer = requestType === 'outgoing' 
+                          ? request.sender_offer 
+                          : request.recipient_offer;
+                        
+                        if (offer) {
+                          offerImage = offer.offer_image || offer.offerImage || offer.image || null;
+                        }
+                      }
+                      
+                      if (offerImage) {
+                        return offerImage;
+                      }
+                      
+                      // Fallback to default image
+                      return posSalonImage;
+                    };
+                    
+                    // Get your store name
+                    const yourStoreName = requestType === 'incoming' 
+                      ? (request.recipient_profile?.store_name || 'Your Store')
+                      : (request.sender_profile?.store_name || 'Your Store');
+                    
                     return <TableRow key={request.id}>
                       <TableCell>
                         {getRequestTypeIcon(request)}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={isAdRequest ? "default" : "outline"}>
-                            {isAdRequest ? "Ad" : "Partner"}
-                          </Badge>
-                          {isAdRequest && <Badge variant="secondary">$25</Badge>}
-                        </div>
+                      <TableCell className="font-medium">
+                        {partnerStore || 'N/A'}
                       </TableCell>
                       <TableCell className="font-medium">
-                        {partnerStore}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {requestType === 'incoming' ? request.recipient_profile?.store_name : request.sender_profile?.store_name}
+                        {yourStoreName}
                       </TableCell>
                       <TableCell>
                         {isAdRequest ? "N/A" : getDistance()}
@@ -1385,24 +1482,41 @@ const PartnerRequests = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {isAdRequest ? <div className="text-muted-foreground">N/A</div> : (() => {
-                          // Get your offer image - for outgoing requests, show sender's offer; for incoming, show recipient's offer
-                          const yourOfferImage = requestType === 'outgoing' 
-                            ? (request.sender_offer_image || posSalonImage)
-                            : (request.recipient_offer_image || posSalonImage);
-                          
-                          return (
-                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted cursor-pointer hover:ring-2 hover:ring-primary transition-all" onClick={() => setEnlargedImage({
-                              src: yourOfferImage,
-                              title: "Your offer"
-                            })}>
-                              <img src={yourOfferImage} alt="Your offer" className="w-full h-full object-cover" />
-                            </div>
-                          );
-                        })()}
+                        {isAdRequest ? <div className="text-muted-foreground">N/A</div> : (
+                          <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted cursor-pointer hover:ring-2 hover:ring-primary transition-all" onClick={() => setEnlargedImage({
+                            src: getYourOfferImage(request),
+                            title: "Your offer"
+                          })}>
+                            <img src={getYourOfferImage(request)} alt="Your offer" className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Monitor className="h-4 w-4 text-primary" />
+                          <Printer className="h-4 w-4 text-primary" />
+                        </div>
                       </TableCell>
                       <TableCell>
                         {getStatusBadge(request.status)}
+                      </TableCell>
+                      <TableCell>
+                        {request.status === 'pending' ? (
+                          <span className="text-muted-foreground">-</span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedRequestForAnalytics(request);
+                              setShowAnalyticsDialog(true);
+                            }}
+                            className="gap-1"
+                          >
+                            <Eye className="h-3 w-3" />
+                            View
+                          </Button>
+                        )}
                       </TableCell>
                       <TableCell>
                         {isAdRequest ? <>
@@ -1780,6 +1894,30 @@ const PartnerRequests = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Analytics Dialog */}
+      {selectedRequestForAnalytics && (
+        <PartnershipAnalyticsDialog
+          open={showAnalyticsDialog}
+          onOpenChange={setShowAnalyticsDialog}
+          partnership={{
+            id: selectedRequestForAnalytics.id,
+            partnerStoreName: (() => {
+              const requestType = getRequestType(selectedRequestForAnalytics);
+              return requestType === 'outgoing' 
+                ? selectedRequestForAnalytics.recipient_profile?.store_name || 'Partner'
+                : selectedRequestForAnalytics.sender_profile?.store_name || 'Partner';
+            })(),
+            yourStoreName: (() => {
+              const requestType = getRequestType(selectedRequestForAnalytics);
+              return requestType === 'incoming' 
+                ? selectedRequestForAnalytics.recipient_profile?.store_name || 'Your Store'
+                : selectedRequestForAnalytics.sender_profile?.store_name || 'Your Store';
+            })(),
+            createdAt: selectedRequestForAnalytics.created_at
+          }}
+        />
+      )}
     </div>
   </AppLayout>;
 };

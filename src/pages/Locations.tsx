@@ -11,7 +11,9 @@ import {
   Building,
   QrCode,
   Ticket,
-  Monitor
+  Monitor,
+  Info,
+  Globe
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import LocationPicker from "@/components/LocationPicker";
@@ -94,7 +96,44 @@ const Locations = () => {
       });
       
       if (response.success && response.data) {
-        setLocations(response.data);
+        // Fetch offers for each location to check if there are active offers
+        const locationsWithOffers = await Promise.all(
+          response.data.map(async (location: any) => {
+            try {
+              // Fetch owner's offers for this location
+              const offersResponse = await get({
+                end_point: `offers/location/${location.id || location._id}/owner`,
+                token: true
+              });
+              
+              let hasActiveOffer = false;
+              if (offersResponse.success && offersResponse.data && Array.isArray(offersResponse.data)) {
+                const now = new Date();
+                // Check if any offer is active and not expired
+                hasActiveOffer = offersResponse.data.some((offer: any) => {
+                  const isActive = offer.isActive === true || offer.is_active === true;
+                  const notExpired = !offer.expiresAt || 
+                                   !offer.expiration_date || 
+                                   new Date(offer.expiresAt || offer.expiration_date) > now;
+                  return isActive && notExpired;
+                });
+              }
+              
+              return {
+                ...location,
+                hasActiveOffer
+              };
+            } catch (error) {
+              console.error(`Error fetching offers for location ${location.id}:`, error);
+              return {
+                ...location,
+                hasActiveOffer: false
+              };
+            }
+          })
+        );
+        
+        setLocations(locationsWithOffers);
         setLoading(false);
         return;
       }
@@ -314,7 +353,61 @@ const Locations = () => {
                     <TableHead className="text-muted-foreground font-medium text-xs sm:text-sm whitespace-nowrap">Store Name</TableHead>
                     <TableHead className="text-muted-foreground font-medium text-xs sm:text-sm hidden md:table-cell">City</TableHead>
                     <TableHead className="text-muted-foreground font-medium text-xs sm:text-sm hidden lg:table-cell">Address</TableHead>
-                    <TableHead className="text-muted-foreground font-medium text-center text-xs sm:text-sm whitespace-nowrap">Open Offer</TableHead>
+                    <TableHead className="text-muted-foreground font-medium text-center text-xs sm:text-sm whitespace-nowrap">
+                      <HoverCard openDelay={100} closeDelay={300}>
+                        <HoverCardTrigger asChild>
+                          <div className="flex items-center justify-center gap-1.5 cursor-help">
+                            <span>Open Offer</span>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground/60" />
+                          </div>
+                        </HoverCardTrigger>
+                        <HoverCardContent 
+                          align="center" 
+                          side="bottom"
+                          sideOffset={8}
+                          className="rounded-xl p-5 bg-[#2D3748] border-0 shadow-xl z-50"
+                          style={{ 
+                            width: '320px',
+                            maxWidth: '90vw',
+                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2)',
+                            overflow: 'hidden'
+                          }}
+                        >
+                          <div className="flex items-start gap-4" style={{ width: '100%' }}>
+                            <Globe className="h-6 w-6 shrink-0 mt-0.5" style={{ color: '#60A5FA', flexShrink: 0, minWidth: '24px' }} />
+                            <div className="space-y-2.5" style={{ 
+                              flex: '1 1 0%',
+                              minWidth: 0,
+                              maxWidth: '100%',
+                              overflow: 'hidden',
+                              wordWrap: 'break-word',
+                              overflowWrap: 'break-word'
+                            }}>
+                              <p className="font-bold text-white text-base leading-tight" style={{ 
+                                color: '#FFFFFF', 
+                                fontWeight: 700,
+                                wordWrap: 'break-word',
+                                overflowWrap: 'break-word',
+                                wordBreak: 'break-word'
+                              }}>
+                                What is Open Offer?
+                              </p>
+                              <p className="text-sm leading-relaxed" style={{ 
+                                lineHeight: '1.6', 
+                                color: '#A0AEC0',
+                                wordWrap: 'break-word',
+                                overflowWrap: 'break-word',
+                                wordBreak: 'break-word',
+                                whiteSpace: 'normal',
+                                maxWidth: '100%'
+                              }}>
+                                Open Offer distributes your offer to non-competing local retailers in the Media Street network, giving you maximum visibility without needing to find partners individually.
+                              </p>
+                            </div>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                    </TableHead>
                     <TableHead className="text-muted-foreground font-medium text-center text-xs sm:text-sm">Partners</TableHead>
                     <TableHead className="text-muted-foreground font-medium text-center text-xs sm:text-sm">Display QR Code</TableHead>
                     <TableHead className="text-muted-foreground font-medium text-center text-xs sm:text-sm hidden sm:table-cell whitespace-nowrap">Carousel</TableHead>
@@ -354,11 +447,30 @@ const Locations = () => {
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex items-center justify-center">
-                            <Switch
-                              checked={location.openOfferOnly || location.open_offer_only || false}
-                              onCheckedChange={(checked) => handleToggleOpenOfferOnly(location.id, checked)}
-                              disabled={loading}
-                            />
+                            <HoverCard openDelay={100} closeDelay={300}>
+                              <HoverCardTrigger asChild>
+                                <div>
+                                  <Switch
+                                    checked={location.openOfferOnly || location.open_offer_only || false}
+                                    onCheckedChange={(checked) => handleToggleOpenOfferOnly(location.id, checked)}
+                                    disabled={loading || location.hasActiveOffer}
+                                  />
+                                </div>
+                              </HoverCardTrigger>
+                              {location.hasActiveOffer && (
+                                <HoverCardContent 
+                                  align="center" 
+                                  side="top"
+                                  sideOffset={5}
+                                  className="w-64 p-3 bg-card border-border shadow-lg z-50"
+                                >
+                                  <p className="text-sm text-muted-foreground">
+                                    This toggle is disabled because there is an active offer running on this location. 
+                                    Please wait until the offer expires to toggle Open Offer.
+                                  </p>
+                                </HoverCardContent>
+                              )}
+                            </HoverCard>
                           </div>
                         </TableCell>
                         <TableCell className="text-center">

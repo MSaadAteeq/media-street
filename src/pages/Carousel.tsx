@@ -1,24 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
-// Supabase removed - will use Node.js API
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MapPin, Tag, Clock, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
+import { MapPin, Tag, Clock, ExternalLink } from "lucide-react";
 import mediaStreetLogo from "@/assets/media-street-logo.png";
-import posSalonImage from "@/assets/pos-campaign-salon.jpg";
-import posCoffeeImage from "@/assets/pos-campaign-coffee.jpg";
-import posFlowersImage from "@/assets/pos-campaign-flowers.jpg";
-import { useToast } from "@/components/ui/use-toast";
-import { calculateDistance, shuffleArray } from "@/utils/distance";
-import {
-  Carousel as UICarousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-  type CarouselApi,
-} from "@/components/ui/carousel";
+import { useToast } from "@/hooks/use-toast";
+import { shuffleArray } from "@/utils/distance";
+import { get } from "@/services/apis";
 
 interface Offer {
   id: string;
@@ -28,15 +17,9 @@ interface Offer {
   redemption_start_date: string;
   redemption_end_date: string;
   location_id: string;
-  location_name?: string; // Original offer location name
-  location_address?: string; // Original offer location address
   business_name?: string;
   distance?: number;
-  redemption_code?: string;
-  coupon_code?: string;
-  is_partner_offer?: boolean;
-  is_open_offer?: boolean;
-  is_owner_offer?: boolean;
+  offerType: 'partner' | 'open_offer';
 }
 
 interface Location {
@@ -54,16 +37,6 @@ const Carousel = () => {
   const [location, setLocation] = useState<Location | null>(null);
   const [allOffers, setAllOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentFullScreenIndex, setCurrentFullScreenIndex] = useState<number | null>(null);
-  const [showFullScreen, setShowFullScreen] = useState(false);
-  const [partnerOffers, setPartnerOffers] = useState<Offer[]>([]);
-  const [ownerOffers, setOwnerOffers] = useState<Offer[]>([]);
-  const [hasActiveOffer, setHasActiveOffer] = useState(false);
-  const [couponCodes, setCouponCodes] = useState<{ [offerId: string]: string }>({});
-  const [generatingCoupon, setGeneratingCoupon] = useState<{ [offerId: string]: boolean }>({});
-  const [api, setApi] = useState<CarouselApi>();
-  const [current, setCurrent] = useState(0);
-  const trackedImpressions = useRef<Set<string>>(new Set()); // Track which offers have been viewed
 
   useEffect(() => {
     if (locationId) {
@@ -71,58 +44,11 @@ const Carousel = () => {
     }
   }, [locationId]);
 
-  // Track impressions when carousel slide changes
-  const trackImpression = async (offer: Offer) => {
-    if (!locationId || !offer.id || !offer.location_id) return;
-    
-    try {
-      const { post } = await import("@/services/apis");
-      await post({
-        end_point: 'impressions',
-        body: {
-          offerId: offer.id,
-          locationId: offer.location_id, // Original offer location
-          displayLocationId: locationId, // Where it's being displayed
-          impressionType: 'carousel'
-        },
-        token: false // Public endpoint
-      });
-    } catch (error) {
-      // Silently fail - don't interrupt user experience
-      console.error('Error tracking impression:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (!api) {
-      return;
-    }
-
-    const currentIndex = api.selectedScrollSnap();
-    setCurrent(currentIndex + 1);
-    
-    // Track impression for initial offer
-    if (allOffers[currentIndex]) {
-      trackImpression(allOffers[currentIndex]);
-    }
-
-    api.on("select", () => {
-      const newIndex = api.selectedScrollSnap();
-      setCurrent(newIndex + 1);
-      
-      // Track impression when slide changes
-      if (allOffers[newIndex]) {
-        trackImpression(allOffers[newIndex]);
-      }
-    });
-  }, [api, allOffers, locationId]);
-
   const loadLocationAndOffers = async () => {
     try {
       setLoading(true);
 
       // Fetch location from backend API (public endpoint for QR codes)
-      const { get } = await import("@/services/apis");
       let locationData: Location | null = null;
       try {
         const locationResponse = await get({ 
@@ -132,7 +58,7 @@ const Carousel = () => {
         
         if (locationResponse.success && locationResponse.data) {
           locationData = {
-            id: locationResponse.data._id?.toString() || locationResponse.data.id?.toString() || locationId,
+            id: locationResponse.data._id?.toString() || locationResponse.data.id?.toString() || locationId || '',
             name: locationResponse.data.name || 'Unknown Location',
             address: locationResponse.data.address || '',
             latitude: locationResponse.data.latitude,
@@ -145,66 +71,101 @@ const Carousel = () => {
         }
       } catch (error) {
         console.error('Error fetching location:', error);
+        toast({
+          title: "Error",
+          description: "Could not find this location",
+          variant: "destructive",
+        });
         setLocation(null);
         return;
       }
-      
-      // First, check if location owner has an active offer - carousel only active if owner has offer
-      let ownerOffersData: Offer[] = [];
-      let locationHasActiveOffer = false;
+
+      if (!locationData || !locationData.user_id) {
+        console.error('Location data or user_id is missing');
+        return;
+      }
+
+      const currentUserId = locationData.user_id;
+      let partnerOffers: Offer[] = [];
+      let openOfferDeals: Offer[] = [];
+      let ownerOpenOffers: Offer[] = [];
+
+      // 1. FIRST: Fetch location owner's own offers (including open offers)
+      // This is the MOST IMPORTANT - show the location's own open offers
       try {
         const ownerResponse = await get({ 
           end_point: `offers/location/${locationId}/owner`,
           token: false // Public endpoint
         });
         
-        if (ownerResponse.success && ownerResponse.data && ownerResponse.data.length > 0) {
+        console.log('📦 Owner offers response:', ownerResponse);
+        
+        if (ownerResponse.success && ownerResponse.data && Array.isArray(ownerResponse.data)) {
           const now = new Date();
-          ownerOffersData = ownerResponse.data
+          const ownerOffers = ownerResponse.data
             .filter((offer: any) => {
               const isActive = offer.is_active !== false && offer.isActive !== false;
               const isNotExpired = !offer.expires_at && !offer.expiresAt || 
                 (offer.expires_at && new Date(offer.expires_at) > now) ||
                 (offer.expiresAt && new Date(offer.expiresAt) > now);
+              
+              // Check if it's an open offer
+              const isOpenOffer = offer.is_open_offer === true || 
+                                 offer.isOpenOffer === true || 
+                                 offer.is_open_offer === 'true' ||
+                                 offer.isOpenOffer === 'true';
+              
+              console.log(`  Offer ${offer._id || offer.id}:`, {
+                isActive,
+                isNotExpired,
+                isOpenOfferFlag: isOpenOffer,
+                callToAction: offer.callToAction || offer.call_to_action,
+                is_open_offer: offer.is_open_offer,
+                isOpenOffer: offer.isOpenOffer
+              });
+              
+              // Include ALL active, non-expired offers (both open and regular)
+              // But we'll mark open offers separately
               return isActive && isNotExpired;
+            });
+
+          // Separate owner's open offers - these MUST be shown
+          ownerOpenOffers = ownerOffers
+            .filter((offer: any) => {
+              const isOpenOffer = offer.is_open_offer === true || 
+                                 offer.isOpenOffer === true || 
+                                 offer.is_open_offer === 'true' ||
+                                 offer.isOpenOffer === 'true';
+              return isOpenOffer;
             })
             .map((offer: any) => ({
               id: offer._id?.toString() || offer.id?.toString() || '',
               call_to_action: offer.callToAction || offer.call_to_action || '',
-              location_id: offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() || offer.location_ids?.[0] || '',
-              location_name: offer.locations?.[0]?.name || offer.locationIds?.[0]?.name || 'Unknown Location',
-              is_partner_offer: false,
-              is_open_offer: false,
-              is_owner_offer: true, // Mark as owner's own offer
-              offer_image_url: offer.offer_image || offer.offerImage || posSalonImage, // Use different image for owner offers
+              offer_image_url: offer.offer_image || offer.offerImage || null,
               brand_logo_url: offer.brand_logo || offer.brandLogo || null,
               redemption_start_date: offer.created_at || offer.createdAt || new Date().toISOString(),
               redemption_end_date: offer.expires_at || offer.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-              business_name: offer.user?.fullName || offer.userId?.fullName || null,
-              redemption_code: offer.redemptionCode || offer.redemption_code || null
+              location_id: offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() || offer.location_ids?.[0] || '',
+              business_name: offer.user?.fullName || offer.userId?.fullName || offer.locations?.[0]?.name || offer.locationIds?.[0]?.name || null,
+              distance: undefined,
+              offerType: 'open_offer' as const
             }));
-          
-          locationHasActiveOffer = ownerOffersData.length > 0;
+
+          console.log('📦 Owner offers total:', ownerOffers.length);
+          console.log('📦 Owner open offers found:', ownerOpenOffers.length);
+          console.log('📦 Owner open offers details:', ownerOpenOffers.map(o => ({
+            id: o.id,
+            call_to_action: o.call_to_action,
+            offerType: o.offerType
+          })));
+        } else {
+          console.log('⚠️ No owner offers found or invalid response:', ownerResponse);
         }
       } catch (error) {
-        console.error('Error fetching location owner offers:', error);
+        console.error('❌ Error fetching owner offers:', error);
       }
-      
-      // If location owner doesn't have an active offer, don't show carousel
-      if (!locationHasActiveOffer) {
-        setHasActiveOffer(false);
-        setAllOffers([]);
-        setPartnerOffers([]);
-        setOwnerOffers([]);
-        setLoading(false);
-        return;
-      }
-      
-      setHasActiveOffer(true);
-      setOwnerOffers(ownerOffersData);
-      
-      // Load approved partner offers for this location (from retailers with approved partnerships)
-      let partnerOffers: Offer[] = [];
+
+      // 2. SECOND: Fetch active partner offers for this location
       try {
         const partnerResponse = await get({ 
           end_point: `offers/location/${locationId}/partners`,
@@ -212,7 +173,6 @@ const Carousel = () => {
         });
         
         if (partnerResponse.success && partnerResponse.data) {
-          // Filter: Only show active, non-expired offers
           const now = new Date();
           partnerOffers = partnerResponse.data
             .filter((offer: any) => {
@@ -225,18 +185,14 @@ const Carousel = () => {
             .map((offer: any) => ({
               id: offer._id?.toString() || offer.id?.toString() || '',
               call_to_action: offer.callToAction || offer.call_to_action || '',
-              location_id: offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() || offer.location_ids?.[0] || '',
-              location_name: offer.locations?.[0]?.name || offer.locationIds?.[0]?.name || 'Unknown Location',
-              location_address: offer.locations?.[0]?.address || offer.locationIds?.[0]?.address || '',
-              is_partner_offer: true,
-              is_open_offer: false,
-              is_owner_offer: false,
-              offer_image_url: offer.offer_image || offer.offerImage || posCoffeeImage, // Use different image for partner offers
+              offer_image_url: offer.offer_image || offer.offerImage || null,
               brand_logo_url: offer.brand_logo || offer.brandLogo || null,
               redemption_start_date: offer.created_at || offer.createdAt || new Date().toISOString(),
               redemption_end_date: offer.expires_at || offer.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-              business_name: offer.user?.fullName || offer.userId?.fullName || null,
-              redemption_code: offer.redemptionCode || offer.redemption_code || null
+              location_id: offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() || offer.location_ids?.[0] || '',
+              business_name: offer.user?.fullName || offer.userId?.fullName || offer.locations?.[0]?.name || offer.locationIds?.[0]?.name || null,
+              distance: undefined,
+              offerType: 'partner' as const
             }));
         }
       } catch (error) {
@@ -244,146 +200,96 @@ const Carousel = () => {
         partnerOffers = [];
       }
 
-      // Load subscribed open offers from backend API (only offers the location owner has subscribed to)
-      let nearbyOpenOffers: Offer[] = [];
+      // 3. THIRD: Fetch subscribed open offers for this location (from other retailers)
       try {
-        const response = await get({ 
+        const openOffersResponse = await get({ 
           end_point: `offers/location/${locationId}/subscribed-open`,
           token: false // Public endpoint
         });
         
-        if (response.success && response.data) {
-          // Backend already filters for active, non-expired, subscribed open offers
-          nearbyOpenOffers = response.data.map((offer: any) => ({
+        console.log('🔍 Subscribed open offers response:', openOffersResponse);
+        
+        if (openOffersResponse.success && openOffersResponse.data) {
+          const now = new Date();
+          const subscribedOpenOffers = openOffersResponse.data
+            .filter((offer: any) => {
+              const isActive = offer.is_active !== false && offer.isActive !== false;
+              const isNotExpired = !offer.expires_at && !offer.expiresAt || 
+                (offer.expires_at && new Date(offer.expires_at) > now) ||
+                (offer.expiresAt && new Date(offer.expiresAt) > now);
+              return isActive && isNotExpired;
+            })
+            .map((offer: any) => ({
               id: offer._id?.toString() || offer.id?.toString() || '',
               call_to_action: offer.callToAction || offer.call_to_action || '',
-              location_id: offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() || offer.location_ids?.[0] || '',
-              location_name: offer.locations?.[0]?.name || offer.locationIds?.[0]?.name || 'Unknown Location',
-              location_address: offer.locations?.[0]?.address || offer.locationIds?.[0]?.address || '',
-              is_partner_offer: false,
-              is_open_offer: true,
-              is_owner_offer: false,
-              offer_image_url: offer.offer_image || offer.offerImage || posFlowersImage, // Use different image for open offers
+              offer_image_url: offer.offer_image || offer.offerImage || null,
               brand_logo_url: offer.brand_logo || offer.brandLogo || null,
               redemption_start_date: offer.created_at || offer.createdAt || new Date().toISOString(),
               redemption_end_date: offer.expires_at || offer.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-              business_name: offer.user?.fullName || offer.userId?.fullName || null,
-              redemption_code: offer.redemptionCode || offer.redemption_code || null
+              location_id: offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() || offer.location_ids?.[0] || '',
+              business_name: offer.user?.fullName || offer.userId?.fullName || offer.locations?.[0]?.name || offer.locationIds?.[0]?.name || null,
+              distance: undefined,
+              offerType: 'open_offer' as const
             }));
+
+          console.log('🔍 Subscribed open offers found:', subscribedOpenOffers.length);
+          openOfferDeals = subscribedOpenOffers;
         }
       } catch (error) {
-        console.error('Error fetching open offers:', error);
-        nearbyOpenOffers = [];
+        console.error('Error fetching subscribed open offers:', error);
+        openOfferDeals = [];
       }
-      
-      const defaultCampaigns: Offer[] = [];
 
-      // Combine offers: Only partner offers and open offers (NOT owner's own offers)
-      // Owner's own offers are for displaying on OTHER retailers, not for this location's carousel
+      // Randomize within each category
+      const randomizedPartnerOffers = shuffleArray(partnerOffers);
+      const randomizedSubscribedOpenOffers = shuffleArray(openOfferDeals);
+      const randomizedOwnerOpenOffers = shuffleArray(ownerOpenOffers);
+
+      // Combine: Partners first, then Owner's Open Offers, then Subscribed Open Offers
+      // This ensures owner's own open offers are ALWAYS visible if they exist
       const combinedOffers: Offer[] = [
-        ...partnerOffers,   // Partner offers
-        ...nearbyOpenOffers // Open offers
+        ...randomizedPartnerOffers,
+        ...randomizedOwnerOpenOffers,  // Owner's own open offers - MUST be shown
+        ...randomizedSubscribedOpenOffers  // Subscribed open offers from other retailers
       ];
 
-      setAllOffers(combinedOffers);
-      setPartnerOffers(partnerOffers);
-      setOwnerOffers(ownerOffersData);
-
-      // Auto-generate coupon codes for all offers on load
-      combinedOffers.forEach((offer) => {
-        if (offer.redemption_code && !couponCodes[offer.id]) {
-          generateCouponCode(offer);
-        }
+      console.log('📊 Carousel offers summary:', {
+        partnerOffers: partnerOffers.length,
+        ownerOpenOffers: ownerOpenOffers.length,
+        subscribedOpenOffers: openOfferDeals.length,
+        total: combinedOffers.length,
+        ownerOpenOfferIds: ownerOpenOffers.map(o => o.id)
       });
+
+      // If we have ANY offers (partner, owner open, or subscribed open), show them
+      // Don't show "no offers" if we have any offers available
+      if (combinedOffers.length > 0) {
+        console.log('✅ Showing offers:', combinedOffers.length);
+        setAllOffers(combinedOffers);
+      } else {
+        console.log('⚠️ No offers found - showing empty state');
+        setAllOffers([]);
+      }
 
     } catch (error) {
       console.error('Error loading carousel data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load offers",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle full screen navigation - navigate through all offers (partner + open)
-  const handleNextFullScreen = () => {
-    if (currentFullScreenIndex !== null && allOffers.length > 0) {
-      const nextIndex = (currentFullScreenIndex + 1) % allOffers.length;
-      setCurrentFullScreenIndex(nextIndex);
-    }
-  };
-
-  const handlePrevFullScreen = () => {
-    if (currentFullScreenIndex !== null && allOffers.length > 0) {
-      const prevIndex = currentFullScreenIndex === 0 ? allOffers.length - 1 : currentFullScreenIndex - 1;
-      setCurrentFullScreenIndex(prevIndex);
-    }
-  };
-
-  const handleCloseFullScreen = () => {
-    setShowFullScreen(false);
-    setCurrentFullScreenIndex(null);
-  };
-
   const handleRedeemOffer = (offerId: string) => {
-    // Navigate to redemption flow
-    window.location.href = `/redeem?offer=${offerId}`;
+    // Navigate to redeem page with the offer ID and location ID as referrer
+    window.location.href = `/redeem/${offerId}?ref=${encodeURIComponent(location?.name || 'Media Street')}&locationId=${locationId}`;
   };
 
-  const generateCouponCode = async (offer: Offer) => {
-    if (!offer.id || !offer.redemption_code) {
-      toast({
-        title: "Error",
-        description: "Offer information is missing. Cannot generate coupon code.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setGeneratingCoupon(prev => ({ ...prev, [offer.id]: true }));
-    try {
-      const { post } = await import("@/services/apis");
-      const response = await post({
-        end_point: 'redemptions/public',
-        body: {
-          offerId: offer.id,
-          redemptionCode: offer.redemption_code
-          // Don't send locationId - it's not needed for generating coupon codes
-          // locationId is only needed when redeeming at the store
-        },
-        token: false // Public endpoint
-      });
-
-      if (response.success && response.data?.couponCode) {
-        setCouponCodes(prev => ({
-          ...prev,
-          [offer.id]: response.data.couponCode
-        }));
-        toast({
-          title: "Coupon Code Generated!",
-          description: `Your unique coupon code: ${response.data.couponCode}`,
-          duration: 5000
-        });
-      } else {
-        throw new Error(response.message || 'Failed to generate coupon code');
-      }
-    } catch (error: any) {
-      console.error('Error generating coupon code:', error);
-      toast({
-        title: "Error",
-        description: error?.response?.data?.message || error?.message || "Failed to generate coupon code. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setGeneratingCoupon(prev => ({ ...prev, [offer.id]: false }));
-    }
-  };
-
-  const partnerCount = allOffers.filter(o => o.is_partner_offer).length;
-  const openOfferCount = allOffers.filter(o => o.is_open_offer).length;
-
-  // Get current full screen offer - from all offers (partner + open)
-  const currentFullScreenOffer = currentFullScreenIndex !== null && allOffers.length > 0 
-    ? allOffers[currentFullScreenIndex] 
-    : null;
+  const partnerCount = allOffers.filter(o => o.offerType === 'partner').length;
+  const openOfferCount = allOffers.filter(o => o.offerType === 'open_offer').length;
 
   if (loading) {
     return (
@@ -407,123 +313,8 @@ const Carousel = () => {
     );
   }
 
-  // If location owner doesn't have an active offer, show message
-  if (!hasActiveOffer) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="p-8 text-center max-w-md">
-          <h2 className="text-2xl font-bold text-foreground mb-2">No Active Offers</h2>
-          <p className="text-muted-foreground">This location doesn't have any active offers yet. Please create an offer to display the carousel.</p>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/10">
-      {/* Full Screen Partner Offer Display */}
-      {showFullScreen && currentFullScreenOffer && (
-        <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
-          <div className="relative w-full h-full flex flex-col">
-            {/* Close Button */}
-            <button
-              onClick={handleCloseFullScreen}
-              className="absolute top-4 right-4 z-10 text-white hover:text-gray-300 p-2"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-
-            {/* Navigation Buttons */}
-            {allOffers.length > 1 && (
-              <>
-                <button
-                  onClick={handlePrevFullScreen}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 z-10 text-white hover:text-gray-300 p-2 bg-black/50 rounded-full"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-                <button
-                  onClick={handleNextFullScreen}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 z-10 text-white hover:text-gray-300 p-2 bg-black/50 rounded-full"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </>
-            )}
-
-            {/* Offer Type Badge */}
-            <div className="absolute top-4 left-4 z-10">
-              {currentFullScreenOffer.is_owner_offer && (
-                <Badge className="bg-blue-500 text-white">Your Offer</Badge>
-              )}
-              {currentFullScreenOffer.is_partner_offer && (
-                <Badge className="bg-green-500 text-white">Partner Offer</Badge>
-              )}
-              {currentFullScreenOffer.is_open_offer && (
-                <Badge className="bg-purple-500 text-white">Open Offer</Badge>
-              )}
-            </div>
-
-            {/* Offer Image */}
-            {currentFullScreenOffer.offer_image_url ? (
-              <div className="flex-1 flex items-center justify-center">
-                <img
-                  src={currentFullScreenOffer.offer_image_url}
-                  alt={currentFullScreenOffer.call_to_action}
-                  className="max-w-full max-h-full object-contain"
-                />
-              </div>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-white text-center px-8">
-                <div>
-                  <h2 className="text-4xl font-bold mb-4">{currentFullScreenOffer.call_to_action}</h2>
-                  {currentFullScreenOffer.business_name && (
-                    <p className="text-xl text-gray-300">{currentFullScreenOffer.business_name}</p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Offer Info Footer */}
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-8 text-white">
-              <div className="max-w-4xl mx-auto">
-                <h2 className="text-3xl font-bold mb-2">{currentFullScreenOffer.call_to_action}</h2>
-                {currentFullScreenOffer.business_name && (
-                  <p className="text-lg text-gray-300 mb-2">{currentFullScreenOffer.business_name}</p>
-                )}
-                <div className="flex items-center gap-4 text-sm text-gray-400">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    <span>Valid until {new Date(currentFullScreenOffer.redemption_end_date).toLocaleDateString()}</span>
-                  </div>
-                  {currentFullScreenOffer.is_partner_offer && (
-                    <Badge variant="secondary" className="bg-green-500/20 text-green-300 border-green-500/30">
-                      Partner Offer
-                    </Badge>
-                  )}
-                  {currentFullScreenOffer.is_open_offer && (
-                    <Badge variant="secondary" className="bg-purple-500/20 text-purple-300 border-purple-500/30">
-                      Open Offer
-                    </Badge>
-                  )}
-                </div>
-                 {allOffers.length > 1 && (
-                   <div className="mt-4 text-sm text-gray-400">
-                     {currentFullScreenIndex! + 1} of {allOffers.length}
-                   </div>
-                 )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Header */}
       <header className="bg-background/95 backdrop-blur-sm border-b border-border sticky top-0 z-50 shadow-soft">
         <div className="container mx-auto px-4 py-4">
@@ -549,13 +340,15 @@ const Carousel = () => {
         {allOffers.length > 0 && (
           <div className="mb-6 p-4 bg-muted/50 rounded-lg">
             <div className="flex items-center justify-center gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <Tag className="h-4 w-4 text-primary" />
-                <span className="font-medium">{partnerCount} Partner Offers</span>
-              </div>
+              {partnerCount > 0 && (
+                <div className="flex items-center gap-2">
+                  <Tag className="h-4 w-4 text-primary" />
+                  <span className="font-medium">{partnerCount} Partner Offers</span>
+                </div>
+              )}
               {openOfferCount > 0 && (
                 <>
-                  <div className="h-4 w-px bg-border" />
+                  {partnerCount > 0 && <div className="h-4 w-px bg-border" />}
                   <div className="flex items-center gap-2">
                     <MapPin className="h-4 w-4 text-primary" />
                     <span className="font-medium">{openOfferCount} Open Offer Deals</span>
@@ -566,200 +359,117 @@ const Carousel = () => {
           </div>
         )}
 
-        {/* Full-Screen Carousel - No Cards */}
+        {/* Offers Grid */}
+        <div className="space-y-4">
         {allOffers.length === 0 ? (
-          <Card className="p-12 text-center">
-            <div className="text-muted-foreground">
-              <Tag className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium mb-2">No offers available</p>
-              <p className="text-sm">
-                This location has not set up any offers yet. Check back soon!
+          <Card className="p-12 text-center max-w-2xl mx-auto bg-gradient-to-br from-background to-primary/5 border-2">
+            <div className="space-y-6">
+              {/* Cute emoji/icon */}
+              <div className="text-6xl animate-bounce">
+                🎁
+              </div>
+              
+              {/* Main message */}
+              <div>
+                <h2 className="text-2xl font-bold text-foreground mb-3">
+                  Oops! The deal box is empty... for now! 🤷
+                </h2>
+                <p className="text-lg text-muted-foreground mb-2">
+                  Looks like we're between deals at the moment.
+                </p>
+                <p className="text-base text-muted-foreground/80">
+                  But don't worry — new offers pop up all the time!
+                </p>
+              </div>
+
+              {/* Call to action */}
+              <div className="p-6 bg-primary/10 rounded-lg border border-primary/20">
+                <p className="text-lg font-semibold text-foreground mb-2">
+                  💡 Pro tip:
+                </p>
+                <p className="text-base text-muted-foreground">
+                  Scan this QR code next time you visit {location.name} to discover fresh deals and exclusive discounts!
+                </p>
+              </div>
+
+              {/* Fun footer message */}
+              <p className="text-sm text-muted-foreground/60 italic">
+                Good things come to those who scan... again! 📱✨
               </p>
             </div>
           </Card>
-        ) : (
-          <div className="w-full max-w-6xl mx-auto">
-            <UICarousel
-              setApi={setApi}
-              opts={{
-                align: "start",
-                loop: true,
-              }}
-              className="w-full"
-            >
-              <CarouselContent className="-ml-2 md:-ml-4">
-                {allOffers.map((offer, index) => {
-                  const couponCode = couponCodes[offer.id];
-                  const isGenerating = generatingCoupon[offer.id] || false;
-                  return (
-                    <CarouselItem key={offer.id} className="pl-2 md:pl-4 basis-full">
-                      <div className="relative w-full h-[70vh] md:h-[80vh] rounded-lg overflow-hidden bg-background border-2 border-border">
-                        {/* Offer Image - Full Screen */}
-                        {offer.offer_image_url ? (
-                          <div className="relative w-full h-full">
-                            <img 
-                              src={offer.offer_image_url} 
-                              alt={offer.call_to_action}
-                              className="w-full h-full object-cover"
-                            />
-                            {/* Overlay for better text readability */}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
-                            
-                            {/* Badge */}
-                            <div className="absolute top-4 right-4 z-10">
-                              <Badge variant="secondary" className="bg-background/90 backdrop-blur-sm">
-                                {offer.is_partner_offer ? 'Partner Offer' : 'Open Offer'}
-                              </Badge>
-                            </div>
+          ) : (
+            allOffers.map((offer) => (
+              <Card 
+                key={offer.id} 
+                className="overflow-hidden hover:shadow-elegant transition-all duration-300 border-border"
+              >
+                {/* Offer Image */}
+                {offer.offer_image_url && (
+                  <div className="relative h-48 bg-secondary/20">
+                    <img 
+                      src={offer.offer_image_url} 
+                      alt={offer.call_to_action}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-3 right-3">
+                      <Badge variant="secondary" className="bg-background/90 backdrop-blur-sm">
+                        {offer.offerType === 'partner' ? 'Partner' : 'Open Offer'}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
 
-                            {/* Offer Counter */}
-                            <div className="absolute top-4 left-4 z-10 text-white text-sm font-medium">
-                              {index + 1} of {allOffers.length}
-                            </div>
+                {/* Offer Content */}
+                <div className="p-6 space-y-4">
+                  {/* Brand Logo & Name */}
+                  {offer.brand_logo_url && (
+                    <div className="flex items-center gap-3">
+                      <img 
+                        src={offer.brand_logo_url} 
+                        alt="Brand logo"
+                        className="h-12 w-12 object-contain rounded-lg border border-border p-1"
+                      />
+                      {offer.business_name && (
+                        <p className="font-medium text-foreground">{offer.business_name}</p>
+                      )}
+                    </div>
+                  )}
 
-                            {/* Offer Info - Bottom */}
-                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-6 md:p-8 text-white">
-                              {/* Business Name */}
-                              {offer.business_name && (
-                                <p className="text-lg md:text-xl font-semibold mb-2">{offer.business_name}</p>
-                              )}
-                              
-                              {/* Call to Action */}
-                              <h2 className="text-2xl md:text-4xl font-bold mb-4 leading-tight">
-                                {offer.call_to_action}
-                              </h2>
+                  {/* Call to Action */}
+                  <h3 className="text-xl font-bold text-foreground leading-tight">
+                    {offer.call_to_action}
+                  </h3>
 
-                              {/* Validity */}
-                              <div className="flex items-center gap-2 text-sm md:text-base text-gray-300 mb-4">
-                                <Clock className="h-4 w-4 md:h-5 md:w-5" />
-                                <span>Valid until {new Date(offer.redemption_end_date).toLocaleDateString()}</span>
-                              </div>
+                  {/* Validity Period */}
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Clock className="h-4 w-4" />
+                    <span>
+                      Valid until {new Date(offer.redemption_end_date).toLocaleDateString()}
+                    </span>
+                  </div>
 
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary/10 to-secondary/10 p-8">
-                            <div className="text-center">
-                              <h2 className="text-3xl md:text-5xl font-bold mb-4">{offer.call_to_action}</h2>
-                              {offer.business_name && (
-                                <p className="text-xl md:text-2xl text-muted-foreground mb-6">{offer.business_name}</p>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </CarouselItem>
-                  );
-                })}
-              </CarouselContent>
-              <CarouselPrevious className="left-2 md:left-4" />
-              <CarouselNext className="right-2 md:right-4" />
-            </UICarousel>
-            
-            {/* Carousel Indicator */}
-            {allOffers.length > 1 && (
-              <div className="flex justify-center items-center gap-2 mt-4">
-                {allOffers.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => api?.scrollTo(index)}
-                    className={`h-2 rounded-full transition-all ${
-                      current === index + 1
-                        ? 'w-8 bg-primary'
-                        : 'w-2 bg-muted-foreground/30'
-                    }`}
-                    aria-label={`Go to slide ${index + 1}`}
-                  />
-                ))}
-              </div>
-            )}
+                  {/* Distance (for open offers) */}
+                  {offer.offerType === 'open_offer' && offer.distance && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <MapPin className="h-4 w-4" />
+                      <span>{offer.distance.toFixed(1)} miles</span>
+                    </div>
+                  )}
 
-            {/* Redemption Codes Section - Beneath Carousel */}
-            {allOffers.length > 0 && (
-              <div className="mt-8 space-y-4">
-                <h3 className="text-xl md:text-2xl font-bold text-center text-foreground mb-6">
-                  Your Redemption Codes
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {allOffers.map((offer, index) => {
-                    const couponCode = couponCodes[offer.id];
-                    const isGenerating = generatingCoupon[offer.id] || false;
-                    const isCurrentOffer = current === index + 1;
-                    
-                    return (
-                      <Card 
-                        key={offer.id}
-                        className={`p-4 md:p-6 transition-all ${
-                          isCurrentOffer 
-                            ? 'border-2 border-primary shadow-lg bg-primary/5' 
-                            : 'border border-border'
-                        }`}
-                      >
-                        <div className="space-y-3">
-                          {/* Offer Info */}
-                          <div>
-                            {offer.business_name && (
-                              <p className="font-semibold text-foreground mb-1">{offer.business_name}</p>
-                            )}
-                            <p className="text-sm text-muted-foreground line-clamp-2">
-                              {offer.call_to_action}
-                            </p>
-                          </div>
-
-                          {/* Redemption Code */}
-                          {offer.redemption_code ? (
-                            couponCode ? (
-                              <div className={`rounded-lg p-4 text-center ${
-                                isCurrentOffer
-                                  ? 'bg-green-500/20 border-2 border-green-400'
-                                  : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
-                              }`}>
-                                <p className="text-xs text-muted-foreground mb-2">Your Unique Coupon Code</p>
-                                <p className={`text-2xl md:text-3xl font-bold tracking-wider ${
-                                  isCurrentOffer ? 'text-green-300' : 'text-green-600 dark:text-green-400'
-                                }`}>
-                                  {couponCode}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-2">
-                                  Redeem at {offer.location_name || offer.business_name || 'the store'}
-                                </p>
-                                {offer.location_address && (
-                                  <p className="text-xs text-muted-foreground/70 mt-1">
-                                    {offer.location_address}
-                                  </p>
-                                )}
-                              </div>
-                            ) : (
-                              <Button 
-                                onClick={() => generateCouponCode(offer)}
-                                disabled={isGenerating}
-                                className="w-full"
-                                variant={isCurrentOffer ? "default" : "outline"}
-                              >
-                                {isGenerating ? (
-                                  <>
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                                    Generating...
-                                  </>
-                                ) : (
-                                  'Get Coupon Code'
-                                )}
-                              </Button>
-                            )
-                          ) : (
-                            <div className="text-center text-sm text-muted-foreground py-2">
-                              No redemption code available
-                            </div>
-                          )}
-                        </div>
-                      </Card>
-                    );
-                  })}
+                  {/* Redeem Button */}
+                  <Button 
+                    onClick={() => handleRedeemOffer(offer.id)}
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+                  >
+                    Redeem Offer
+                    <ExternalLink className="h-4 w-4 ml-2" />
+                  </Button>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
+              </Card>
+            ))
+          )}
+        </div>
       </div>
 
       {/* Footer */}

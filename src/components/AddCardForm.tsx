@@ -25,6 +25,7 @@ const CardFormInner = ({ onSuccess, onCancel }: CardFormProps) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cardholderName, setCardholderName] = useState("");
+  const [billingZip, setBillingZip] = useState("");
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -32,6 +33,10 @@ const CardFormInner = ({ onSuccess, onCancel }: CardFormProps) => {
         const response = await get({ end_point: 'users/me', token: true });
         if (response.success && response.data?.fullName) {
           setCardholderName(response.data.fullName);
+        }
+        // Set default ZIP if available from user profile
+        if (response.success && response.data?.zipCode) {
+          setBillingZip(response.data.zipCode);
         }
       } catch (error) {
         console.error('Error fetching user profile:', error);
@@ -54,6 +59,11 @@ const CardFormInner = ({ onSuccess, onCancel }: CardFormProps) => {
       return;
     }
 
+    if (!billingZip.trim()) {
+      setError("Please enter the billing ZIP code");
+      return;
+    }
+
     const cardElement = elements.getElement(CardElement);
     if (!cardElement) {
       setError("Card element not found");
@@ -70,6 +80,9 @@ const CardFormInner = ({ onSuccess, onCancel }: CardFormProps) => {
         card: cardElement,
         billing_details: {
           name: cardholderName,
+          address: {
+            postal_code: billingZip,
+          },
         },
       });
 
@@ -105,7 +118,7 @@ const CardFormInner = ({ onSuccess, onCancel }: CardFormProps) => {
     }
   };
 
-  const cardElementOptions = {
+  const     cardElementOptions = {
     style: {
       base: {
         fontSize: '16px',
@@ -120,7 +133,7 @@ const CardFormInner = ({ onSuccess, onCancel }: CardFormProps) => {
         iconColor: 'hsl(var(--destructive))',
       },
     },
-    hidePostalCode: false,
+    hidePostalCode: true, // Hide postal code from CardElement since we have a separate field
   };
 
   return (
@@ -154,6 +167,18 @@ const CardFormInner = ({ onSuccess, onCancel }: CardFormProps) => {
             <div className="p-3 border border-border rounded-md bg-card">
               <CardElement options={cardElementOptions} />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="billingZip">Billing ZIP Code</Label>
+            <Input
+              id="billingZip"
+              placeholder="Enter ZIP code"
+              value={billingZip}
+              onChange={(e) => setBillingZip(e.target.value)}
+              className="bg-card"
+              maxLength={10}
+            />
           </div>
 
           {error && (

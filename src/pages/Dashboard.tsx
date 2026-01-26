@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useWeeklyCountdown } from "@/hooks/useWeeklyCountdown";
 import coffeePromo from "@/assets/coffee-promo.jpg";
 import flowerPromo from "@/assets/flower-promo.jpg";
@@ -8,13 +8,14 @@ import mediaStreetLogo from "@/assets/media-street-logo.png";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import Logo from "@/components/Logo";
-import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, TrendingDown, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2, CheckCircle, User } from "lucide-react";
+import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, TrendingDown, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2, CheckCircle, User, Lightbulb } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -26,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 // import { Toaster } from "@/components/ui/toaster";
 import { SupportDialog } from "@/components/SupportDialog";
 import TabletOfferPreview from "@/components/TabletOfferPreview";
+import { WelcomeCreditsDialog } from "@/components/WelcomeCreditsDialog";
 import { useDispatch, useSelector } from "react-redux";
 import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
@@ -48,11 +50,12 @@ const Dashboard = () => {
   const [selectedCampaign, setSelectedCampaign] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
   const [couponCode, setCouponCode] = useState("");
-  const [couponVerification, setCouponVerification] = useState<any>(null); // Store verification result
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [supportDialogOpen, setSupportDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isRedeeming, setIsRedeeming] = useState(false);
+  const [creativeIdeas, setCreativeIdeas] = useState("");
+  const [showCreativeSection, setShowCreativeSection] = useState(false);
   const [openOfferDialogOpen, setOpenOfferDialogOpen] = useState(false);
   const [selectedLocationForOO, setSelectedLocationForOO] = useState<any>(null);
   const [togglingOpenOffer, setTogglingOpenOffer] = useState(false);
@@ -60,6 +63,7 @@ const Dashboard = () => {
   const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
   const [isCheckingPaymentMethod, setIsCheckingPaymentMethod] = useState(true);
   const [redemptionSuccessDialogOpen, setRedemptionSuccessDialogOpen] = useState(false);
+  const [showWelcomeCreditsDialog, setShowWelcomeCreditsDialog] = useState(false);
   const [enlargedOffer, setEnlargedOffer] = useState<{
     businessName: string;
     callToAction: string;
@@ -129,6 +133,17 @@ const Dashboard = () => {
       setDisplayMethod('carousel');
     } else {
       setDisplayMethod(saved);
+    }
+    
+    // Set displayCarousel to true by default if not set
+    if (localStorage.getItem('displayCarousel') === null) {
+      localStorage.setItem('displayCarousel', 'true');
+    }
+    
+    // Load creative ideas if saved
+    const savedCreativeIdeas = localStorage.getItem('creativeIdeas');
+    if (savedCreativeIdeas) {
+      setCreativeIdeas(savedCreativeIdeas);
     }
   }, []);
 
@@ -297,6 +312,16 @@ const Dashboard = () => {
         if (userResponse.success && userResponse.data) {
           setCurrentUser(userResponse.data);
           currentUserId = userResponse.data._id?.toString() || userResponse.data.id?.toString() || null;
+          
+          // Check if this is a new signup redirect (show welcome dialog only once after signup)
+          const shouldShowWelcome = sessionStorage.getItem('showWelcomeCreditsDialog');
+          if (shouldShowWelcome === 'true') {
+            // Clear the flag immediately so it only shows once
+            sessionStorage.removeItem('showWelcomeCreditsDialog');
+            // Mark as seen in localStorage so it never shows again
+            localStorage.setItem('hasSeenWelcomeCreditsDialog', 'true');
+            setShowWelcomeCreditsDialog(true);
+          }
         }
       } catch (error) {
         console.error('Error fetching user profile:', error);
@@ -1172,57 +1197,6 @@ const Dashboard = () => {
     return "/lovable-uploads/21938e2c-ec16-42e4-aa4b-d9b87ba22815.png";
   };
 
-  const handleVerifyCoupon = async () => {
-    if (!couponCode.trim()) {
-      toast({
-        title: "Coupon Code Required",
-        description: "Please enter a coupon code",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      // Verify coupon code - location will be automatically determined from the redemption record
-      const response = await post({
-        end_point: 'redemptions/verify-coupon',
-        body: {
-          couponCode: couponCode.trim()
-          // locationId is optional - backend will use location from redemption record
-        },
-        token: true
-      });
-
-      if (response.success && response.data) {
-        if (response.data.valid) {
-          setCouponVerification(response.data);
-          toast({
-            title: "Coupon Valid!",
-            description: response.data.message || "This coupon is valid for this location. You can now redeem it.",
-          });
-        } else {
-          setCouponVerification(null);
-          toast({
-            title: "Invalid Coupon",
-            description: response.data.message || "This coupon is not valid for this location.",
-            variant: "destructive"
-          });
-        }
-      } else {
-        throw new Error(response.message || 'Failed to verify coupon');
-      }
-    } catch (error: any) {
-      setCouponVerification(null);
-      toast({
-        title: "Error",
-        description: error?.response?.data?.message || error?.message || "Failed to verify coupon",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleLogRedemption = async () => {
     if (!couponCode.trim()) {
@@ -1234,18 +1208,9 @@ const Dashboard = () => {
       return;
     }
 
-    if (!couponVerification?.valid) {
-      toast({
-        title: "Invalid Coupon",
-        description: "Please verify the coupon code before redeeming",
-        variant: "destructive"
-      });
-      return;
-    }
-
     setIsRedeeming(true);
     try {
-      // Redeem coupon code - location will be automatically determined from the redemption record
+      // Log redemption - location will be automatically determined from the redemption record
       const response = await post({
         end_point: 'redemptions/redeem-coupon',
         body: {
@@ -1257,21 +1222,20 @@ const Dashboard = () => {
 
       if (response.success) {
         toast({
-          title: "Coupon Redeemed Successfully!",
-          description: response.message || `Coupon code "${couponCode}" has been redeemed at ${response.data?.location?.name || 'your location'}!`,
+          title: "Redemption Logged Successfully!",
+          description: response.message || `Coupon code "${couponCode}" has been logged at ${response.data?.location?.name || 'your location'}!`,
         });
 
         setCouponCode("");
-        setCouponVerification(null);
         // Refresh dashboard data to update redemption counts
         await fetchDashboardData();
       } else {
-        throw new Error(response.message || 'Failed to redeem coupon');
+        throw new Error(response.message || 'Failed to log redemption');
       }
     } catch (error: any) {
       toast({
         title: "Error",
-        description: error?.response?.data?.message || error?.message || "Failed to redeem coupon. Make sure the coupon is valid for this location.",
+        description: error?.response?.data?.message || error?.message || "Failed to log redemption. Please check the coupon code and try again.",
         variant: "destructive"
       });
     } finally {
@@ -1351,22 +1315,23 @@ const Dashboard = () => {
           </Tooltip>
 
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className={`${hasOpenOffer ? 'text-muted-foreground hover:text-foreground hover:bg-secondary' : 'opacity-50 cursor-not-allowed'}`}
-                onClick={() => hasOpenOffer ? navigate('/openoffer') : undefined}
-                disabled={!hasOpenOffer}
-              >
-                <Bot className="h-5 w-5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <p>Open Offer{!hasOpenOffer ? ' (Enable Open Offer for at least one location)' : ''}</p>
-            </TooltipContent>
-          </Tooltip>
+          {hasOpenOffer && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  onClick={() => navigate('/openoffer')}
+                >
+                  <Bot className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p>Open Offer</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1673,84 +1638,38 @@ const Dashboard = () => {
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <Ticket className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium text-foreground">Redeem Coupon Code</span>
+                  <span className="text-sm font-medium text-foreground">Log Offer Redemption</span>
                   <Tooltip>
                     <TooltipTrigger>
                       <Info className="h-4 w-4 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent className="max-w-sm">
-                      <p>Enter the 6-digit coupon code from the customer's coupon. The system will automatically determine the location from the QR code and verify that the coupon is valid before allowing redemption. This ensures coupons can only be redeemed at the correct store where the offer is active.</p>
+                      <p>Enter the coupon code from the customer's coupon to log the redemption.</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <div className="flex flex-col gap-3">
-                  {/* Coupon Code Input and Actions */}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Enter 6-digit coupon code..."
-                      value={couponCode}
-                      onChange={e => {
-                        const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-                        setCouponCode(value);
-                        setCouponVerification(null); // Clear verification when code changes
-                      }}
-                      className="w-48 font-mono text-lg tracking-widest"
-                      maxLength={6}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleVerifyCoupon}
-                      disabled={!couponCode.trim() || couponCode.length !== 6 || isLoading}
-                    >
-                      Verify
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleLogRedemption}
-                      disabled={!couponCode.trim() || couponCode.length !== 6 || isLoading || isRedeeming || !couponVerification?.valid}
-                    >
-                      {isRedeeming ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 inline-block"></div>
-                          Redeeming...
-                        </>
-                      ) : "Redeem"}
-                    </Button>
-                  </div>
-
-                  {/* Verification Status */}
-                  {couponVerification && (
-                    <div className={`p-3 rounded-lg border ${couponVerification.valid
-                      ? 'bg-green-50 border-green-200'
-                      : 'bg-red-50 border-red-200'
-                      }`}>
-                      <div className="flex items-center gap-2">
-                        {couponVerification.valid ? (
-                          <>
-                            <CheckCircle2 className="h-5 w-5 text-green-600" />
-                            <div>
-                              <p className="text-sm font-semibold text-green-800">Valid Coupon</p>
-                              <p className="text-xs text-green-600">{couponVerification.message}</p>
-                              {couponVerification.coupon?.offer && (
-                                <p className="text-xs text-green-700 mt-1">
-                                  Offer: {couponVerification.coupon.offer.callToAction}
-                                </p>
-                              )}
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <X className="h-5 w-5 text-red-600" />
-                            <div>
-                              <p className="text-sm font-semibold text-red-800">Invalid Coupon</p>
-                              <p className="text-xs text-red-600">{couponVerification.message}</p>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Enter coupon code..."
+                    value={couponCode}
+                    onChange={e => {
+                      const value = e.target.value.trim();
+                      setCouponCode(value);
+                    }}
+                    className="w-48 font-mono text-lg"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleLogRedemption}
+                    disabled={!couponCode.trim() || isLoading || isRedeeming}
+                  >
+                    {isRedeeming ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2 inline-block"></div>
+                        Logging...
+                      </>
+                    ) : "Log"}
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1837,7 +1756,13 @@ const Dashboard = () => {
                         </div>
                         <Checkbox checked={locations.length >= 2} className={locations.length >= 2 ? "data-[state=checked]:bg-accent-green data-[state=checked]:border-accent-green" : "border-muted-foreground/30"} disabled />
                       </div>
-                      <p className="text-xs text-muted-foreground">See what's working and add multiple store locations</p>
+                      <p className="text-xs text-muted-foreground">
+                        See what's working in{' '}
+                        <Link to="/offers" className="text-primary hover:underline font-medium">
+                          Your Offers
+                        </Link>
+                        {' '}and add multiple store locations
+                      </p>
                       <Button variant="link" size="sm" onClick={() => navigate('/locations')} className="text-xs p-0 h-auto">
                         Add Locations →
                       </Button>
@@ -1854,7 +1779,7 @@ const Dashboard = () => {
                         <RadioGroupItem value="carousel" id="dashboard-carousel" className="h-4 w-4" />
                         <label htmlFor="dashboard-carousel" className="flex items-center gap-2 text-sm font-medium cursor-pointer flex-1">
                           <Monitor className="h-4 w-4" />
-                          <span>Partner Carousel <span className="text-muted-foreground font-normal">(Best)</span></span>
+                          <span>Tablet <span className="text-muted-foreground font-normal">(Most Effective)</span></span>
                         </label>
                         <Button variant="link" size="sm" onClick={() => navigate('/display')} className="text-xs">
                           Display
@@ -1865,13 +1790,52 @@ const Dashboard = () => {
                         <RadioGroupItem value="qr" id="dashboard-qr" className="h-4 w-4" />
                         <label htmlFor="dashboard-qr" className="flex items-center gap-2 text-sm font-medium cursor-pointer flex-1">
                           <Printer className="h-4 w-4" />
-                          <span>QR Codes <span className="text-muted-foreground font-normal">(Easiest)</span></span>
+                          <span>QR Code <span className="text-muted-foreground font-normal">(Easiest to implement)</span></span>
                         </label>
                         <Button variant="link" size="sm" onClick={() => navigate('/locations')} className="text-xs">
                           Print
                         </Button>
                       </div>
                     </RadioGroup>
+
+                    {/* Get Creative Section */}
+                    <div className="border border-border rounded-lg mt-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowCreativeSection(!showCreativeSection)}
+                        className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Lightbulb className="h-4 w-4 text-yellow-500" />
+                          <span className="text-sm font-medium text-foreground">Get Creative (Optional)</span>
+                        </div>
+                        {showCreativeSection ? (
+                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                      {showCreativeSection && (
+                        <div className="p-4 pt-0 space-y-3 border-t border-border">
+                          <p className="text-xs text-muted-foreground">
+                            List other ways you'd be open to promoting your partners by sharing your MS QR code on other marketing assets:
+                          </p>
+                          <Textarea
+                            placeholder="e.g. include qr code on receipts, mention partner offer in newsletter, one social media post a week"
+                            value={creativeIdeas}
+                            onChange={(e) => {
+                              setCreativeIdeas(e.target.value);
+                              if (e.target.value.trim()) {
+                                localStorage.setItem('creativeIdeas', e.target.value.trim());
+                              } else {
+                                localStorage.removeItem('creativeIdeas');
+                              }
+                            }}
+                            className="min-h-[80px] text-sm"
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -2046,7 +2010,7 @@ const Dashboard = () => {
                         <Info className="h-4 w-4 text-muted-foreground" />
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Earn 1 point for every coupon viewed at your location, 2 points for a consumer redemption at a referred retailer and 3 points for getting new retailers to join Media Street with your invite code! Weekly winner takes home $1K!</p>
+                        <p>Earn 1 point for every mobile coupon view originating from your location, 1 point for logging an offer redemption at your store, 3 points for getting new retailers to join Media Street with your invite code and 5 points for a consumer redemption at a retailer you referred to! Weekly winner takes home $1K!</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -2443,6 +2407,16 @@ const Dashboard = () => {
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Welcome Credits Dialog - Overlays on dashboard */}
+        <WelcomeCreditsDialog
+          open={showWelcomeCreditsDialog}
+          onClose={() => {
+            setShowWelcomeCreditsDialog(false);
+            localStorage.setItem('hasSeenWelcomeCreditsDialog', 'true');
+          }}
+          creditAmount={currentUser?.credit || 50}
+        />
 
         {/* <Toaster /> */}
       </div>

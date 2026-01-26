@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import mapboxgl from 'mapbox-gl';
+import mapboxgl from '@/utils/mapbox-gl-wrapper';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 const MAPBOX_TOKEN = 'pk.eyJ1IjoibXMtbWFwYm94MjAyNSIsImEiOiJjbWd0cHZhc20wNGc1Mm1xMmZwY2NnbjdwIn0.vAUXdUR3_gZwu35mLimvCg';
