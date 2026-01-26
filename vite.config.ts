@@ -26,11 +26,10 @@ export default defineConfig(({ mode }) => ({
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'html2canvas', 'qrcode.react', 'mapbox-gl'],
+    exclude: [], // Don't exclude React
     esbuildOptions: {
       target: 'es2020',
     },
-    // Force React to be pre-bundled and deduplicated
-    force: true,
   },
   define: {
     'process.env': {},
@@ -41,57 +40,50 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     chunkSizeWarningLimit: 1000,
+    // Ensure proper module format
+    target: 'esnext',
+    minify: 'esbuild',
     commonjsOptions: {
       include: [/node_modules/],
       transformMixedEsModules: true,
     },
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          // CRITICAL FIX for useSyncExternalStore error:
-          // React and React-DOM MUST NOT be chunked separately
-          // They must remain in the entry bundle to be available immediately
-          
-          // Check if this is a React-related module
-          if (id.includes('node_modules/react/') || 
-              id.includes('node_modules/react-dom/') ||
-              id.includes('node_modules/react/index') ||
-              id.includes('node_modules/react-dom/index')) {
-            // Explicitly skip chunking - keep React in entry bundle
-            return;
+        // Disable automatic vendor chunking - only manually chunk specific large deps
+        // This ensures React stays in entry bundle
+        manualChunks: (id) => {
+          // Early exit for React - never chunk it
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
+            return; // Keep React in entry bundle
           }
           
-          if (id.includes('node_modules')) {
-            const moduleName = id.split('node_modules/')[1].split('/')[0];
-            
-            // Double-check: never chunk React or React-DOM
-            if (moduleName === 'react' || moduleName === 'react-dom') {
-              return; // Skip chunking
-            }
-            
-            // Chunk other dependencies
-            if (moduleName === 'react-router-dom') {
-              return 'router-vendor';
-            }
-            if (moduleName.startsWith('@radix-ui')) {
-              return 'radix-vendor';
-            }
-            if (moduleName === 'recharts') {
-              return 'charts-vendor';
-            }
-            if (moduleName === 'mapbox-gl') {
-              return 'mapbox-vendor';
-            }
-            if (moduleName === 'socket.io-client') {
-              return 'socket-vendor';
-            }
-            
-            // Group other node_modules
-            return 'vendor';
+          // Only process node_modules
+          if (!id.includes('node_modules')) {
+            return; // Source files stay in entry
           }
+          
+          // Extract module name
+          const match = id.match(/node_modules[\/\\]([^\/\\]+)/);
+          if (!match) return;
+          
+          const moduleName = match[1];
+          
+          // NEVER chunk React
+          if (moduleName === 'react' || moduleName === 'react-dom') {
+            return; // Keep in entry
+          }
+          
+          // Only chunk these specific large libraries
+          // All other deps (including React) stay in entry
+          if (moduleName === 'react-router-dom') return 'router';
+          if (moduleName.startsWith('@radix-ui')) return 'radix';
+          if (moduleName === 'recharts') return 'charts';
+          if (moduleName === 'mapbox-gl') return 'mapbox';
+          if (moduleName === 'socket.io-client') return 'socket';
+          
+          // Everything else (including React) stays in entry bundle
+          return;
         },
-        chunkFileNames: 'assets/[name]-[hash].js',
-        entryFileNames: 'assets/[name]-[hash].js',
       },
     },
   },
