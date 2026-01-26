@@ -22,9 +22,10 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    dedupe: ['react', 'react-dom'],
   },
   optimizeDeps: {
-    include: ['html2canvas', 'qrcode.react', 'mapbox-gl'],
+    include: ['react', 'react-dom', 'html2canvas', 'qrcode.react', 'mapbox-gl'],
     esbuildOptions: {
       target: 'es2020',
     },
@@ -38,6 +39,10 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     chunkSizeWarningLimit: 1000,
+    commonjsOptions: {
+      include: [/node_modules/],
+      transformMixedEsModules: true,
+    },
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -45,7 +50,8 @@ export default defineConfig(({ mode }) => ({
           if (id.includes('node_modules')) {
             const moduleName = id.split('node_modules/')[1].split('/')[0];
             
-            // Large vendor libraries get their own chunks
+            // Keep React and React-DOM together in the same chunk to prevent useSyncExternalStore errors
+            // This ensures React is available when useSyncExternalStore is called
             if (moduleName === 'react' || moduleName === 'react-dom') {
               return 'react-vendor';
             }
