@@ -48,16 +48,28 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // More aggressive chunking to reduce memory pressure
+          // CRITICAL FIX for useSyncExternalStore error:
+          // React and React-DOM MUST NOT be chunked separately
+          // They must remain in the entry bundle to be available immediately
+          
+          // Check if this is a React-related module
+          if (id.includes('node_modules/react/') || 
+              id.includes('node_modules/react-dom/') ||
+              id.includes('node_modules/react/index') ||
+              id.includes('node_modules/react-dom/index')) {
+            // Explicitly skip chunking - keep React in entry bundle
+            return;
+          }
+          
           if (id.includes('node_modules')) {
             const moduleName = id.split('node_modules/')[1].split('/')[0];
             
-            // CRITICAL FIX: Do NOT chunk React/React-DOM separately
-            // Returning undefined keeps React in the entry bundle, ensuring it's always available
-            // This prevents "Cannot read properties of undefined (reading 'useSyncExternalStore')" errors
+            // Double-check: never chunk React or React-DOM
             if (moduleName === 'react' || moduleName === 'react-dom') {
-              return undefined; // Keep React in entry bundle
+              return; // Skip chunking
             }
+            
+            // Chunk other dependencies
             if (moduleName === 'react-router-dom') {
               return 'router-vendor';
             }
@@ -78,7 +90,6 @@ export default defineConfig(({ mode }) => ({
             return 'vendor';
           }
         },
-        // Ensure proper chunk ordering - vendor chunk loads first
         chunkFileNames: 'assets/[name]-[hash].js',
         entryFileNames: 'assets/[name]-[hash].js',
       },
