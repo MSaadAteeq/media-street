@@ -29,6 +29,8 @@ export default defineConfig(({ mode }) => ({
     esbuildOptions: {
       target: 'es2020',
     },
+    // Force React to be pre-bundled and deduplicated
+    force: true,
   },
   define: {
     'process.env': {},
@@ -50,10 +52,11 @@ export default defineConfig(({ mode }) => ({
           if (id.includes('node_modules')) {
             const moduleName = id.split('node_modules/')[1].split('/')[0];
             
-            // Keep React and React-DOM together in the same chunk to prevent useSyncExternalStore errors
-            // This ensures React is available when useSyncExternalStore is called
+            // CRITICAL FIX: Do NOT chunk React/React-DOM separately
+            // Returning undefined keeps React in the entry bundle, ensuring it's always available
+            // This prevents "Cannot read properties of undefined (reading 'useSyncExternalStore')" errors
             if (moduleName === 'react' || moduleName === 'react-dom') {
-              return 'react-vendor';
+              return undefined; // Keep React in entry bundle
             }
             if (moduleName === 'react-router-dom') {
               return 'router-vendor';
@@ -75,6 +78,9 @@ export default defineConfig(({ mode }) => ({
             return 'vendor';
           }
         },
+        // Ensure proper chunk ordering - vendor chunk loads first
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
       },
     },
   },
