@@ -28,6 +28,10 @@
 
 5. **Keep this terminal open** - the server needs to keep running
 
+## Generate Offer from Website
+
+The **Generate Offer from Website** feature (AI offer generation) uses the backend as its primary API. If the backend is not running, the frontend will automatically fall back to a Supabase Edge Function. For the best experience, run the backend with `cd ms-backend-offerave && npm run dev` before using this feature.
+
 ## Verify Backend is Running
 
 Open your browser and go to:

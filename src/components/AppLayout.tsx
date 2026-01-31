@@ -21,7 +21,8 @@ import {
   Monitor,
   MessageSquare,
   QrCode,
-  TrendingUp
+  TrendingUp,
+  Handshake
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/Logo";
@@ -378,11 +379,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
   };
 
   const handleNotificationClick = (notification: Notification) => {
-    // Mark as read
-    if (!notification.isRead) {
-      markAsRead(notification._id);
-    }
-
+    // Don't mark as read on click - notifications persist until explicitly marked as read
     // Navigate based on notification type
     if (notification.relatedEntityType === 'partner' && notification.relatedEntityId) {
       navigate('/requests');
@@ -426,7 +423,7 @@ const AppLayout = ({ children, pageTitle, pageIcon }: LayoutProps) => {
       disabled: false
     },
     {
-      icon: Store,
+      icon: Handshake,
       tooltip: "Partners",
       path: "/requests",
       onClick: () => navigate('/requests'),

@@ -14,8 +14,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Store, Check, X, Plus, Send, UserPlus, ArrowDown, ArrowUp, Eye, ChevronRight, Gift, Map as MapIcon, Building2, Trash2, MessageSquare, Lightbulb, Monitor, Printer } from "lucide-react";
+import { Store, Check, X, Plus, Send, UserPlus, ArrowDown, ArrowUp, Eye, ChevronRight, Gift, Map as MapIcon, Trash2, MessageSquare, Lightbulb, Monitor, Printer, QrCode as QrCodeIcon } from "lucide-react";
 import AppLayout from "@/components/AppLayout";
 import PartnerMap from "@/components/PartnerMap";
 import DisplayOptionCheck from "@/components/DisplayOptionCheck";
@@ -82,6 +85,7 @@ const PartnerRequests = () => {
   }[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<string>("");
   const [partnersForMap, setPartnersForMap] = useState<any[]>([]);
+  const [isLoadingPartners, setIsLoadingPartners] = useState(false);
   const [showBillingConfirmDialog, setShowBillingConfirmDialog] = useState(false);
   const [pendingBillingRequest, setPendingBillingRequest] = useState<PartnerRequest | null>(null);
   const [processingPayment, setProcessingPayment] = useState(false);
@@ -103,6 +107,13 @@ const PartnerRequests = () => {
   const [selectedRequestForAnalytics, setSelectedRequestForAnalytics] = useState<PartnerRequest | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [recommendations, setRecommendations] = useState<any[]>([]);
+  
+  // 3-step partnership request flow state
+  const [partnershipStep, setPartnershipStep] = useState<1 | 2 | 3>(1);
+  const [displayCarousel, setDisplayCarousel] = useState(false);
+  const [displayQR, setDisplayQR] = useState(false);
+  const [creativeIdeas, setCreativeIdeas] = useState("");
+  const [creditBalance, setCreditBalance] = useState<number>(50);
   useEffect(() => {
     const init = async () => {
       await fetchCurrentUser();
@@ -110,9 +121,25 @@ const PartnerRequests = () => {
       await fetchUserLocations();
       await fetchPartnersForMap();
       await checkPaymentMethod();
+      await fetchCreditBalance();
     };
     init();
   }, []);
+  
+  const fetchCreditBalance = async () => {
+    try {
+      const { get } = await import("@/services/apis");
+      const response = await get({ end_point: 'users/me', token: true });
+      if (response.success && response.data) {
+        setCreditBalance(response.data.credit || 50);
+      } else {
+        setCreditBalance(50);
+      }
+    } catch (error) {
+      console.error("Error fetching credit balance:", error);
+      setCreditBalance(50);
+    }
+  };
   useEffect(() => {
     if (userLocations.length > 0 && partnersForMap.length > 0) {
       generateRecommendations().catch(error => {
@@ -186,6 +213,7 @@ const PartnerRequests = () => {
     }
   };
   const fetchPartnersForMap = async () => {
+    setIsLoadingPartners(true);
     try {
       // Fetch retailers with partnership-eligible offers (not open offers)
       const { get } = await import("@/services/apis");
@@ -364,8 +392,59 @@ const PartnerRequests = () => {
       const formattedPartners = Array.from(locationMap.values());
       console.log(`Found ${formattedPartners.length} partnership-eligible locations from ${partnershipEligibleOffers.length} offers`);
       
+      // Fetch pending partner requests to mark partners with pending status
+      let pendingRequestMap = new Map<string, boolean>();
+      try {
+        const { get: getPending } = await import("@/services/apis");
+        const pendingResponse = await getPending({ 
+          end_point: 'partners/requests',
+          token: true
+        });
+        
+        if (pendingResponse.success && pendingResponse.data && Array.isArray(pendingResponse.data)) {
+          // Get current user ID
+          const currentUserIdStr = currentUserId?.toString() || '';
+          
+          // Mark partners that have pending requests (only outgoing requests from current user)
+          pendingResponse.data.forEach((request: any) => {
+            // Only consider pending requests where current user is the requester
+            const requesterId = request.requesterId?._id?.toString() || 
+                               request.requesterId?.toString() || 
+                               request.requester_id?.toString() ||
+                               (typeof request.requesterId === 'object' && request.requesterId?._id?.toString());
+            const receiverId = request.receiverId?._id?.toString() || 
+                              request.receiverId?.toString() || 
+                              request.receiver_id?.toString() ||
+                              (typeof request.receiverId === 'object' && request.receiverId?._id?.toString());
+            const requestStatus = request.status || request.requestStatus;
+            
+            // If current user is the requester and request is pending, mark the receiver's partner as pending
+            if (requesterId === currentUserIdStr && receiverId && requestStatus === 'pending') {
+              // Find partner by userId (receiver's userId)
+              formattedPartners.forEach(partner => {
+                const partnerUserId = (partner as any).userId?.toString() || (partner as any).user_id?.toString();
+                if (partnerUserId === receiverId) {
+                  pendingRequestMap.set(partner.id, true);
+                }
+              });
+            }
+          });
+          
+          console.log(`Found ${pendingRequestMap.size} partners with pending requests`);
+        }
+      } catch (pendingError) {
+        console.error('Error fetching pending requests:', pendingError);
+        // Continue without pending request info
+      }
+      
+      // Add pending request status to partners
+      const partnersWithPendingStatus = formattedPartners.map(partner => ({
+        ...partner,
+        has_pending_request: pendingRequestMap.has(partner.id) || false
+      }));
+      
       // Filter out locations without valid coordinates (latitude and longitude must be valid numbers)
-      const validPartners = formattedPartners.filter(partner => {
+      const validPartners = partnersWithPendingStatus.filter(partner => {
         const hasValidCoords = partner.latitude && partner.longitude && 
                                typeof partner.latitude === 'number' && 
                                typeof partner.longitude === 'number' &&
@@ -509,15 +588,36 @@ const PartnerRequests = () => {
         token: true
       });
       
-      if (response.success && response.data) {
-        // Check if user has any active location-based offers (available for partnership)
-        const hasLocationBasedOffer = response.data.some((offer: any) => 
-          !offer.is_open_offer && 
-          !offer.isOpenOffer && 
-          (offer.is_active || offer.isActive) && 
-          (offer.available_for_partnership || offer.availableForPartnership)
-        );
-        return hasLocationBasedOffer;
+      if (response.success && response.data && Array.isArray(response.data)) {
+        // Check if user has any active offers with locations assigned
+        // An offer is valid if:
+        // 1. It's active (is_active or isActive is true)
+        // 2. It has at least one location assigned (locationIds or location_ids array has items)
+        // 3. It's not expired (expiresAt is in the future or null)
+        const now = new Date();
+        const hasActiveOffer = response.data.some((offer: any) => {
+          const isActive = offer.is_active !== false && offer.isActive !== false;
+          const hasLocations = (offer.locationIds && offer.locationIds.length > 0) || 
+                              (offer.location_ids && offer.location_ids.length > 0);
+          const expiresAt = offer.expiresAt || offer.expires_at;
+          const notExpired = !expiresAt || new Date(expiresAt) > now;
+          
+          return isActive && hasLocations && notExpired;
+        });
+        
+        console.log('🔍 Offer check result:', {
+          totalOffers: response.data.length,
+          hasActiveOffer,
+          offers: response.data.map((o: any) => ({
+            id: o._id || o.id,
+            isActive: o.is_active !== false && o.isActive !== false,
+            hasLocations: (o.locationIds && o.locationIds.length > 0) || (o.location_ids && o.location_ids.length > 0),
+            expiresAt: o.expiresAt || o.expires_at,
+            isOpenOffer: o.is_open_offer || o.isOpenOffer
+          }))
+        });
+        
+        return hasActiveOffer;
       }
       return false;
     } catch (error) {
@@ -610,18 +710,48 @@ const PartnerRequests = () => {
             }
           }
           
-          // Get offer images - try multiple possible field names
-          const senderOfferImage = req.senderOfferImage || req.sender_offer_image || 
-            senderOffer?.offer_image || senderOffer?.offerImage || 
-            senderOffer?.image || senderOffer?.offer_image_url || null;
+          // Get offer images - try multiple possible field names (matching Offers.tsx logic)
+          const getOfferImage = (offer: any) => {
+            if (!offer) return null;
+            
+            // Check all possible image field names from backend
+            const offerImage = offer.offerImage || 
+                              offer.offer_image || 
+                              offer.offerImageUrl || 
+                              offer.offer_image_url ||
+                              offer.image ||
+                              null;
+            
+            // Handle base64 images - convert to data URL if needed
+            let processedImageUrl = offerImage;
+            if (offerImage && !offerImage.startsWith('http') && !offerImage.startsWith('data:') && !offerImage.startsWith('/')) {
+              // Check if it's base64 without data URL prefix
+              if (offerImage.length > 100) {
+                processedImageUrl = `data:image/png;base64,${offerImage}`;
+              }
+            }
+            
+            return processedImageUrl;
+          };
           
-          const recipientOfferImage = req.recipientOfferImage || req.recipient_offer_image || 
-            recipientOffer?.offer_image || recipientOffer?.offerImage || 
-            recipientOffer?.image || recipientOffer?.offer_image_url || null;
+          // Try to get images from multiple sources
+          let senderOfferImage = req.senderOfferImage || req.sender_offer_image || null;
+          if (!senderOfferImage && senderOffer) {
+            senderOfferImage = getOfferImage(senderOffer);
+          }
+          
+          let recipientOfferImage = req.recipientOfferImage || req.recipient_offer_image || null;
+          if (!recipientOfferImage && recipientOffer) {
+            recipientOfferImage = getOfferImage(recipientOffer);
+          }
           
           console.log(`📸 Offer images for request ${req._id || req.id}:`, {
             senderOfferImage,
-            recipientOfferImage
+            recipientOfferImage,
+            hasSenderOffer: !!senderOffer,
+            hasRecipientOffer: !!recipientOffer,
+            senderOfferFields: senderOffer ? Object.keys(senderOffer) : [],
+            recipientOfferFields: recipientOffer ? Object.keys(recipientOffer) : []
           });
           
           return {
@@ -772,7 +902,11 @@ const PartnerRequests = () => {
       setSelectedLocationId(userLocations[0].id);
     }
 
-    // Open dialog to select location and confirm
+    // Reset to step 1 and open dialog
+    setPartnershipStep(1);
+    setDisplayCarousel(false);
+    setDisplayQR(false);
+    setCreativeIdeas("");
     setShowAuthDialog(true);
   };
   const sendPartnerRequest = async () => {
@@ -794,6 +928,17 @@ const PartnerRequests = () => {
       if (!token) {
         toast.error('You must be logged in to send partner requests');
         return;
+      }
+      
+      // Save display options
+      if (displayCarousel) {
+        localStorage.setItem('displayCarousel', 'true');
+      }
+      if (displayQR) {
+        localStorage.setItem('displayQR', 'true');
+      }
+      if (creativeIdeas.trim()) {
+        localStorage.setItem('creativeIdeas', creativeIdeas.trim());
       }
       
       // Find recipient from partnersForMap or storeOptions
@@ -889,11 +1034,6 @@ const PartnerRequests = () => {
       }
       
       console.log('Final recipientId to send request to:', recipientId);
-
-      // Set display options to default (tablet) if not already set
-      if (localStorage.getItem('displayCarousel') === null) {
-        localStorage.setItem('displayCarousel', 'true');
-      }
       
       await sendPartnerRequestFinal(currentUserId || 'current-user-id', recipientId);
     } catch (error) {
@@ -937,14 +1077,20 @@ const PartnerRequests = () => {
         setNewPartnerStore("");
         setStoreOptions([]);
         setShowAuthDialog(false);
+        setPartnershipStep(1);
         setHasAgreed(false);
         setPromoCode("");
         setIsPromoValid(false);
+        setDisplayCarousel(false);
+        setDisplayQR(false);
+        setCreativeIdeas("");
         // Reset location selection only if user has multiple locations
         if (userLocations.length > 1) {
           setSelectedLocationId("");
         }
         fetchPartnerRequests();
+        // Refresh partners list to update pending status
+        fetchPartnersForMap();
       } else {
         throw new Error(response.message || 'Failed to send request');
       }
@@ -1125,7 +1271,7 @@ const PartnerRequests = () => {
       case 'cancelled':
         return <Badge className="bg-gray-100 text-gray-800 border-gray-200">Expired</Badge>;
       default:
-        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Pending</Badge>;
+        return <Badge className="bg-amber-400 text-gray-900 border border-gray-800 rounded-full px-3 py-1">Pending</Badge>;
     }
   };
   const getRequestType = (request: PartnerRequest) => {
@@ -1140,18 +1286,12 @@ const PartnerRequests = () => {
   const getRequestTypeIcon = (request: PartnerRequest) => {
     const requestType = getRequestType(request);
     const isOutgoing = requestType === 'outgoing';
-    return <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger>
-          <div className={`flex items-center justify-center w-8 h-8 rounded-full ${isOutgoing ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>
-            {isOutgoing ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-          </div>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{isOutgoing ? 'Outgoing Request' : 'Incoming Request'}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>;
+    // Incoming requests show green with down arrow, outgoing show blue with up arrow
+    return (
+      <div className={`flex items-center justify-center w-8 h-8 rounded-full ${isOutgoing ? 'bg-blue-500 text-white' : 'bg-green-100 text-green-600'}`}>
+        {isOutgoing ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+      </div>
+    );
   };
   const filteredRequests = requests.filter(request => {
     const partnerStoreName = getRequestType(request) === 'outgoing' ? request.recipient_profile?.store_name : request.sender_profile?.store_name;
@@ -1159,17 +1299,9 @@ const PartnerRequests = () => {
   });
   return <AppLayout pageTitle="Partners" pageIcon={<Store className="h-5 w-5 text-primary" />}>
     <div className="w-full p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
-            <Building2 className="h-8 w-8 text-primary" />
-            Partner Network
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Manage your partnership requests and discover local business partners
-          </p>
-        </div>
-      </div>
+      <p className="text-muted-foreground">
+        Send, approve and manage your partnerships with other retailers
+      </p>
 
       <Tabs defaultValue="map" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
@@ -1262,6 +1394,8 @@ const PartnerRequests = () => {
                 partners={partnersForMap} 
                 onSendRequest={handleSendRequest}
                 userLocations={userLocations}
+                onRefresh={fetchPartnersForMap}
+                isLoading={isLoadingPartners}
               />
 
               <div className="border-t pt-4">
@@ -1339,15 +1473,16 @@ const PartnerRequests = () => {
                   <TableBody>
                     {[...Array(5)].map((_, index) => (
                       <TableRow key={index}>
-                        <TableCell><Skeleton className="h-4 w-4" /></TableCell>
-                        <TableCell><Skeleton className="h-6 w-20" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                        <TableCell><Skeleton className="h-8 w-8 rounded-full" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                         <TableCell><Skeleton className="h-16 w-16 rounded-lg" /></TableCell>
                         <TableCell><Skeleton className="h-16 w-16 rounded-lg" /></TableCell>
-                        <TableCell><Skeleton className="h-6 w-20" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                        <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                         <TableCell><Skeleton className="h-8 w-24" /></TableCell>
                       </TableRow>
                     ))}
@@ -1364,13 +1499,14 @@ const PartnerRequests = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Type</TableHead>
-                      <TableHead>Request Type</TableHead>
-                      <TableHead>Partner/Advertiser</TableHead>
+                      <TableHead>Partner</TableHead>
                       <TableHead>Your Store</TableHead>
                       <TableHead>Distance</TableHead>
-                      <TableHead>Their Ad</TableHead>
-                      <TableHead>Your Ad</TableHead>
+                      <TableHead>Their Offer</TableHead>
+                      <TableHead>Your Offer</TableHead>
+                      <TableHead>X-Promo Assets</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Analytics</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
@@ -1378,10 +1514,19 @@ const PartnerRequests = () => {
                   <TableBody>
                     {filteredRequests.map(request => {
                     const requestType = getRequestType(request);
-                    const partnerStore = requestType === 'outgoing' ? request.recipient_profile?.store_name : request.sender_profile?.store_name;
+                    
+                    // Partner store name: the other party's store
+                    const partnerStoreName = requestType === 'outgoing' 
+                      ? request.recipient_profile?.store_name 
+                      : request.sender_profile?.store_name;
+
+                    // Your store name: the current user's store
+                    const yourStoreName = requestType === 'incoming' 
+                      ? request.recipient_profile?.store_name 
+                      : request.sender_profile?.store_name;
 
                     // Determine if this is an Ad request (from Media Street)
-                    const isAdRequest = partnerStore === "Media Street";
+                    const isAdRequest = partnerStoreName === "Media Street";
 
                     // Mock distance calculation
                     const getDistance = () => {
@@ -1389,112 +1534,196 @@ const PartnerRequests = () => {
                       return distances[Math.floor(Math.random() * distances.length)];
                     };
 
-                    // Get offer images - use actual offer image if available, otherwise fallback to store type
-                    const getPartnerOfferImage = (request: any) => {
-                      // For outgoing requests, show recipient's offer image
-                      // For incoming requests, show sender's offer image
-                      let offerImage = requestType === 'outgoing' 
-                        ? request.recipient_offer_image 
-                        : request.sender_offer_image;
-                      
-                      // If no direct image, try to get from offer object
-                      if (!offerImage) {
-                        const offer = requestType === 'outgoing' 
-                          ? request.recipient_offer 
-                          : request.sender_offer;
-                        
-                        if (offer) {
-                          offerImage = offer.offer_image || offer.offerImage || offer.image || null;
-                        }
-                      }
-                      
+                    // Get offer images - use actual offer image if available (matching Offers.tsx logic)
+                    const getOfferImageFromRequest = (offerImage: string | null | undefined, offer: any) => {
+                      // First try the direct image field
                       if (offerImage) {
+                        // Handle base64 images
+                        if (!offerImage.startsWith('http') && !offerImage.startsWith('data:') && !offerImage.startsWith('/')) {
+                          if (offerImage.length > 100) {
+                            return `data:image/png;base64,${offerImage}`;
+                          }
+                        }
                         return offerImage;
                       }
                       
-                      // Fallback to store type-based image
-                      const storeName = requestType === 'outgoing' 
-                        ? request.recipient_profile?.store_name 
-                        : request.sender_profile?.store_name;
-                      
-                      if (storeName?.toLowerCase().includes('coffee')) {
-                        return posCoffeeImage;
-                      } else if (storeName?.toLowerCase().includes('salon')) {
-                        return posSalonImage;
-                      } else if (storeName?.toLowerCase().includes('flower')) {
-                        return posFlowersImage;
-                      } else {
-                        return posSubsImage;
+                      // If no direct image, try to get from offer object
+                      if (offer) {
+                        // Check all possible image field names
+                        const img = offer.offerImage || 
+                                   offer.offer_image || 
+                                   offer.offerImageUrl || 
+                                   offer.offer_image_url ||
+                                   offer.image ||
+                                   null;
+                        
+                        if (img) {
+                          // Handle base64 images
+                          if (!img.startsWith('http') && !img.startsWith('data:') && !img.startsWith('/')) {
+                            if (img.length > 100) {
+                              return `data:image/png;base64,${img}`;
+                            }
+                          }
+                          return img;
+                        }
                       }
+                      
+                      return null;
+                    };
+                    
+                    // Get partner's offer image
+                    const getPartnerOfferImage = (request: any) => {
+                      // For outgoing requests, show recipient's offer image
+                      // For incoming requests, show sender's offer image
+                      const offerImage = requestType === 'outgoing' 
+                        ? request.recipient_offer_image 
+                        : request.sender_offer_image;
+                      
+                      const offer = requestType === 'outgoing' 
+                        ? request.recipient_offer 
+                        : request.sender_offer;
+                      
+                      const image = getOfferImageFromRequest(offerImage, offer);
+                      
+                      if (image) {
+                        return image;
+                      }
+                      
+                      // Only fallback to placeholder if no image found
+                      console.warn(`No image found for partner offer in request ${request.id}`);
+                      return null; // Return null instead of placeholder
                     };
                     
                     // Get your offer image
                     const getYourOfferImage = (request: any) => {
                       // For outgoing requests, show sender's offer image
                       // For incoming requests, show recipient's offer image
-                      let offerImage = requestType === 'outgoing' 
+                      const offerImage = requestType === 'outgoing' 
                         ? request.sender_offer_image 
                         : request.recipient_offer_image;
                       
-                      // If no direct image, try to get from offer object
-                      if (!offerImage) {
-                        const offer = requestType === 'outgoing' 
-                          ? request.sender_offer 
-                          : request.recipient_offer;
-                        
-                        if (offer) {
-                          offerImage = offer.offer_image || offer.offerImage || offer.image || null;
-                        }
+                      const offer = requestType === 'outgoing' 
+                        ? request.sender_offer 
+                        : request.recipient_offer;
+                      
+                      const image = getOfferImageFromRequest(offerImage, offer);
+                      
+                      if (image) {
+                        return image;
                       }
                       
-                      if (offerImage) {
-                        return offerImage;
-                      }
-                      
-                      // Fallback to default image
-                      return posSalonImage;
+                      // Only fallback to placeholder if no image found
+                      console.warn(`No image found for your offer in request ${request.id}`);
+                      return null; // Return null instead of placeholder
                     };
-                    
-                    // Get your store name
-                    const yourStoreName = requestType === 'incoming' 
-                      ? (request.recipient_profile?.store_name || 'Your Store')
-                      : (request.sender_profile?.store_name || 'Your Store');
                     
                     return <TableRow key={request.id}>
                       <TableCell>
                         {getRequestTypeIcon(request)}
                       </TableCell>
                       <TableCell className="font-medium">
-                        {partnerStore || 'N/A'}
+                        {partnerStoreName || 'N/A'}
                       </TableCell>
                       <TableCell className="font-medium">
-                        {yourStoreName}
+                        {yourStoreName || 'Your Store'}
                       </TableCell>
                       <TableCell>
                         {isAdRequest ? "N/A" : getDistance()}
                       </TableCell>
                       <TableCell>
-                        <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted cursor-pointer hover:ring-2 hover:ring-primary transition-all" onClick={() => setEnlargedImage({
-                          src: getPartnerOfferImage(request),
-                          title: `${partnerStore} offer`
-                        })}>
-                          <img src={getPartnerOfferImage(request)} alt={`${partnerStore} offer`} className="w-full h-full object-cover" />
-                        </div>
+                        {(() => {
+                          const partnerImage = getPartnerOfferImage(request);
+                          return partnerImage ? (
+                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted cursor-pointer hover:ring-2 hover:ring-primary transition-all" onClick={() => setEnlargedImage({
+                              src: partnerImage,
+                              title: `${partnerStoreName} offer`
+                            })}>
+                              <img src={partnerImage} alt={`${partnerStoreName} offer`} className="w-full h-full object-cover" onError={(e) => {
+                                console.error('Error loading partner offer image:', partnerImage);
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }} />
+                            </div>
+                          ) : (
+                            <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                              No image
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
-                        {isAdRequest ? <div className="text-muted-foreground">N/A</div> : (
-                          <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted cursor-pointer hover:ring-2 hover:ring-primary transition-all" onClick={() => setEnlargedImage({
-                            src: getYourOfferImage(request),
-                            title: "Your offer"
-                          })}>
-                            <img src={getYourOfferImage(request)} alt="Your offer" className="w-full h-full object-cover" />
-                          </div>
-                        )}
+                        {isAdRequest ? <div className="text-muted-foreground">N/A</div> : (() => {
+                          const yourImage = getYourOfferImage(request);
+                          return yourImage ? (
+                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted cursor-pointer hover:ring-2 hover:ring-primary transition-all" onClick={() => setEnlargedImage({
+                              src: yourImage,
+                              title: "Your offer"
+                            })}>
+                              <img src={yourImage} alt="Your offer" className="w-full h-full object-cover" onError={(e) => {
+                                console.error('Error loading your offer image:', yourImage);
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }} />
+                            </div>
+                          ) : (
+                            <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center text-xs text-muted-foreground">
+                              No image
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Monitor className="h-4 w-4 text-primary" />
-                          <Printer className="h-4 w-4 text-primary" />
+                          <button
+                            onClick={() => {
+                              navigate('/display');
+                            }}
+                            className="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer"
+                            title="View Partner Carousel"
+                          >
+                            <Monitor className="h-4 w-4 text-white" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              // Get location ID from user's offer or use first user location
+                              const yourOffer = requestType === 'outgoing' 
+                                ? request.sender_offer 
+                                : request.recipient_offer;
+                              
+                              // Try to get location ID from offer
+                              let locationId: string | null = null;
+                              
+                              // First, try to get from offer's locations array
+                              if (yourOffer?.locations && Array.isArray(yourOffer.locations) && yourOffer.locations.length > 0) {
+                                const firstLocation = yourOffer.locations[0];
+                                locationId = firstLocation?.id || firstLocation?._id?.toString() || (typeof firstLocation === 'string' ? firstLocation : null);
+                              } 
+                              // Try locationIds array
+                              else if (yourOffer?.locationIds && Array.isArray(yourOffer.locationIds) && yourOffer.locationIds.length > 0) {
+                                locationId = yourOffer.locationIds[0]?.toString() || yourOffer.locationIds[0];
+                              }
+                              // Try location_ids array
+                              else if (yourOffer?.location_ids && Array.isArray(yourOffer.location_ids) && yourOffer.location_ids.length > 0) {
+                                locationId = yourOffer.location_ids[0]?.toString() || yourOffer.location_ids[0];
+                              }
+                              // Try single locationId field
+                              else if (yourOffer?.locationId) {
+                                locationId = yourOffer.locationId?.toString() || yourOffer.locationId;
+                              }
+                              // Fallback to first user location
+                              else if (userLocations.length > 0) {
+                                locationId = userLocations[0].id;
+                              }
+                              
+                              if (locationId) {
+                                navigate(`/locations/${locationId}/qr`);
+                              } else {
+                                toast.error('Location not found for QR code');
+                              }
+                            }}
+                            className="p-1 hover:bg-white/10 rounded transition-colors cursor-pointer"
+                            title="View QR Code"
+                          >
+                            <Printer className="h-4 w-4 text-white" />
+                          </button>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1502,7 +1731,7 @@ const PartnerRequests = () => {
                       </TableCell>
                       <TableCell>
                         {request.status === 'pending' ? (
-                          <span className="text-muted-foreground">-</span>
+                          <span className="text-muted-foreground">—</span>
                         ) : (
                           <Button
                             size="sm"
@@ -1519,19 +1748,15 @@ const PartnerRequests = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        {isAdRequest ? <>
-                          {new Date(request.created_at).toLocaleDateString()} - {new Date(new Date(request.created_at).getTime() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString()}
-                        </> : request.status === 'pending' ? <>
-                          {new Date(request.created_at).toLocaleDateString()}
-                        </> : request.status === 'rejected' ? <>
-                          {new Date(request.created_at).toLocaleDateString()} - N/A
-                        </> : <>
-                          {new Date(request.created_at).toLocaleDateString()} - ∞
-                        </>}
+                        {new Date(request.created_at).toLocaleDateString('en-US', { 
+                          month: 'numeric', 
+                          day: 'numeric', 
+                          year: 'numeric' 
+                        })}
                       </TableCell>
                       <TableCell>
                         {requestType === 'incoming' && request.status === 'pending' && <div className="flex gap-2">
-                          <Button size="sm" onClick={() => handleApproveRequest(request.id)} className="bg-green-600 hover:bg-green-700">
+                          <Button size="sm" onClick={() => handleApproveRequest(request.id)} className="bg-green-600 hover:bg-green-700 text-white">
                             <Check className="h-4 w-4 mr-1" />
                             Approve
                           </Button>
@@ -1544,11 +1769,13 @@ const PartnerRequests = () => {
                           <Trash2 className="h-4 w-4 mr-1" />
                           Cancel
                         </Button>}
-                        {requestType === 'outgoing' && request.status === 'pending' && <Badge variant="outline" className="text-xs">
-                          Awaiting Response
-                        </Badge>}
+                        {requestType === 'outgoing' && request.status === 'pending' && (
+                          <Badge variant="outline" className="text-xs border-white/20 text-white bg-transparent rounded-full px-3 py-1">
+                            Awaiting Response
+                          </Badge>
+                        )}
                         {request.status === 'cancelled' && <Button size="sm" variant="outline" onClick={() => {
-                          setNewPartnerStore(partnerStore || '');
+                          setNewPartnerStore(partnerStoreName || '');
                           handleSendRequest();
                         }} className="text-primary border-primary hover:bg-primary/10">
                           <Send className="h-4 w-4 mr-1" />
@@ -1565,99 +1792,317 @@ const PartnerRequests = () => {
         </CardContent>
       </Card>
 
-      {/* Authentication Dialog */}
-      <Dialog open={showAuthDialog} onOpenChange={setShowAuthDialog}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <UserPlus className="h-5 w-5" />
-              Send Partner Request
-            </DialogTitle>
-            <DialogDescription>
-              You're about to send a partner request to <strong>{newPartnerStore}</strong>
-            </DialogDescription>
-          </DialogHeader>
-
-          <ScrollArea className="flex-1 pr-4">
-            <div className="space-y-4">
-            <div className="space-y-3">
-              <label className="text-sm sm:text-base font-medium text-foreground">
-                Select Location for Partnership {userLocations.length > 1 && <span className="text-muted-foreground">(Required)</span>}
-              </label>
-              <div className="text-xs sm:text-sm text-foreground/70 mb-2">
-                Select which location you want to use for this partnership. One offer can be used for one location per partnership.
-              </div>
-              <div className="grid grid-cols-1 gap-2">
-                {userLocations.map(location => (
-                  <Button 
-                    key={location.id} 
-                    variant={selectedLocationId === location.id ? "default" : "outline"} 
-                    className="w-full justify-start text-left h-auto py-3 px-4" 
-                    onClick={() => setSelectedLocationId(location.id)}
-                  >
-                    <div className="flex flex-col items-start w-full gap-1">
-                      <span className="font-medium text-sm sm:text-base">{location.name}</span>
-                      <span className={`text-xs sm:text-sm break-words w-full ${
-                        selectedLocationId === location.id 
-                          ? "text-primary-foreground/80" 
-                          : "text-foreground/70"
-                      }`}>{location.address}</span>
-                    </div>
+      {/* 3-Step Partnership Request Dialog */}
+      <Dialog open={showAuthDialog} onOpenChange={(open) => {
+        setShowAuthDialog(open);
+        if (!open) {
+          setPartnershipStep(1);
+          setDisplayCarousel(false);
+          setDisplayQR(false);
+          setCreativeIdeas("");
+          setHasAgreed(false);
+          setPromoCode("");
+          setIsPromoValid(false);
+          if (userLocations.length > 1) {
+            setSelectedLocationId("");
+          }
+        }
+      }}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col overflow-hidden p-0">
+          {/* Step 1: Select Your Location */}
+          {partnershipStep === 1 && (
+            <>
+              <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
+                <div className="flex items-center justify-between">
+                  <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
+                    <Send className="h-5 w-5" />
+                    Select Your Location
+                  </DialogTitle>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowAuthDialog(false)}>
+                    <X className="h-4 w-4" />
                   </Button>
-                ))}
-              </div>
-              {userLocations.length > 0 && !selectedLocationId && (
-                <p className="text-xs sm:text-sm text-red-600 dark:text-red-400 font-medium">Please select a location to continue</p>
-              )}
-            </div>
-
-            {/* Payment method check bypassed - payment system disabled */}
-
-            <div className="space-y-2">
-              <label htmlFor="promo-code" className="text-sm sm:text-base font-medium text-foreground">
-                Promo Code (Optional)
-              </label>
-              <div className="space-y-2">
-                <Input id="promo-code" placeholder="Enter promo code to waive partnership fee" value={promoCode} onChange={e => handlePromoCodeChange(e.target.value)} className="text-sm sm:text-base" />
-                {promoCode && <div className={`text-xs sm:text-sm ${isPromoValid ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {isPromoValid ? '✓ Valid promo code - partnership fee waived!' : '✗ Invalid promo code'}
-                </div>}
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-start space-x-2">
-                <Checkbox id="agree-terms" checked={hasAgreed || isPromoValid} onCheckedChange={checked => {
-                  if (!isPromoValid) {
-                    setHasAgreed(checked as boolean);
-                  }
-                }} className="mt-1" />
-                <label htmlFor="agree-terms" className="text-sm sm:text-base font-medium leading-tight text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex-1">
-                  I agree to the partnership terms and understand that this partnership will allow cross-promotion of offers between our stores.
-                </label>
-              </div>
-            </div>
-          </div>
-          </ScrollArea>
-
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => {
-              setShowAuthDialog(false);
-              setHasAgreed(false);
-              setPromoCode("");
-              setIsPromoValid(false);
-              // Reset location selection only if user has multiple locations
-              if (userLocations.length > 1) {
-                setSelectedLocationId("");
-              }
-            }}>
-              Cancel
-            </Button>
-            <Button onClick={sendPartnerRequest} disabled={!hasAgreed && !isPromoValid || !selectedLocationId} className="gap-2">
-              <Send className="h-4 w-4" />
-              Send Request
-            </Button>
-          </DialogFooter>
+                </div>
+              </DialogHeader>
+              
+              <ScrollArea className="flex-1 min-h-0 px-6 [&_[data-radix-scroll-area-scrollbar]]:hidden">
+                <div className="space-y-4 pb-4">
+                  <p className="text-sm text-muted-foreground">
+                    Select which of your locations to partner from:
+                  </p>
+                  
+                  <div className="space-y-2">
+                    {userLocations.map(location => (
+                      <div
+                        key={location.id}
+                        onClick={() => setSelectedLocationId(location.id)}
+                        className={`flex items-center gap-3 p-4 rounded-full border-2 cursor-pointer transition-all ${
+                          selectedLocationId === location.id
+                            ? 'border-primary bg-primary/10'
+                            : 'border-white/20 bg-background hover:border-white/40'
+                        }`}
+                      >
+                        <div className={`flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0 ${
+                          selectedLocationId === location.id
+                            ? 'bg-primary text-white'
+                            : 'bg-muted'
+                        }`}>
+                          {selectedLocationId === location.id && <Check className="h-4 w-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-base">{location.name}</p>
+                          <p className="text-sm text-muted-foreground truncate">{location.address}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <p className="text-sm text-muted-foreground">
+                    {selectedLocationId ? `${userLocations.filter(l => l.id === selectedLocationId).length} location selected` : 'No location selected'}
+                  </p>
+                </div>
+              </ScrollArea>
+              
+              <DialogFooter className="flex-shrink-0 px-6 pb-6 pt-4 border-t">
+                <Button variant="outline" onClick={() => setShowAuthDialog(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={() => {
+                    if (selectedLocationId) {
+                      setPartnershipStep(2);
+                    } else {
+                      toast.error('Please select a location');
+                    }
+                  }}
+                  disabled={!selectedLocationId}
+                  className="bg-green-600 hover:bg-green-700 text-white gap-2"
+                >
+                  <Send className="h-4 w-4" />
+                  Send Request
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+          
+          {/* Step 2: Confirm Display Options */}
+          {partnershipStep === 2 && (
+            <>
+              <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
+                      <Send className="h-5 w-5" />
+                      Confirm Display Options
+                    </DialogTitle>
+                    <DialogDescription className="mt-2 text-sm text-muted-foreground">
+                      Choose how you'll display <strong>{newPartnerStore}</strong>'s offer at your location
+                    </DialogDescription>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowAuthDialog(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </DialogHeader>
+              
+              <ScrollArea className="flex-1 min-h-0 px-6 [&_[data-radix-scroll-area-scrollbar]]:hidden">
+                <div className="space-y-4 pb-4">
+                  <p className="text-sm text-muted-foreground">
+                    Select which of your locations to send a partner request from:
+                  </p>
+                  
+                  <RadioGroup 
+                    value={displayCarousel ? "carousel" : displayQR ? "qr" : ""} 
+                    onValueChange={(value) => {
+                      setDisplayCarousel(value === "carousel");
+                      setDisplayQR(value === "qr");
+                    }} 
+                    className="space-y-3"
+                  >
+                    {/* Display Partner Carousel */}
+                    <div className="flex items-start gap-3 p-4 rounded-lg border border-white/20 bg-background">
+                      <RadioGroupItem
+                        value="carousel"
+                        id="carousel"
+                        className="mt-1"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Monitor className="h-5 w-5" />
+                          <Label htmlFor="carousel" className="font-semibold text-base cursor-pointer">
+                            Display Partner Carousel
+                          </Label>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-2">
+                          Run your dedicated partner carousel on a tablet in-store
+                        </p>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="p-0 h-auto text-primary text-sm"
+                          onClick={() => navigate('/display')}
+                        >
+                          Set up carousel →
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    {/* Post QR Code */}
+                    <div className="flex items-start gap-3 p-4 rounded-lg border border-white/20 bg-background">
+                      <RadioGroupItem
+                        value="qr"
+                        id="qr"
+                        className="mt-1"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <QrCodeIcon className="h-5 w-5" />
+                          <Label htmlFor="qr" className="font-semibold text-base cursor-pointer">
+                            Post Your Store's Media Street QR code
+                          </Label>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-2">
+                          Display your store's QR code sticker in a high traffic location
+                        </p>
+                        <Button
+                          variant="link"
+                          size="sm"
+                          className="p-0 h-auto text-primary text-sm"
+                          onClick={() => navigate('/location-qr')}
+                        >
+                          Print QR codes →
+                        </Button>
+                      </div>
+                    </div>
+                  </RadioGroup>
+                    
+                    {/* Get Creative */}
+                    <div className="p-4 rounded-lg border border-white/20 bg-background">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Lightbulb className="h-5 w-5" />
+                        <Label className="font-semibold text-base">
+                          Get Creative (Optional)
+                        </Label>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Share additional ways you'll promote <strong>{newPartnerStore}</strong>'s offer
+                      </p>
+                      <Textarea
+                        placeholder="e.g. include qr code on receipts, mention partner offer in newsletter, one social media post a week"
+                        value={creativeIdeas}
+                        onChange={(e) => setCreativeIdeas(e.target.value)}
+                        className="min-h-[100px] bg-background"
+                      />
+                    </div>
+                </div>
+              </ScrollArea>
+              
+              <DialogFooter className="flex-shrink-0 px-6 pb-6 pt-4 border-t">
+                <Button variant="outline" onClick={() => setShowAuthDialog(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={() => setPartnershipStep(3)}
+                  className="bg-green-600 hover:bg-green-700 text-white gap-2"
+                >
+                  <Send className="h-4 w-4" />
+                  Send Request
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+          
+          {/* Step 3: Confirm Partnership Request */}
+          {partnershipStep === 3 && (
+            <>
+              <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
+                <div className="flex items-center justify-between">
+                  <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
+                    <Check className="h-5 w-5" />
+                    Confirm Partnership Request
+                  </DialogTitle>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowAuthDialog(false)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </DialogHeader>
+              
+              <ScrollArea className="flex-1 min-h-0 px-6 [&_[data-radix-scroll-area-scrollbar]]:hidden">
+                <div className="space-y-4 pb-4">
+                  <p className="text-sm text-muted-foreground">
+                    You're about to send a partner request to <strong>{newPartnerStore}</strong>
+                  </p>
+                  
+                  <div>
+                    <p className="font-semibold text-base mb-2">If accepted, this partnership will:</p>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground ml-2">
+                      <li>Show your offer at their store location</li>
+                      <li>Display their offer at your store</li>
+                      <li>Activate analytics on consumer views and redemptions</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="bg-muted/50 rounded-lg p-4 border border-white/10">
+                    <p className="font-semibold text-sm mb-2">Billing note:</p>
+                    <p className="text-xs text-muted-foreground">
+                      The recurring partnership fee ($10) is charged 30 days after the partnership is confirmed to the party receiving more redemptions from the partnership, and every 30 days thereafter until cancelled. Promo credits are applied first before any card charges.
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Your promo credit balance:</span>
+                    <span className="text-primary font-semibold text-base">${creditBalance.toFixed(2)}</span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label htmlFor="promo-code-confirm" className="text-sm font-medium">
+                      Promo Code (Optional)
+                    </label>
+                    <Input 
+                      id="promo-code-confirm" 
+                      placeholder="Enter promo code to waive partnership fee" 
+                      value={promoCode} 
+                      onChange={e => handlePromoCodeChange(e.target.value)} 
+                    />
+                    {promoCode && (
+                      <div className={`text-xs ${isPromoValid ? 'text-green-600' : 'text-red-600'}`}>
+                        {isPromoValid ? '✓ Valid promo code - partnership fee waived!' : '✗ Invalid promo code'}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-start space-x-2 pt-2">
+                    <Checkbox 
+                      id="agree-terms-confirm" 
+                      checked={hasAgreed || isPromoValid} 
+                      onCheckedChange={checked => {
+                        if (!isPromoValid) {
+                          setHasAgreed(checked as boolean);
+                        }
+                      }} 
+                      className="mt-1" 
+                    />
+                    <label htmlFor="agree-terms-confirm" className="text-xs text-muted-foreground leading-tight">
+                      I authorize Media Street to charge my card on file until cancelled.
+                    </label>
+                  </div>
+                </div>
+              </ScrollArea>
+              
+              <DialogFooter className="flex-shrink-0 px-6 pb-6 pt-4 border-t">
+                <Button variant="outline" onClick={() => setPartnershipStep(2)}>
+                  Back
+                </Button>
+                <Button 
+                  onClick={sendPartnerRequest} 
+                  disabled={!hasAgreed && !isPromoValid}
+                  className="bg-green-600 hover:bg-green-700 text-white gap-2"
+                >
+                  <Check className="h-4 w-4" />
+                  Confirm & Request
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

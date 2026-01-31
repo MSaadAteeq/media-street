@@ -8,13 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Upload, ArrowLeft, MapPin, Clock, QrCode as QrCodeIcon, Navigation, Map, ChevronDown, Zap } from "lucide-react";
+import { Upload, ArrowLeft, MapPin, Clock, QrCode as QrCodeIcon, Navigation, Map, ChevronDown, Zap, Check } from "lucide-react";
 import { QRCodeSVG } from 'qrcode.react';
 import QRCode from 'qrcode';
 import { useNavigate } from "react-router-dom";
 // Supabase removed - will use Node.js API
 import { useToast } from "@/hooks/use-toast";
 import { get, post } from "@/services/apis";
+import { generateOfferFromWebsite } from "@/services/generateOfferFromWebsite";
 import mediaStreetLogoIcon from "@/assets/media-street-logo-icon.png";
 
 interface Location {
@@ -193,11 +194,7 @@ const OfferCreate = () => {
     
     setIsGenerating(true);
     try {
-      const response = await post({
-        end_point: 'offers/generate-from-website',
-        body: { website },
-        token: false
-      });
+      const response = await generateOfferFromWebsite(website);
 
       if (!response.success) {
         throw new Error(response.message || 'Failed to generate offer');
@@ -256,11 +253,13 @@ const OfferCreate = () => {
     } catch (error) {
       console.error("Error generating offer:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const displayMessage =
+        errorMessage.includes('not configured') || errorMessage.includes('503')
+          ? "The AI feature is currently unavailable. Please try again later."
+          : errorMessage || "Failed to generate offer. Please try again.";
       toast({
         title: "Error",
-        description: errorMessage.includes('not configured') || errorMessage.includes('503') 
-          ? "The AI feature is currently unavailable. Please try again later." 
-          : "Failed to generate offer. Please try again.",
+        description: displayMessage,
         variant: "destructive"
       });
     } finally {
@@ -284,6 +283,12 @@ const OfferCreate = () => {
           openOfferOnly: location.open_offer_only ?? location.openOfferOnly ?? false
         }));
         setLocations(mappedLocations);
+        
+        // Auto-select location if user has only one location
+        if (mappedLocations.length === 1) {
+          setSelectedLocations([mappedLocations[0].id]);
+        }
+        
         setLoading(false);
         return;
       }
@@ -758,9 +763,9 @@ const OfferCreate = () => {
 
                 {/* Location Selection */}
                 <div className="space-y-2">
-                  <Label htmlFor="location">Select Your Retail Locations *</Label>
+                  <Label htmlFor="location">Select Retail Locations</Label>
                   <p className="text-sm text-muted-foreground">
-                    Choose which retail locations this offer is for. If you select a location with "Open Offer" enabled, this offer will automatically become an open offer.
+                    Choose which retail locations this offer is for.
                   </p>
                   
                   <Popover>
@@ -775,6 +780,11 @@ const OfferCreate = () => {
                           ? "Loading locations..."
                           : selectedLocations.length === 0
                           ? "Select locations..."
+                          : selectedLocations.length === 1
+                          ? (() => {
+                              const selectedLocation = locations.find(l => l.id === selectedLocations[0]);
+                              return selectedLocation ? `${selectedLocation.name} - ${selectedLocation.address}` : `${selectedLocations.length} location(s) selected`;
+                            })()
                           : `${selectedLocations.length} location(s) selected`}
                         <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
@@ -839,32 +849,24 @@ const OfferCreate = () => {
                   {selectedLocations.length > 0 && (
                     <div className="mt-2">
                       <p className="text-xs text-muted-foreground mb-2">Selected locations:</p>
-                      <div className="flex flex-wrap gap-1">
+                      <div className="space-y-2">
                         {selectedLocations.map(locationId => {
                           const location = locations.find(l => l.id === locationId);
                           return location ? (
-                            <span key={locationId} className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary">
-                              {location.name}
-                            </span>
+                            <div key={locationId} className="flex items-center gap-2 p-2 rounded-lg border bg-background">
+                              <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground shrink-0">
+                                <Check className="h-4 w-4" />
+                              </div>
+                              <span className="text-sm font-medium">
+                                {location.name} - {location.address}
+                              </span>
+                            </div>
                           ) : null;
                         })}
                       </div>
                     </div>
                   )}
                 </div>
-
-                {/* Info message for open offers */}
-                {selectedLocations.length > 0 && (() => {
-                  const selectedLocationData = locations.filter(loc => selectedLocations.includes(loc.id));
-                  const hasOpenOfferLocation = selectedLocationData.some(loc => loc.openOfferOnly === true);
-                  return hasOpenOfferLocation ? (
-                    <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <p className="text-sm text-blue-900 dark:text-blue-100">
-                        <strong>Open Offer:</strong> You've selected a location with "Open Offer" enabled. This offer will automatically become an open offer and will be visible to all retailers in the "Open Offers" tab.
-                      </p>
-                    </div>
-                  ) : null;
-                })()}
 
                 {/* Create Offer Button */}
                 <div className="pt-4">

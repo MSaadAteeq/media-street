@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
-// Supabase removed - will use Node.js API
 import { CheckCircle, XCircle } from "lucide-react";
+import { get, post } from "@/services/apis";
 
 const RedeemConfirm = () => {
   const { offerCode } = useParams();
@@ -24,23 +24,6 @@ const RedeemConfirm = () => {
 
   const handleAutoRedeem = async () => {
     try {
-      // First get the offer to verify it exists
-      const { data: offerData, error: offerError } = await supabase
-        .from('offers')
-        .select('id')
-        .eq('redemption_code_prefix', offerCode)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (offerError || !offerData) {
-        setStatus('error');
-        setMessage('Offer not found or inactive');
-        return;
-      }
-
-      // TODO: Replace with Node.js API call
-      // const response = await post({ end_point: 'redemptions/log', body: { redemption_code: redemptionCode, offer_id: offerData.id } });
-      
       const token = localStorage.getItem('token');
       if (!token) {
         // Redirect to login with return URL
@@ -48,9 +31,49 @@ const RedeemConfirm = () => {
         return;
       }
 
-      // Mock implementation
-      setStatus('success');
-      setMessage(`Successfully redeemed! 0 points awarded.`);
+      // First get the offer to verify it exists and get location info
+      const offerResponse = await get({
+        end_point: `offers/${offerCode}`,
+        token: false
+      });
+
+      if (!offerResponse.success || !offerResponse.data) {
+        setStatus('error');
+        setMessage('Offer not found or inactive');
+        return;
+      }
+
+      const offerData = offerResponse.data;
+      
+      // Get location ID from offer (use first location)
+      const locationId = offerData.locationIds?.[0]?._id || 
+                        offerData.locationIds?.[0]?.toString() ||
+                        offerData.locations?.[0]?._id ||
+                        offerData.locations?.[0]?.toString() ||
+                        null;
+
+      if (!locationId) {
+        setStatus('error');
+        setMessage('Location not found for this offer');
+        return;
+      }
+
+      // Redeem coupon using Node.js API - awards points correctly
+      const response = await post({
+        end_point: 'redemptions/redeem-coupon',
+        body: {
+          couponCode: redemptionCode,
+          locationId: locationId
+        },
+        token: true
+      });
+
+      if (response.success) {
+        setStatus('success');
+        setMessage(`Successfully redeemed! Points have been awarded.`);
+      } else {
+        throw new Error(response.message || 'Failed to redeem coupon');
+      }
 
       // Redirect back to main redeem page after 2 seconds
       setTimeout(() => {
@@ -60,7 +83,7 @@ const RedeemConfirm = () => {
     } catch (error: any) {
       console.error("Auto-redemption error:", error);
       setStatus('error');
-      setMessage(error.message || 'Failed to redeem coupon');
+      setMessage(error?.response?.data?.message || error.message || 'Failed to redeem coupon');
     }
   };
 

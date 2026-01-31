@@ -60,9 +60,13 @@ The backend allows requests from:
 
 Make sure your frontend is running on one of these ports.
 
+### Generate Offer from Website
+
+The AI offer generation feature tries the backend first. If the backend is unavailable (not running, connection refused, timeout), it automatically falls back to a Supabase Edge Function. Ensure `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` (or `VITE_SUPABASE_ANON_KEY`) are set in your frontend `.env` for the fallback to work. If both fail, you'll see a clear error message.
+
 ### Common Issues:
 
-1. **Backend not running**: Start the backend server first
+1. **Backend not running**: Start the backend server first (or rely on Supabase fallback for offer generation)
 2. **Wrong port**: Backend should be on port 3000, frontend on 8080 or 5173
 3. **CORS errors**: Check browser console for CORS-related errors
 4. **Database connection**: Make sure MongoDB connection string is correct in .env

@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import Logo from "@/components/Logo";
-import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, TrendingDown, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2, CheckCircle, User, Lightbulb } from "lucide-react";
+import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, TrendingDown, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2, CheckCircle, User, Lightbulb, Handshake } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -31,8 +31,10 @@ import { WelcomeCreditsDialog } from "@/components/WelcomeCreditsDialog";
 import { useDispatch, useSelector } from "react-redux";
 import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
-import { get, post } from "@/services/apis";
+import { get, post, patch } from "@/services/apis";
 import * as XLSX from 'xlsx';
+import socketManager from "@/utils/socket";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -93,6 +95,26 @@ const Dashboard = () => {
   });
   const [locationAnalytics, setLocationAnalytics] = useState<any[]>([]);
   const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
+  
+  // Notification state
+  interface Notification {
+    _id: string;
+    id?: string;
+    userId?: string;
+    type: string;
+    title: string;
+    message: string;
+    isRead: boolean;
+    read?: boolean;
+    createdAt: string;
+    timestamp?: Date;
+    relatedEntityId?: string;
+    relatedEntityType?: string;
+    metadata?: any;
+  }
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [loadingNotifications, setLoadingNotifications] = useState<boolean>(false);
   
   // Display method state - default to "carousel" (Partner Carousel)
   const [displayMethod, setDisplayMethod] = useState<string>(() => {
@@ -738,6 +760,224 @@ const Dashboard = () => {
     }
   };
 
+  // Fetch notifications from API
+  const fetchNotifications = async () => {
+    try {
+      setLoadingNotifications(true);
+      const response = await get({ end_point: 'notifications', token: true });
+      if (response.success && response.data) {
+        const currentUserId = currentUser?._id || currentUser?.id;
+        const formattedNotifications: Notification[] = response.data
+          .map((notif: any) => ({
+            _id: notif._id,
+            id: notif._id,
+            userId: notif.userId?.toString() || notif.userId,
+            type: notif.type,
+            title: notif.title,
+            message: notif.message,
+            isRead: notif.isRead,
+            read: notif.isRead,
+            createdAt: notif.createdAt,
+            timestamp: new Date(notif.createdAt),
+            relatedEntityId: notif.relatedEntityId,
+            relatedEntityType: notif.relatedEntityType,
+            metadata: notif.metadata
+          }))
+          .filter((notif: Notification) => {
+            // Only show notifications that belong to the current user
+            if (!currentUserId) return false;
+            const notifUserId = notif.userId?.toString();
+            const userStr = currentUserId.toString();
+            return notifUserId === userStr;
+          });
+        setNotifications(formattedNotifications);
+        setUnreadCount(response.unreadCount || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  // Fetch unread count
+  const fetchUnreadCount = async () => {
+    try {
+      const response = await get({ end_point: 'notifications/unread-count', token: true });
+      if (response.success) {
+        setUnreadCount(response.count || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+    }
+  };
+
+  // Initialize WebSocket connection for notifications
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const token = localStorage.getItem('token');
+    if (token && !socketManager.isConnected()) {
+      socketManager.connect(token);
+    }
+
+    const socket = socketManager.getSocket();
+    if (socket) {
+      // Listen for new notifications in real-time
+      const handleNewNotification = (notification: Notification) => {
+        const currentUserId = currentUser?._id || currentUser?.id;
+        if (!currentUserId) return;
+        
+        const notifUserId = notification.userId?.toString() || (notification as any).userId?.toString();
+        const userStr = currentUserId.toString();
+        if (notifUserId !== userStr) return;
+        
+        setNotifications(prev => {
+          const exists = prev.some(n => 
+            n._id === notification._id || 
+            n.id === notification.id ||
+            (notification._id && n._id === notification._id)
+          );
+          if (exists) return prev;
+          
+          const formattedNotification: Notification = {
+            _id: notification._id || notification.id || '',
+            id: notification._id || notification.id || '',
+            userId: notifUserId,
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            isRead: notification.isRead || false,
+            read: notification.isRead || false,
+            createdAt: notification.createdAt || new Date().toISOString(),
+            timestamp: notification.timestamp || new Date(),
+            relatedEntityId: notification.relatedEntityId,
+            relatedEntityType: notification.relatedEntityType,
+            metadata: notification.metadata
+          };
+          return [formattedNotification, ...prev];
+        });
+        
+        if (!notification.isRead) {
+          setUnreadCount(prev => prev + 1);
+        }
+      };
+
+      const handleNotificationCount = (data: { count: number }) => {
+        setUnreadCount(data.count || 0);
+      };
+
+      const handleNotificationsList = (data: { notifications: Notification[], unreadCount: number }) => {
+        if (data.notifications) {
+          const currentUserId = currentUser?._id || currentUser?.id;
+          const formattedNotifications: Notification[] = data.notifications
+            .map((notif: any) => ({
+              _id: notif._id || notif.id || '',
+              id: notif._id || notif.id || '',
+              userId: notif.userId?.toString() || notif.userId,
+              type: notif.type,
+              title: notif.title,
+              message: notif.message,
+              isRead: notif.isRead || false,
+              read: notif.isRead || false,
+              createdAt: notif.createdAt || new Date().toISOString(),
+              timestamp: notif.timestamp || new Date(notif.createdAt),
+              relatedEntityId: notif.relatedEntityId,
+              relatedEntityType: notif.relatedEntityType,
+              metadata: notif.metadata
+            }))
+            .filter((notif: Notification) => {
+              if (!currentUserId) return false;
+              const notifUserId = notif.userId?.toString();
+              const userStr = currentUserId.toString();
+              return notifUserId === userStr;
+            });
+          setNotifications(formattedNotifications);
+        }
+        if (data.unreadCount !== undefined) {
+          setUnreadCount(data.unreadCount);
+        }
+      };
+
+      socketManager.onNotification(handleNewNotification);
+      socketManager.onNotificationCount(handleNotificationCount);
+      socket.on('notifications:list', handleNotificationsList);
+
+      if (socketManager.isConnected()) {
+        socketManager.requestNotifications();
+        socketManager.requestUnreadCount();
+      } else {
+        fetchNotifications();
+        fetchUnreadCount();
+      }
+
+      return () => {
+        socketManager.offNotification(handleNewNotification);
+        socketManager.offNotificationCount(handleNotificationCount);
+        socket.off('notifications:list', handleNotificationsList);
+      };
+    } else {
+      fetchNotifications();
+      fetchUnreadCount();
+    }
+  }, [currentUser]);
+
+  const markAsRead = async (notificationId: string) => {
+    if (socketManager.isConnected()) {
+      socketManager.markAsRead(notificationId);
+      setNotifications(prev =>
+        prev.map(n => n._id === notificationId ? { ...n, isRead: true, read: true } : n)
+      );
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } else {
+      try {
+        await patch({
+          end_point: `notifications/${notificationId}/read`,
+          token: true
+        });
+        setNotifications(prev =>
+          prev.map(n => n._id === notificationId ? { ...n, isRead: true, read: true } : n)
+        );
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      } catch (error) {
+        console.error('Error marking notification as read:', error);
+      }
+    }
+  };
+
+  const markAllAsRead = async () => {
+    if (socketManager.isConnected()) {
+      socketManager.markAllAsRead();
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true, read: true })));
+      setUnreadCount(0);
+    } else {
+      try {
+        await patch({
+          end_point: 'notifications/read-all',
+          token: true
+        });
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true, read: true })));
+        setUnreadCount(0);
+      } catch (error) {
+        console.error('Error marking all notifications as read:', error);
+      }
+    }
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
+    // Don't mark as read on click - notifications persist until explicitly marked as read
+    // Navigate based on notification type
+    if (notification.relatedEntityType === 'partner' && notification.relatedEntityId) {
+      navigate('/requests');
+    } else if (notification.relatedEntityType === 'offer' && notification.relatedEntityId) {
+      navigate('/offers');
+    } else if (notification.relatedEntityType === 'subscription' && notification.relatedEntityId) {
+      navigate('/openoffer');
+    } else {
+      navigate('/dashboard');
+    }
+  };
+
   const validateRedemptionCode = async (code: string) => {
     if (!code.trim()) {
       return {
@@ -1306,7 +1546,7 @@ const Dashboard = () => {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-secondary" onClick={() => navigate('/requests')}>
-                <Store className="h-5 w-5" />
+                <Handshake className="h-5 w-5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -1383,15 +1623,71 @@ const Dashboard = () => {
                 <PopoverTrigger asChild>
                   <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-8 w-8 relative">
                     <Bell className="h-5 w-5" />
+                    {unreadCount > 0 && (
+                      <Badge
+                        variant="destructive"
+                        className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                      >
+                        {unreadCount}
+                      </Badge>
+                    )}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-96 p-0">
-                  <div className="p-4 border-b border-border">
+                  <div className="p-4 border-b border-border flex items-center justify-between">
                     <h3 className="font-semibold text-foreground">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7"
+                        onClick={markAllAsRead}
+                      >
+                        Mark all as read
+                      </Button>
+                    )}
                   </div>
-                  <div className="p-8 text-center text-muted-foreground">
-                    No notifications yet
-                  </div>
+                  <ScrollArea className="h-[400px]">
+                    {loadingNotifications ? (
+                      <div className="p-8 text-center text-muted-foreground">
+                        Loading notifications...
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="p-8 text-center text-muted-foreground">
+                        No notifications yet
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-border">
+                        {notifications.map((notification) => (
+                          <div
+                            key={notification._id}
+                            className={`p-4 hover:bg-secondary/50 cursor-pointer transition-colors ${!notification.isRead ? 'bg-secondary/30' : ''
+                              }`}
+                            onClick={() => handleNotificationClick(notification)}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="text-sm font-medium text-foreground">
+                                  {notification.title}
+                                </p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  {notification.message}
+                                </p>
+                              </div>
+                              {!notification.isRead && (
+                                <div className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1.5" />
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              {notification.timestamp
+                                ? notification.timestamp.toLocaleString()
+                                : new Date(notification.createdAt).toLocaleString()}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
                 </PopoverContent>
               </Popover>
               <Popover>
@@ -2009,8 +2305,12 @@ const Dashboard = () => {
                       <TooltipTrigger>
                         <Info className="h-4 w-4 text-muted-foreground" />
                       </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Earn 1 point for every mobile coupon view originating from your location, 1 point for logging an offer redemption at your store, 3 points for getting new retailers to join Media Street with your invite code and 5 points for a consumer redemption at a retailer you referred to! Weekly winner takes home $1K!</p>
+                      <TooltipContent className="max-w-md p-4 bg-card border-2 border-border shadow-lg rounded-lg">
+                        <div className="space-y-2">
+                          <p className="text-sm text-foreground leading-relaxed">
+                            Earn 1 point for every mobile coupon view originating from your location, 1 point for logging an offer redemption at your store, 3 points for getting new retailers to join Media Street with your invite code and 5 points for a consumer redemption at a retailer you referred to! Weekly winner takes home $1K!
+                          </p>
+                        </div>
                       </TooltipContent>
                     </Tooltip>
                   </div>

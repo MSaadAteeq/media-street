@@ -36,6 +36,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import OfferPreviewCard from "./OfferPreviewCard";
 import { AddCardForm } from "./AddCardForm";
 import { post, get } from "@/services/apis";
+import { generateOfferFromWebsite } from "@/services/generateOfferFromWebsite";
 import { RETAIL_CHANNELS } from "@/constants/retailChannels";
 import { useDispatch } from "react-redux";
 import { authActions } from "@/store/auth/auth";
@@ -374,11 +375,7 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
 
     setIsGeneratingOffer(true);
     try {
-      const response = await post({
-        end_point: 'offers/generate-from-website',
-        body: { website },
-        token: false
-      });
+      const response = await generateOfferFromWebsite(website);
 
       if (!response.success) {
         throw new Error(response.message || 'Failed to generate offer with AI');
@@ -396,9 +393,10 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
         setShowPreview(true);
         toast.success("Offer generated with AI! Review your preview below.");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error generating offer with AI:", error);
-      toast.error(error?.response?.data?.message || error?.message || "Failed to generate offer with AI. Please enter one manually.");
+      const msg = error instanceof Error ? error.message : "Failed to generate offer with AI. Please enter one manually.";
+      toast.error(msg);
     } finally {
       setIsGeneratingOffer(false);
     }
@@ -410,11 +408,7 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
 
     setIsGeneratingOffer(true);
     try {
-      const response = await post({
-        end_point: 'offers/generate-from-website',
-        body: { website, regenerateImage: true },
-        token: false
-      });
+      const response = await generateOfferFromWebsite(website, { regenerateImage: true });
 
       if (!response.success) {
         throw new Error(response.message || 'Failed to regenerate image');
@@ -428,9 +422,10 @@ const RequestInviteForm = ({ children }: RequestInviteFormProps) => {
         });
         toast.success("Image updated!");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error regenerating image:", error);
-      toast.error(error?.response?.data?.message || error?.message || "Failed to change image. Please try again.");
+      const msg = error instanceof Error ? error.message : "Failed to change image. Please try again.";
+      toast.error(msg);
     } finally {
       setIsGeneratingOffer(false);
     }

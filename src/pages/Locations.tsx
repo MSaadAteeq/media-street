@@ -13,7 +13,8 @@ import {
   Ticket,
   Monitor,
   Info,
-  Globe
+  Globe,
+  Check
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import LocationPicker from "@/components/LocationPicker";
@@ -33,6 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -82,7 +84,42 @@ const Locations = () => {
   const [selectedLatitude, setSelectedLatitude] = useState<number | undefined>(undefined);
   const [selectedLongitude, setSelectedLongitude] = useState<number | undefined>(undefined);
   const [selectedAddress, setSelectedAddress] = useState<string>("");
+  const [creditBalance, setCreditBalance] = useState<number>(50);
+  const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
+  const [pendingLocationName, setPendingLocationName] = useState<string>("");
 
+
+  // Fetch credit balance
+  const fetchCreditBalance = async () => {
+    try {
+      const { get } = await import("@/services/apis");
+      const response = await get({ end_point: 'users/me', token: true });
+      if (response.success && response.data) {
+        setCreditBalance(response.data.credit || 50);
+      } else {
+        setCreditBalance(50);
+      }
+    } catch (error) {
+      console.error("Error fetching credit balance:", error);
+      setCreditBalance(50);
+    }
+  };
+  
+  // Check if user has payment method
+  const checkPaymentMethod = async () => {
+    try {
+      const { get } = await import("@/services/apis");
+      const response = await get({ end_point: 'billing/cards', token: true });
+      if (response.success && response.data) {
+        setHasPaymentMethod((response.data || []).length > 0);
+      } else {
+        setHasPaymentMethod(false);
+      }
+    } catch (error) {
+      console.error("Error checking payment method:", error);
+      setHasPaymentMethod(false);
+    }
+  };
 
   // Load locations from database
   const loadLocations = async () => {
@@ -218,9 +255,18 @@ const Locations = () => {
     }
   };
 
-  const handleToggleOpenOfferOnly = (locationId: string, checked: boolean) => {
+  const handleToggleOpenOfferOnly = async (locationId: string, checked: boolean) => {
     // If turning ON, show confirmation dialog
     if (checked) {
+      // Get location name for dialog
+      const location = locations.find(loc => loc.id === locationId);
+      const locationName = location?.name || 'this location';
+      setPendingLocationName(locationName);
+      
+      // Refresh credit balance and payment method before showing dialog
+      await fetchCreditBalance();
+      await checkPaymentMethod();
+      
       setPendingLocationToggle({ id: locationId, checked });
       setOpenOfferConfirmOpen(true);
     } else {
@@ -230,6 +276,21 @@ const Locations = () => {
   };
 
   const proceedWithToggle = async (locationId: string, checked: boolean) => {
+    if (checked) {
+      // HARD RULE: Check if user has enough credits ($25) OR a payment method
+      const hasEnoughCredits = creditBalance >= 25;
+      const hasBillingMethod = hasPaymentMethod;
+      
+      if (!hasEnoughCredits && !hasBillingMethod) {
+        // Redirect to billing page
+        setOpenOfferConfirmOpen(false);
+        setPendingLocationToggle(null);
+        setPendingLocationName("");
+        navigate('/settings/billing', { replace: true });
+        return;
+      }
+    }
+
     // Optimistically update UI first
     setLocations(prev => prev.map(loc => 
       loc.id === locationId 
@@ -240,10 +301,12 @@ const Locations = () => {
     // Close dialog
     setOpenOfferConfirmOpen(false);
     setPendingLocationToggle(null);
+    setPendingLocationName("");
 
     try {
       const { patch } = await import("@/services/apis");
       
+      // Update location's open_offer_only status
       const response = await patch({ 
         end_point: `locations/${locationId}`, 
         body: { 
@@ -256,20 +319,23 @@ const Locations = () => {
         toast({
           title: "Success",
           description: checked 
-            ? "Location is now dedicated to Open Offers only" 
+            ? "Open Offer has been activated for this location. You'll be billed $25/month after any available credits are deducted." 
             : "Location is now available for regular offers",
         });
+        
+        // Refresh credit balance
+        await fetchCreditBalance();
         
         // Dispatch custom event to notify AppLayout about the toggle
         window.dispatchEvent(new CustomEvent('locationToggle'));
       } else {
         throw new Error(response.message || 'Failed to update location');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error toggling open offer only:', error);
       toast({
         title: "Error", 
-        description: "Failed to update location setting",
+        description: error?.response?.data?.message || error.message || "Failed to update location setting",
         variant: "destructive",
       });
       // Revert UI state on error
@@ -284,6 +350,7 @@ const Locations = () => {
   const cancelToggle = () => {
     setOpenOfferConfirmOpen(false);
     setPendingLocationToggle(null);
+    setPendingLocationName("");
     // No need to reload - the toggle was never actually changed in the UI
   };
 
@@ -612,41 +679,99 @@ const Locations = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Open Offer Confirmation Dialog */}
-        <AlertDialog open={openOfferConfirmOpen} onOpenChange={(open) => {
+        {/* Subscribe to Open Offer Confirmation Dialog */}
+        <Dialog open={openOfferConfirmOpen} onOpenChange={(open) => {
           if (!open) {
             cancelToggle();
           }
         }}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Enable Open Offer for This Location?</AlertDialogTitle>
-              <AlertDialogDescription>
-                <p className="mb-4">
-                  You're enrolling this location in Open Offer which means:
-                </p>
-                <ul className="list-disc list-inside space-y-2 text-sm mb-4">
-                  <li>Your offer for this location will automatically show at other nearby stores for maximum visibility</li>
-                  <li>Offers for nearby stores will show on your partner carousel</li>
-                </ul>
-                <p className="font-medium">Do you want to proceed?</p>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={cancelToggle}>No thanks</AlertDialogCancel>
-              <AlertDialogAction 
-                onClick={() => {
-                  if (pendingLocationToggle) {
-                    proceedWithToggle(pendingLocationToggle.id, pendingLocationToggle.checked);
-                  }
-                }}
-                className="bg-primary hover:bg-primary/90"
-              >
-                Yes, proceed
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+          <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col overflow-hidden p-6">
+            {/* Title */}
+            <DialogHeader className="flex-shrink-0 pb-4 text-left">
+              <DialogTitle className="text-xl font-bold text-foreground text-left mb-0">
+                Subscribe to Open Offer
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="flex-1 min-h-0 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <div className="space-y-4 pr-2">
+                {/* What is Open Offer? */}
+                <div className="bg-muted/50 rounded-lg p-4 border border-border">
+                  <div className="flex items-start gap-3">
+                    <Globe className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 text-left">
+                      <p className="font-bold text-base mb-1 text-foreground">What is Open Offer?</p>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        Open Offer distributes your offer to non-competing local retailers in the Media Street network, giving you maximum visibility without needing to find partners individually.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Benefits */}
+                <div className="text-left">
+                  <p className="font-bold text-base mb-3 text-foreground">
+                    Turning on Open Offer for <strong>{pendingLocationName || 'this location'}</strong> will:
+                  </p>
+                  <ul className="space-y-2.5 text-sm text-foreground">
+                    <li className="flex items-start gap-2">
+                      <Check className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                      <span>Show your offer at other nearby retailers</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                      <span>Show non-competing retailer offers at yours</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                      <span>Activate analytics on offer views and redemptions</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+                      <span>Use AI to optimize offer placement and maximize conversion</span>
+                    </li>
+                  </ul>
+                </div>
+                
+                {/* Promo Credits Information */}
+                <div className="bg-green-600/20 rounded-lg p-4 border-2 border-green-600">
+                  <p className="text-sm font-bold text-green-600">
+                    You have <strong className="font-extrabold">${creditBalance.toFixed(2)}</strong> in promo credits. Your free credits will be used first.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Footer with Buttons and Disclaimer */}
+            <div className="flex-shrink-0 pt-4 mt-4 border-t space-y-3">
+              {/* Action Buttons */}
+              <div className="flex justify-center gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={cancelToggle}
+                  className="bg-background border-border text-foreground hover:bg-muted"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={() => {
+                    if (pendingLocationToggle) {
+                      proceedWithToggle(pendingLocationToggle.id, pendingLocationToggle.checked);
+                    }
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white font-medium"
+                >
+                  Join Open Offer ($25/month)
+                </Button>
+              </div>
+              
+              {/* Billing Authorization Disclaimer */}
+              <p className="text-xs text-muted-foreground text-left">
+                I authorize Media Street to charge my card on file until cancelled. Promo credits will be used, if available, before charging your card on file.
+              </p>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Delete Confirmation Dialog */}
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

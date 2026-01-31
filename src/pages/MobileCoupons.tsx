@@ -4,7 +4,6 @@ import { Clock, Map, ChevronLeft, ChevronRight, CheckCircle } from "lucide-react
 import { useToast } from "@/hooks/use-toast";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import mediaStreetLogo from "@/assets/media-street-logo.png";
 import { shuffleArray, calculateDistance } from "@/utils/distance";
 import { get, post } from "@/services/apis";
@@ -59,6 +58,7 @@ const MobileCoupons = () => {
   const redemptionCodesRef = useRef<Record<string, string>>({});
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [redemptionCode, setRedemptionCode] = useState<string>("");
   const referringLocationIdRef = useRef<string | null>(null);
   
   useEffect(() => {
@@ -79,19 +79,30 @@ const MobileCoupons = () => {
       setViewedOffers(prev => new Set(prev).add(currentOffer.id));
       
       try {
-        // Log view via API (if endpoint exists)
-        await post({
-          end_point: 'redemptions/log-view',
-          body: {
-            offer_id: currentOffer.id,
-            referring_location_id: referringLocationIdRef.current,
-            referring_store_name: referringStore
-          },
-          token: false
-        });
-        console.log('Logged view for offer:', currentOffer.id);
+        // Log impression (mobile coupon view) via Node.js API - awards 1 point
+        // locationId = offer's location, displayLocationId = where it's being displayed (referring location)
+        const offerLocationId = currentOffer.location_id || 
+                               currentOffer.locationId || 
+                               (Array.isArray(currentOffer.locationIds) && currentOffer.locationIds[0] ? 
+                                 (currentOffer.locationIds[0]._id || currentOffer.locationIds[0].toString() || currentOffer.locationIds[0]) : 
+                                 null);
+        
+        if (offerLocationId && referringLocationIdRef.current) {
+          await post({
+            end_point: 'impressions',
+            body: {
+              offerId: currentOffer.id,
+              locationId: offerLocationId,
+              displayLocationId: referringLocationIdRef.current,
+              impressionType: 'carousel'
+            },
+            token: false // Public endpoint
+          });
+          console.log('✅ Logged impression for offer:', currentOffer.id, '- 1 point awarded');
+        }
       } catch (viewError) {
         console.error('Error logging coupon view:', viewError);
+        // Don't show error to user - impression logging is non-critical
       }
     };
     
@@ -143,6 +154,9 @@ const MobileCoupons = () => {
             })
             .map((offer: any) => {
               const location = offer.locationIds?.[0] || offer.locations?.[0] || {};
+              const locationId = location?._id?.toString() || location?.id?.toString() || location?.toString() || 
+                                offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() ||
+                                offer.locationId?.toString() || offer.location_id?.toString() || null;
               return {
                 id: offer._id?.toString() || offer.id?.toString() || '',
                 call_to_action: offer.callToAction || offer.call_to_action || '',
@@ -153,6 +167,8 @@ const MobileCoupons = () => {
                 business_name: offer.user?.fullName || offer.userId?.fullName || location?.name || 'Partner Store',
                 location_name: location?.name || 'Partner Store',
                 location_address: location?.address || '',
+                location_id: locationId,
+                locationId: locationId,
                 offerType: 'partner' as const
               };
             });
@@ -233,18 +249,25 @@ const MobileCoupons = () => {
           // Sort by distance (closest first)
           offersWithDistance.sort((a, b) => a.distance - b.distance);
 
-          openOfferDeals = offersWithDistance.map(({ offer, location }) => ({
-            id: offer._id?.toString() || offer.id?.toString() || '',
-            call_to_action: offer.callToAction || offer.call_to_action || '',
-            offer_image_url: offer.offer_image || offer.offerImage || null,
-            brand_logo_url: offer.brand_logo || offer.brandLogo || null,
-            redemption_end_date: offer.expires_at || offer.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-            expiry_duration: offer.expirationDuration || '1day',
-            business_name: offer.user?.fullName || offer.userId?.fullName || location?.name || 'Partner Store',
-            location_name: location?.name || 'Partner Store',
-            location_address: location?.address || '',
-            offerType: 'open_offer' as const
-          }));
+          openOfferDeals = offersWithDistance.map(({ offer, location }) => {
+            const locationId = location?._id?.toString() || location?.id?.toString() || location?.toString() || 
+                              offer.locationIds?.[0]?._id?.toString() || offer.locationIds?.[0]?.toString() ||
+                              offer.locationId?.toString() || offer.location_id?.toString() || null;
+            return {
+              id: offer._id?.toString() || offer.id?.toString() || '',
+              call_to_action: offer.callToAction || offer.call_to_action || '',
+              offer_image_url: offer.offer_image || offer.offerImage || null,
+              brand_logo_url: offer.brand_logo || offer.brandLogo || null,
+              redemption_end_date: offer.expires_at || offer.expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+              expiry_duration: offer.expirationDuration || '1day',
+              business_name: offer.user?.fullName || offer.userId?.fullName || location?.name || 'Partner Store',
+              location_name: location?.name || 'Partner Store',
+              location_address: location?.address || '',
+              location_id: locationId,
+              locationId: locationId,
+              offerType: 'open_offer' as const
+            };
+          });
         }
       } catch (error) {
         console.error('Error fetching open offers:', error);
@@ -332,6 +355,25 @@ const MobileCoupons = () => {
     });
   };
 
+  const getExpirationDisplay = (offer: CouponOffer) => {
+    if (offer.redemption_end_date) {
+      try {
+        const d = new Date(offer.redemption_end_date);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          });
+        }
+      } catch (_) {}
+    }
+    return formatExpirationDateTime(offer.expiry_duration);
+  };
+
   // Generate stable redemption code synchronously using ref for immediate consistency
   const generateRedemptionCode = async (offerId: string) => {
     // If we have a cached code, use it
@@ -381,12 +423,12 @@ const MobileCoupons = () => {
         return;
       }
 
+      // Use redeem-coupon endpoint which awards points correctly
       const response = await post({
-        end_point: 'redemptions/log',
+        end_point: 'redemptions/redeem-coupon',
         body: {
-          redemption_code: code,
-          offer_id: offerId,
-          location_id: locationId
+          couponCode: code,
+          locationId: locationId
         },
         token: true
       });
@@ -410,7 +452,7 @@ const MobileCoupons = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading offers...</p>
@@ -421,7 +463,7 @@ const MobileCoupons = () => {
 
   if (offers.length === 0) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="text-center max-w-md">
           <div className="text-6xl mb-4">🎁</div>
           <h2 className="text-2xl font-bold text-gray-800 mb-3">
@@ -439,168 +481,156 @@ const MobileCoupons = () => {
   }
 
   const currentOffer = offers[currentIndex];
-  const [redemptionCode, setRedemptionCode] = useState<string>("");
   
   // Load redemption code when offer changes
   useEffect(() => {
-    generateRedemptionCode(currentOffer.id).then(setRedemptionCode);
-  }, [currentOffer.id]);
+    if (currentOffer?.id) generateRedemptionCode(currentOffer.id).then(setRedemptionCode);
+  }, [currentOffer?.id]);
 
   const isCurrentRedeemed = isRedeemed[currentOffer.id];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex flex-col">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50">
+    <div className="min-h-screen bg-white flex flex-col">
+      {/* Header: logo + page indicator only (match expected design) */}
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <a href="https://mediastreet.ai" target="_blank" rel="noopener noreferrer">
               <img src={mediaStreetLogo} alt="Media Street" className="h-8 w-auto" />
             </a>
-            <Badge variant="secondary" className="bg-purple-100 text-purple-700">
+            <span className="text-sm font-medium text-purple-600">
               {currentIndex + 1} of {offers.length}
-            </Badge>
+            </span>
           </div>
         </div>
       </header>
 
-      {/* Coupon Card */}
+      {/* Coupon Card - clean centered layout per expected design */}
       <div 
-        className="flex-1 flex items-center justify-center p-4"
+        className="flex-1 flex items-start justify-center p-4 pb-8"
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
         <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-xl overflow-hidden transition-transform duration-200">
-            {/* Partner Offer Header */}
-            <div className="p-4 space-y-2 pt-6">
-              <div className="text-center space-y-2">
-                <div className="flex items-center justify-center gap-2">
-                  <Badge 
-                    variant="secondary" 
-                    className={currentOffer.offerType === 'partner' 
-                      ? 'bg-green-100 text-green-700' 
-                      : 'bg-blue-100 text-blue-700'
-                    }
-                  >
-                    {currentOffer.offerType === 'partner' ? 'Partner Offer' : 'Open Offer'}
-                  </Badge>
-                </div>
+          <div className="bg-white rounded-2xl overflow-hidden">
+            <div className="px-4 pt-2 pb-6 space-y-4">
+              {/* Partner Offer badge - centered, light green */}
+              <div className="flex justify-center">
+                <span
+                  className={`inline-flex items-center px-4 py-1.5 rounded-lg text-sm font-medium ${
+                    currentOffer.offerType === 'partner'
+                      ? 'bg-green-200/80 text-green-800'
+                      : 'bg-blue-200/80 text-blue-800'
+                  }`}
+                >
+                  {currentOffer.offerType === 'partner' ? 'Partner Offer' : 'Open Offer'}
+                </span>
               </div>
 
-              {/* Brand Logo */}
-              {currentOffer.brand_logo_url && (
-                <div className="flex justify-center">
-                  <img 
-                    src={currentOffer.brand_logo_url} 
-                    alt="Brand logo" 
-                    className="h-16 w-16 object-contain"
-                  />
-                </div>
-              )}
+              {/* Business name - large, bold, black, centered */}
+              <h2 className="text-2xl font-bold text-black text-center">
+                {currentOffer.business_name || currentOffer.location_name}
+              </h2>
 
-              {/* Store Name */}
-              <div className="text-center">
-                <h3 className="text-lg font-semibold text-gray-800">
-                  {currentOffer.location_name}
-                </h3>
-              </div>
-
-              {/* Offer Image */}
-              {currentOffer.offer_image_url && (
-                <div className="w-full h-44 bg-gray-100 rounded-lg overflow-hidden">
-                  <img 
-                    src={currentOffer.offer_image_url} 
-                    alt="Offer preview" 
+              {/* Offer image - rounded, full width; placeholder when missing */}
+              <div className="w-full aspect-[4/3] bg-gray-100 rounded-xl overflow-hidden flex items-center justify-center">
+                {currentOffer.offer_image_url ? (
+                  <img
+                    src={currentOffer.offer_image_url}
+                    alt="Offer"
                     className="w-full h-full object-cover"
                   />
-                </div>
-              )}
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-gray-400">
+                    <span className="text-4xl mb-1">🎁</span>
+                    <span className="text-xs font-medium">No image</span>
+                  </div>
+                )}
+              </div>
 
-              {/* Offer Text */}
-              <div className="text-center">
-                <h4 className="font-bold text-lg text-black mb-2">
-                  {currentOffer.call_to_action}
-                </h4>
+              {/* Offer tagline - large, bold, black, centered */}
+              <h3 className="text-xl font-bold text-black text-center leading-tight">
+                {currentOffer.call_to_action}
+              </h3>
 
-                {/* Expiry Timer */}
-                <div className="flex items-center justify-center gap-2 text-sm text-orange-600 mb-2">
-                  <Clock className="h-4 w-4" />
-                  <span>Expires on {formatExpirationDateTime(currentOffer.expiry_duration)}</span>
-                </div>
+              {/* Expiration - orange with clock icon */}
+              <div className="flex items-center justify-center gap-2 text-sm text-orange-600">
+                <Clock className="h-4 w-4 flex-shrink-0" />
+                <span>Expires on {getExpirationDisplay(currentOffer)}</span>
+              </div>
 
-                {/* Directions Link */}
-                {currentOffer.location_address && (
-                  <div className="flex flex-col items-center gap-2 mb-4">
-                    <button 
+              {/* Directions link - blue with map icon */}
+              {currentOffer.location_address && (
+                <>
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
                       onClick={() => {
                         const encodedAddress = encodeURIComponent(currentOffer.location_address);
                         window.open(`https://maps.google.com/maps?q=${encodedAddress}`, '_blank');
                       }}
-                      className="flex items-center gap-1 text-blue-600 hover:text-blue-800"
+                      className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-800 font-medium text-sm"
                     >
                       <Map className="h-4 w-4" />
-                      <span>Directions</span>
+                      Directions
                     </button>
-                    {/* Referral Attribution - Below Directions */}
-                    <p className="text-xs text-gray-500 text-center">
-                      {referringStore} → {currentOffer.business_name}
-                    </p>
                   </div>
-                )}
-              </div>
+                  {/* Location breadcrumbs - light grey */}
+                  <p className="text-center text-sm text-gray-500">
+                    {referringStore} → {currentOffer.business_name || currentOffer.location_name}
+                  </p>
+                </>
+              )}
 
-              {/* Retailer Redemption Section */}
-              <div className="border-t border-gray-200 pt-4">
+              {/* For cashier to redeem - section header + grey box */}
+              <div className="pt-4">
+                <p className="text-center font-semibold text-gray-900 mb-3">
+                  For cashier to redeem:
+                </p>
                 {isCurrentRedeemed ? (
-                  <div className="bg-green-50 p-6 rounded-lg text-center">
-                    <div className="flex justify-center mb-3">
-                      <img src={mediaStreetLogo} alt="Media Street" className="h-10 object-contain" />
-                    </div>
-                    <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-3" />
-                    <p className="text-xl font-bold text-gray-800 mb-1">Coupon Redeemed</p>
-                    <p className="text-sm text-green-600">Successfully logged this redemption!</p>
+                  <div className="bg-green-50 p-6 rounded-xl text-center">
+                    <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-2" />
+                    <p className="font-bold text-gray-800">Coupon Redeemed</p>
+                    <p className="text-sm text-green-600">Successfully logged this redemption.</p>
                   </div>
                 ) : (
-                  <>
-                    <p className="text-sm font-semibold text-gray-700 text-center mb-3">
-                      For cashier to redeem:
+                  <div className="bg-gray-100 p-5 rounded-xl text-center">
+                    <p className="text-lg font-bold font-mono text-black mb-3 tracking-wider">
+                      {redemptionCode || "------"}
                     </p>
-                    <div className="bg-gray-50 p-4 rounded-lg text-center">
-                      <p className="text-lg font-bold font-mono text-gray-800 mb-3 tracking-wider">
-                        {redemptionCode || "------"}
-                      </p>
-                      <div className="bg-white p-3 rounded-lg inline-block mb-2">
-                        <QRCodeSVG 
-                          value={`${window.location.origin}/redeem/${currentOffer.id}/confirm?code=${redemptionCode || 'SCAN'}&referrer=${encodeURIComponent(referringStore)}`}
-                          size={100}
-                          level="H"
-                          includeMargin={true}
-                        />
-                      </div>
-                      <p className="text-xs text-gray-600 font-medium">Retailer: type code above or scan QR to log this redemption</p>
-                      <Button
-                        onClick={() => handleRedeem(currentOffer.id)}
-                        className="mt-3 w-full"
-                        variant="default"
-                      >
-                        Log Redemption
-                      </Button>
+                    <div className="bg-white p-3 rounded-lg inline-block mb-3">
+                      <QRCodeSVG
+                        value={`${window.location.origin}/redeem/${currentOffer.id}/confirm?code=${redemptionCode || 'SCAN'}&referrer=${encodeURIComponent(referringStore)}`}
+                        size={120}
+                        level="H"
+                        includeMargin={true}
+                      />
                     </div>
-
-                    {/* Terms */}
-                    <div className="text-center mt-4 pt-3 border-t border-gray-100">
-                      <p className="text-[10px] text-gray-500 leading-relaxed px-2">
-                        *Limit one coupon per customer. Not valid with other offers. Valid and redeemable only when presented at a participating store location.
-                      </p>
-                    </div>
-                  </>
+                    <p className="text-xs text-gray-600">
+                      Retailer: type code above or scan QR to log this redemption
+                    </p>
+                    <Button
+                      onClick={() => handleRedeem(currentOffer.id)}
+                      className="mt-4 w-full"
+                      variant="default"
+                      size="sm"
+                    >
+                      Log Redemption
+                    </Button>
+                  </div>
                 )}
+
+                {/* Terms */}
+                <div className="text-center mt-4 pt-3 border-t border-gray-100">
+                  <p className="text-[10px] text-gray-500 leading-relaxed px-2">
+                    *Limit one coupon per customer. Not valid with other offers. Valid and redeemable only when presented at a participating store location.
+                  </p>
+                </div>
               </div>
 
               {/* Powered by */}
-              <div className="text-center mt-2">
+              <div className="text-center pt-2">
                 <p className="text-xs text-gray-500">
                   Powered by <span className="font-medium text-purple-600">mediastreet.ai</span>
                 </p>
@@ -608,37 +638,36 @@ const MobileCoupons = () => {
             </div>
           </div>
 
-          {/* Navigation */}
+          {/* Navigation - dots or prev/next when multiple offers */}
           {offers.length > 1 && (
-            <div className="flex items-center justify-between mt-4 px-4">
+            <div className="flex items-center justify-between mt-6 px-2">
               <Button
                 onClick={handlePrev}
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-1"
+                variant="ghost"
+                size="icon"
+                className="text-purple-600 hover:bg-purple-50"
               >
-                <ChevronLeft className="h-4 w-4" />
-                Previous
+                <ChevronLeft className="h-6 w-6" />
               </Button>
-              <div className="flex gap-1">
+              <div className="flex gap-1.5">
                 {offers.map((_, idx) => (
                   <button
                     key={idx}
                     onClick={() => setCurrentIndex(idx)}
-                    className={`w-2 h-2 rounded-full transition-colors ${
+                    className={`w-2.5 h-2.5 rounded-full transition-colors ${
                       idx === currentIndex ? 'bg-purple-600' : 'bg-gray-300'
                     }`}
+                    aria-label={`Offer ${idx + 1}`}
                   />
                 ))}
               </div>
               <Button
                 onClick={handleNext}
-                variant="outline"
-                size="sm"
-                className="flex items-center gap-1"
+                variant="ghost"
+                size="icon"
+                className="text-purple-600 hover:bg-purple-50"
               >
-                Next
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight className="h-6 w-6" />
               </Button>
             </div>
           )}

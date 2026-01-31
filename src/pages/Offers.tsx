@@ -3,7 +3,7 @@ import AppLayout from "@/components/AppLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Eye, Trash2, MapPin, MoreHorizontal, ChevronDown, Zap, Store, TrendingUp, Download, Sparkles } from "lucide-react";
+import { Plus, Eye, Trash2, MapPin, MoreHorizontal, ChevronDown, Zap, Store, TrendingUp, Download, Sparkles, RefreshCw, X, Clock } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { 
@@ -40,6 +40,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { QRCodeSVG } from "qrcode.react";
+import mediaStreetLogoIcon from "@/assets/media-street-logo-icon.png";
 
 interface Offer {
   id: string;
@@ -47,6 +49,7 @@ interface Offer {
   locations: {
     name: string;
     address: string;
+    id?: string;
   }[];
   created_at: string;
   expires_at?: string;
@@ -55,6 +58,8 @@ interface Offer {
   redemption_count: number;
   is_open_offer?: boolean;
   available_for_partnership?: boolean;
+  offer_image_url?: string;
+  offerImageUrl?: string;
 }
 
 interface Location {
@@ -169,7 +174,7 @@ const Offers = () => {
         }
         
         // Fetch locations if not already loaded (to ensure we have them for mapping)
-        let locationsData = locations;
+        let locationsData: any[] = locations as any[];
         if (locationsData.length === 0) {
           try {
             const locationsResponse = await get({ 
@@ -178,7 +183,7 @@ const Offers = () => {
             });
             if (locationsResponse.success && locationsResponse.data) {
               locationsData = locationsResponse.data;
-              setLocations(locationsData);
+              setLocations(locationsResponse.data);
             }
           } catch (locError) {
             console.error('Error fetching locations in fetchOffers:', locError);
@@ -200,20 +205,22 @@ const Offers = () => {
                   // If it's a populated location object (has _id and name)
                   if (loc && typeof loc === 'object' && loc._id) {
                     return {
+                      id: loc._id?.toString() || loc.id?.toString() || '',
                       name: loc.name || '',
                       address: loc.address || ''
                     };
                   }
                   // If it's just an ID string or ObjectId, find it from locations state
                   const locIdStr = loc?._id?.toString() || loc?.toString() || loc;
-                  const foundLoc = locationsData.find((l: any) => {
-                    const lIdStr = l._id?.toString() || l.id?.toString();
+                  const foundLoc: any = locationsData.find((l: any) => {
+                    const lIdStr = l?._id?.toString() || l?.id?.toString();
                     return lIdStr === locIdStr;
                   });
                   return foundLoc ? {
-                    name: foundLoc.name || '',
-                    address: foundLoc.address || ''
-                  } : { name: 'Unknown Location', address: '' };
+                    id: foundLoc?._id?.toString() || foundLoc?.id?.toString() || locIdStr,
+                    name: foundLoc?.name || '',
+                    address: foundLoc?.address || ''
+                  } : { id: locIdStr, name: 'Unknown Location', address: '' };
                 })
               : [];
 
@@ -232,6 +239,22 @@ const Offers = () => {
             // If expired, set is_active to false
             const finalIsActive = isExpired ? false : isActive;
             
+            // Get offer image - check all possible field names from backend
+            const offerImage = offer.offerImage || 
+                              offer.offer_image || 
+                              offer.offerImageUrl || 
+                              offer.offer_image_url || 
+                              null;
+            
+            // Handle base64 images - convert to data URL if needed
+            let processedImageUrl = offerImage;
+            if (offerImage && !offerImage.startsWith('http') && !offerImage.startsWith('data:') && !offerImage.startsWith('/')) {
+              // Check if it's base64 without data URL prefix
+              if (offerImage.length > 100) {
+                processedImageUrl = `data:image/png;base64,${offerImage}`;
+              }
+            }
+            
             const formattedOffer = {
               id: offerId,
               call_to_action: offer.callToAction || offer.call_to_action || '',
@@ -244,13 +267,31 @@ const Offers = () => {
               is_open_offer: offer.isOpenOffer || offer.is_open_offer || false,
               available_for_partnership: offer.availableForPartnership !== undefined 
                 ? offer.availableForPartnership 
-                : (offer.available_for_partnership !== undefined ? offer.available_for_partnership : true)
+                : (offer.available_for_partnership !== undefined ? offer.available_for_partnership : true),
+              offer_image_url: processedImageUrl,
+              offerImageUrl: processedImageUrl
             };
             
             console.log(`Formatted offer ${index + 1}:`, formattedOffer);
             return formattedOffer;
           } catch (offerError) {
             console.error(`Error formatting offer ${index + 1}:`, offerError, offer);
+            // Get offer image - check all possible field names from backend
+            const offerImage = offer.offerImage || 
+                              offer.offer_image || 
+                              offer.offerImageUrl || 
+                              offer.offer_image_url || 
+                              null;
+            
+            // Handle base64 images - convert to data URL if needed
+            let processedImageUrl = offerImage;
+            if (offerImage && !offerImage.startsWith('http') && !offerImage.startsWith('data:') && !offerImage.startsWith('/')) {
+              // Check if it's base64 without data URL prefix
+              if (offerImage.length > 100) {
+                processedImageUrl = `data:image/png;base64,${offerImage}`;
+              }
+            }
+            
             // Return a basic formatted offer even if there's an error
             return {
               id: offer._id?.toString() || offer.id?.toString() || `offer-${index}`,
@@ -262,7 +303,9 @@ const Offers = () => {
               is_open_offer: offer.isOpenOffer || offer.is_open_offer || false,
               available_for_partnership: offer.availableForPartnership !== undefined 
                 ? offer.availableForPartnership 
-                : true
+                : true,
+              offer_image_url: processedImageUrl,
+              offerImageUrl: processedImageUrl
             };
           }
         });
@@ -321,21 +364,119 @@ const Offers = () => {
     }
   };
 
-  const handleAssignOffer = (locationId: string, offerId: string) => {
-    // Update location's current offer
-    setLocations(locations.map(location => 
-      location.id === locationId 
-        ? { 
-            ...location, 
-            current_offer: offers.find(offer => offer.id === offerId) || null 
-          }
-        : location
-    ));
-    
-    toast({
-      title: "Success",
-      description: "Offer assigned to location successfully",
-    });
+  const handleAssignOffer = async (locationId: string, offerId: string) => {
+    try {
+      // Update offer to include this location
+      const response = await patch({
+        end_point: `offers/${offerId}`,
+        body: { 
+          locationIds: [...(offers.find(o => o.id === offerId)?.locations || []).map((l: any) => l.id || l._id), locationId]
+        },
+        token: true
+      });
+      
+      if (response.success) {
+        // Reload offers to get updated data
+        await fetchOffers();
+        toast({
+          title: "Success",
+          description: "Offer assigned to location successfully",
+        });
+      } else {
+        throw new Error(response.message || 'Failed to assign offer');
+      }
+    } catch (error: any) {
+      console.error("Error assigning offer:", error);
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || "Failed to assign offer to location",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRemoveOfferFromLocation = async (locationId: string, offerId: string) => {
+    try {
+      const offer = offers.find(o => o.id === offerId);
+      if (!offer) return;
+      
+      // Remove location from offer's locationIds
+      const updatedLocationIds = offer.locations
+        .filter((loc: any) => {
+          const locId = loc.id || loc._id;
+          return locId !== locationId;
+        })
+        .map((loc: any) => loc.id || loc._id);
+      
+      const response = await patch({
+        end_point: `offers/${offerId}`,
+        body: { locationIds: updatedLocationIds },
+        token: true
+      });
+      
+      if (response.success) {
+        await fetchOffers();
+        toast({
+          title: "Success",
+          description: "Offer removed from location",
+        });
+      } else {
+        throw new Error(response.message || 'Failed to remove offer');
+      }
+    } catch (error: any) {
+      console.error("Error removing offer:", error);
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || "Failed to remove offer from location",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddLocationToOffer = async (offerId: string, locationId: string) => {
+    try {
+      const offer = offers.find(o => o.id === offerId);
+      if (!offer) return;
+      
+      // Check if location is already in the offer
+      const isAlreadyAdded = offer.locations.some((loc: any) => {
+        const locId = loc.id || loc._id;
+        return locId === locationId;
+      });
+      
+      if (isAlreadyAdded) {
+        toast({
+          title: "Info",
+          description: "Location is already added to this offer",
+        });
+        return;
+      }
+      
+      // Add location to offer
+      const currentLocationIds = offer.locations.map((loc: any) => loc.id || loc._id);
+      const response = await patch({
+        end_point: `offers/${offerId}`,
+        body: { locationIds: [...currentLocationIds, locationId] },
+        token: true
+      });
+      
+      if (response.success) {
+        await fetchOffers();
+        toast({
+          title: "Success",
+          description: "Location added to offer successfully",
+        });
+      } else {
+        throw new Error(response.message || 'Failed to add location');
+      }
+    } catch (error: any) {
+      console.error("Error adding location:", error);
+      toast({
+        title: "Error",
+        description: error?.response?.data?.message || "Failed to add location to offer",
+        variant: "destructive",
+      });
+    }
   };
 
   // Removed handleAddLocationToOffer - locations can't be added to offers after creation
@@ -596,7 +737,7 @@ const Offers = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-muted-foreground">Manage your promotional offers and track redemptions</p>
+            <p className="text-muted-foreground">Manage which promotional offers are active for each of your store locations.</p>
           </div>
           <div className="flex items-center gap-3">
             <Button onClick={() => navigate("/offers/create")} className="flex items-center gap-2">
@@ -613,7 +754,7 @@ const Offers = () => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MapPin className="h-5 w-5" />
-              Offers x Locations
+              Redeemable Locations
             </CardTitle>
             <p className="text-muted-foreground">Link a created offer to your store location(s) to start promoting that store. Please note after linking your offer you’ll need to add partners or join Open Offer to get views for your store’s offer.</p>
             {/* <p className="text-sm text-primary mt-2">
@@ -621,81 +762,79 @@ const Offers = () => {
             </p> */}
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {locations.map((location) => (
-                <Card key={location.id} className="p-4">
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <MapPin className="h-4 w-4 text-muted-foreground" />
+            <div className="space-y-4">
+              {locations.map((location) => {
+                // Find current offer for this location
+                const locationId = location.id;
+                const currentOffer = offers.find(offer => 
+                  offer.locations.some((loc: any) => {
+                    const locId = loc.id || loc._id || loc;
+                    return locId === locationId;
+                  }) && offer.is_active
+                );
+                
+                return (
+                  <Card key={location.id} className="p-4 border">
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-2">
+                        <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                        <div className="flex-1">
                           <h4 className="font-medium">{location.name}</h4>
+                          <p className="text-sm text-muted-foreground">{location.address}</p>
                         </div>
-                        <p className="text-sm text-muted-foreground">{location.address}</p>
                       </div>
                       
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-background border border-border shadow-lg z-50">
-                          <DropdownMenuItem>View Analytics</DropdownMenuItem>
-                          <DropdownMenuItem>Remove Offer</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                    
-                    {/* Total Redemptions */}
-                    {/* <div className="bg-muted/30 rounded-lg p-3">
-                      <div className="text-2xl font-bold text-primary">{location.total_redemptions}</div>
-                      <p className="text-xs text-muted-foreground">Total Redemptions</p>
-                    </div> */}
-
-                    {/* Current Offer or Selection */}
-                    {/* <div>
-                      {location.current_offer ? (
-                        <div>
-                          <p className="text-xs text-muted-foreground mb-1">Current offer:</p>
-                          <p className="text-sm font-medium mb-2">{location.current_offer.call_to_action}</p>
-                          <Select 
-                            value={location.current_offer.id} 
-                            onValueChange={(value) => handleAssignOffer(location.id, value)}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Change offer" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-background border border-border shadow-lg z-50">
-                              {offers.filter(offer => offer.is_active).map((offer) => (
-                                <SelectItem key={offer.id} value={offer.id}>
-                                  {offer.call_to_action}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      ) : (
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-2">No active offer. Add one!</p>
-                          <Select onValueChange={(value) => handleAssignOffer(location.id, value)}>
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Select an offer" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-background border border-border shadow-lg z-50">
-                              {offers.filter(offer => offer.is_active).map((offer) => (
-                                <SelectItem key={offer.id} value={offer.id}>
-                                  {offer.call_to_action}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                      {currentOffer && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">Current offer:</span>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-4 w-4"
+                              onClick={() => handleViewOffer(currentOffer)}
+                            >
+                              <Eye className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <p className="text-sm font-medium">{currentOffer.call_to_action}</p>
+                          <div className="flex items-center gap-2">
+                            <Select 
+                              value={currentOffer.id} 
+                              onValueChange={(value) => handleAssignOffer(location.id, value)}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue>
+                                  <span className="truncate max-w-[200px]">
+                                    {currentOffer.call_to_action.length > 30 
+                                      ? `${currentOffer.call_to_action.substring(0, 30)}...` 
+                                      : currentOffer.call_to_action}
+                                  </span>
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent className="bg-background border border-border shadow-lg z-50">
+                                {offers.filter(offer => offer.is_active).map((offer) => (
+                                  <SelectItem key={offer.id} value={offer.id}>
+                                    {offer.call_to_action}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleRemoveOfferFromLocation(location.id, currentOffer.id)}
+                              className="h-8"
+                            >
+                              Remove
+                            </Button>
+                          </div>
                         </div>
                       )}
-                    </div> */}
-                  </div>
-                </Card>
-              ))}
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -715,8 +854,7 @@ const Offers = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Offer</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Locations</TableHead>
+                    <TableHead>Redeemable Locations</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Redemptions</TableHead>
                     <TableHead>Created</TableHead>
@@ -730,51 +868,65 @@ const Offers = () => {
                         {offer.call_to_action}
                       </TableCell>
                       <TableCell>
-                        {(offer as any).is_open_offer ? (
-                          <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
-                            Open Offer
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">
-                            Location-based
-                            {(offer as any).available_for_partnership && (
-                              <span className="ml-1 text-xs">(Available for Partnership)</span>
-                            )}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
                         <div className="space-y-2">
                           {offer.locations.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No locations assigned</p>
-                          ) : offer.locations.length === 1 ? (
-                            <div>
-                              <p className="font-medium">{offer.locations[0].name}</p>
-                              <p className="text-sm text-muted-foreground">{offer.locations[0].address}</p>
+                            <div className="space-y-2">
+                              <p className="text-sm text-muted-foreground">No locations assigned</p>
+                              <Select onValueChange={(value) => handleAddLocationToOffer(offer.id, value)}>
+                                <SelectTrigger className="h-8 text-xs w-auto">
+                                  <SelectValue>
+                                    <div className="flex items-center gap-1">
+                                      <Plus className="h-3 w-3" />
+                                      <span>Add location</span>
+                                      <ChevronDown className="h-3 w-3" />
+                                    </div>
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent className="bg-background border border-border shadow-lg z-50">
+                                  {locations
+                                    .filter(loc => !offer.locations.some((ol: any) => {
+                                      const olId = ol.id || ol._id || ol;
+                                      return olId === loc.id;
+                                    }))
+                                    .map((location) => (
+                                      <SelectItem key={location.id} value={location.id}>
+                                        {location.name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                           ) : (
-                            <div>
-                              <button
-                                onClick={() => {
-                                  setSelectedOffer(offer);
-                                  setIsLocationDialogOpen(true);
-                                }}
-                                className="font-medium text-primary hover:text-primary/80 text-left"
-                              >
-                                {offer.locations.length} locations
-                              </button>
-                              <div className="mt-1 space-y-1">
-                                {offer.locations.slice(0, 2).map((location, index) => (
-                                  <p key={index} className="text-xs text-muted-foreground">
-                                    {location.name}
-                                  </p>
-                                ))}
-                                {offer.locations.length > 2 && (
-                                  <p className="text-xs text-muted-foreground">
-                                    +{offer.locations.length - 2} more
-                                  </p>
-                                )}
-                              </div>
+                            <div className="space-y-2">
+                              {offer.locations.map((location: any, index: number) => (
+                                <div key={index}>
+                                  <p className="font-medium text-sm">{location.name}</p>
+                                  <p className="text-xs text-muted-foreground">{location.address}</p>
+                                </div>
+                              ))}
+                              <Select onValueChange={(value) => handleAddLocationToOffer(offer.id, value)}>
+                                <SelectTrigger className="h-8 text-xs w-auto">
+                                  <SelectValue>
+                                    <div className="flex items-center gap-1">
+                                      <Plus className="h-3 w-3" />
+                                      <span>Add location</span>
+                                      <ChevronDown className="h-3 w-3" />
+                                    </div>
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent className="bg-background border border-border shadow-lg z-50">
+                                  {locations
+                                    .filter(loc => !offer.locations.some((ol: any) => {
+                                      const olId = ol.id || ol._id || ol;
+                                      return olId === loc.id;
+                                    }))
+                                    .map((location) => (
+                                      <SelectItem key={location.id} value={location.id}>
+                                        {location.name}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                           )}
                         </div>
@@ -806,7 +958,8 @@ const Offers = () => {
                       <TableCell>
                         {new Date(offer.created_at).toLocaleDateString()}
                       </TableCell>
-                        <TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
                           <Button 
                             variant="ghost" 
                             size="icon"
@@ -815,7 +968,16 @@ const Offers = () => {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                        </TableCell>
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => fetchOffers()}
+                            title="Refresh"
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -1136,90 +1298,242 @@ const Offers = () => {
              </DialogContent>
              </Dialog>
 
-             {/* View Offer Details Dialog */}
+             {/* View Offer Preview Dialog */}
              <Dialog open={isViewOfferDialogOpen} onOpenChange={setIsViewOfferDialogOpen}>
-          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
+          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-[#1a1f2e] border-0">
+            <DialogHeader className="pb-4 border-b border-border/50">
+              <DialogTitle className="flex items-center gap-2 text-white">
                 <Eye className="h-5 w-5 text-primary" />
-                Offer Details
+                Offer Preview
               </DialogTitle>
             </DialogHeader>
             
-            {viewingOffer && (
-              <div className="space-y-6 mt-4">
-                {/* Offer Text */}
-                <div>
-                  <Label className="text-sm font-semibold text-muted-foreground">Offer Text</Label>
-                  <p className="text-lg font-medium mt-1">{viewingOffer.call_to_action}</p>
-                </div>
-
-                {/* Offer Type */}
-                <div>
-                  <Label className="text-sm font-semibold text-muted-foreground">Offer Type</Label>
-                  <div className="mt-1">
-                    {viewingOffer.is_open_offer ? (
-                      <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
-                        Open Offer
-                      </Badge>
+            {viewingOffer && (() => {
+              const offerImageUrl = viewingOffer.offer_image_url || viewingOffer.offerImageUrl;
+              
+              // Debug logging
+              console.log('🔍 Offer Preview - Image Debug:', {
+                offerId: viewingOffer.id,
+                offer_image_url: viewingOffer.offer_image_url,
+                offerImageUrl: viewingOffer.offerImageUrl,
+                finalImageUrl: offerImageUrl,
+                hasImage: !!offerImageUrl,
+                imageType: offerImageUrl ? (offerImageUrl.startsWith('data:') ? 'base64' : offerImageUrl.startsWith('http') ? 'url' : 'other') : 'none'
+              });
+              
+              const firstLocation = viewingOffer.locations[0];
+              const locationName = firstLocation?.name || 'Your Store';
+              const locationAddress = firstLocation?.address || '';
+              const expiresAt = viewingOffer.expires_at || viewingOffer.expiresAt;
+              const expirationDate = expiresAt ? new Date(expiresAt).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : null;
+              
+              // Generate QR code URL - use location ID if available
+              const locationId = firstLocation?.id || (locations.find(l => l.name === firstLocation?.name)?.id);
+              const qrCodeUrl = locationId 
+                ? `${window.location.origin}/carousel/${locationId}`
+                : `${window.location.origin}/redeem?offer=${viewingOffer.id}`;
+              
+              return (
+                <div className="space-y-6 mt-6">
+                  {/* Main Offer Preview Card */}
+                  <div className="relative w-full aspect-video rounded-xl overflow-hidden border-2 border-border">
+                    {/* Background Image */}
+                    {offerImageUrl ? (
+                      <img 
+                        src={offerImageUrl} 
+                        alt={viewingOffer.call_to_action}
+                        className="w-full h-full object-cover"
+                      />
                     ) : (
-                      <Badge variant="secondary">
-                        Location-based
-                        {viewingOffer.available_for_partnership && (
-                          <span className="ml-1 text-xs">(Available for Partnership)</span>
-                        )}
-                      </Badge>
+                      <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                        <p className="text-muted-foreground">No image available</p>
+                      </div>
                     )}
+                    
+                    {/* Gradient Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+                    
+                    {/* Media Street Logo Tag - Top Left */}
+                    <div className="absolute top-3 left-3 bg-white/30 backdrop-blur-sm rounded-lg shadow-lg flex items-center px-2 py-1 gap-1.5 z-10">
+                      <img src={mediaStreetLogoIcon} alt="Media Street" className="h-4 w-4" />
+                      <span className="font-semibold text-gray-800 text-xs">Partner offers by Media Street</span>
+                    </div>
+                    
+                    {/* QR Code - Top Right */}
+                    <div className="absolute top-3 right-3 bg-white rounded-lg p-2.5 flex flex-col items-center z-10 shadow-lg">
+                      <QRCodeSVG 
+                        value={qrCodeUrl}
+                        size={120}
+                        level="M"
+                        bgColor="#ffffff"
+                        fgColor="#000000"
+                      />
+                      <p className="text-xs text-center mt-2 text-gray-700 font-medium max-w-[140px]">
+                        Scan to redeem at {locationName}
+                      </p>
+                    </div>
+                    
+                    {/* Offer Content - Bottom */}
+                    <div className="absolute bottom-0 left-0 right-0 text-white p-6 space-y-3">
+                      <h2 className="font-bold text-3xl md:text-4xl drop-shadow-lg">
+                        {viewingOffer.call_to_action}
+                      </h2>
+                      <p className="text-lg font-medium drop-shadow-md">{locationName}</p>
+                      <div className="flex items-center gap-3">
+                        <Badge className="bg-green-500 hover:bg-green-600 text-white px-3 py-1">
+                          Partner Offer
+                        </Badge>
+                        {expirationDate && (
+                          <p className="text-sm text-white/90">
+                            Valid until: {expirationDate} *Terms apply
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-
-                {/* Locations */}
-                <div>
-                  <Label className="text-sm font-semibold text-muted-foreground">
-                    Locations ({viewingOffer.locations.length})
-                  </Label>
-                  <div className="mt-2 space-y-2">
-                    {viewingOffer.locations.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No locations assigned</p>
-                    ) : (
-                      viewingOffer.locations.map((location, index) => (
-                        <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
-                          <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="font-medium">{location.name}</p>
-                            <p className="text-sm text-muted-foreground">{location.address}</p>
+                  
+                  {/* Instructional Text */}
+                  <p className="text-sm text-muted-foreground text-center">
+                    This is the coupon consumers will present at your store to redeem your offer.
+                  </p>
+                  
+                  {/* Mobile Preview */}
+                  <div className="flex justify-center">
+                    <div className="relative w-[280px] h-[500px] bg-white rounded-[2.5rem] p-2 shadow-2xl">
+                      {/* Phone Frame */}
+                      <div className="w-full h-full bg-gray-900 rounded-[2rem] overflow-hidden flex flex-col">
+                        {/* Status Bar */}
+                        <div className="bg-white h-6 flex items-center justify-between px-4 text-[10px] font-medium text-gray-900 flex-shrink-0">
+                          <span className="text-gray-900">Verizon</span>
+                          <span className="text-gray-900">9:41 AM</span>
+                          <div className="w-4 h-2 bg-green-500 rounded-sm" />
+                        </div>
+                        
+                        {/* App Content */}
+                        <div className="bg-white flex-1 overflow-hidden flex flex-col">
+                          {/* App Header */}
+                          <div className="bg-white border-b flex items-center gap-2 px-4 py-2 flex-shrink-0">
+                            <img src={mediaStreetLogoIcon} alt="Media Street" className="h-5 w-5" />
+                            <span className="text-sm font-medium text-gray-900">Partner offer</span>
+                          </div>
+                          
+                          {/* Content Area - No scrolling, everything fits */}
+                          <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                            {/* Referring Retailer */}
+                            {viewingOffer.is_open_offer && (
+                              <div className="px-4 py-1.5 text-xs text-gray-600 border-b flex-shrink-0">
+                                <span className="block truncate">
+                                  Referring Retailer → <span className="font-medium text-gray-900">{locationName}</span>
+                                </span>
+                              </div>
+                            )}
+                            
+                            {/* Offer Image */}
+                            <div className="w-full h-28 flex-shrink-0 overflow-hidden">
+                              {offerImageUrl ? (
+                                <img 
+                                  src={offerImageUrl} 
+                                  alt={viewingOffer.call_to_action}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5" />
+                              )}
+                            </div>
+                            
+                            {/* Offer Details - Fits without scrolling */}
+                            <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
+                              <div className="p-2.5 space-y-1.5 flex-1 flex flex-col">
+                                <h3 className="font-bold text-sm text-black break-words leading-tight flex-shrink-0">
+                                  {viewingOffer.call_to_action}
+                                </h3>
+                                
+                                {expiresAt && (
+                                  <div className="flex items-start gap-1.5 text-orange-600 flex-shrink-0">
+                                    <Clock className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                                    <span className="text-[11px] font-medium break-words leading-tight">
+                                      Expires on {new Date(expiresAt).toLocaleDateString('en-US', { 
+                                        month: 'long', 
+                                        day: 'numeric',
+                                        hour: 'numeric',
+                                        minute: '2-digit',
+                                        hour12: true
+                                      })}
+                                    </span>
+                                  </div>
+                                )}
+                                
+                                <div className="flex items-center gap-1.5 text-primary flex-shrink-0">
+                                  <MapPin className="h-3 w-3 flex-shrink-0" />
+                                  <span className="text-[11px] font-medium">Directions</span>
+                                </div>
+                                
+                                {/* Coupon Design Placeholder */}
+                                <div className="mt-1.5 pt-1.5 border-t flex-1 flex flex-col min-h-0">
+                                  <p className="text-[10px] text-muted-foreground mb-1.5 flex-shrink-0">For cashier to redeem:</p>
+                                  <div className="relative bg-gradient-to-br from-primary/10 to-primary/5 border-2 border-dashed border-primary/30 rounded-lg p-2 space-y-1.5 flex-1 flex flex-col min-h-0">
+                                    {/* Coupon Header */}
+                                    <div className="flex items-center justify-between flex-shrink-0">
+                                      <div className="flex items-center gap-1.5">
+                                        <div className="w-5 h-5 bg-primary/20 rounded-full flex items-center justify-center flex-shrink-0">
+                                          <span className="text-primary font-bold text-[9px]">MS</span>
+                                        </div>
+                                        <div>
+                                          <p className="text-[9px] font-semibold text-foreground leading-tight">Media Street</p>
+                                          <p className="text-[8px] text-muted-foreground leading-tight">Coupon</p>
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-[9px] font-bold text-primary leading-tight">VALID</p>
+                                        <p className="text-[8px] text-muted-foreground leading-tight">Redeemable</p>
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Coupon Content */}
+                                    <div className="space-y-1 pt-1 border-t border-primary/20 flex-shrink-0">
+                                      <div className="flex items-center justify-between gap-1">
+                                        <span className="text-[9px] font-medium text-foreground">Offer:</span>
+                                        <span className="text-[9px] text-muted-foreground text-right max-w-[60%] truncate">
+                                          {viewingOffer.call_to_action}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center justify-between gap-1">
+                                        <span className="text-[9px] font-medium text-foreground">Location:</span>
+                                        <span className="text-[9px] text-muted-foreground text-right max-w-[60%] truncate">
+                                          {locationName}
+                                        </span>
+                                      </div>
+                                      {expirationDate && (
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="text-[9px] font-medium text-foreground">Expires:</span>
+                                          <span className="text-[9px] text-muted-foreground">{expirationDate}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    
+                                    {/* Coupon Footer */}
+                                    <div className="pt-1 border-t border-primary/20 flex-shrink-0 mt-auto">
+                                      <div className="flex items-center justify-center gap-1">
+                                        <div className="w-1 h-1 bg-primary/30 rounded-full"></div>
+                                        <div className="flex-1 h-px bg-primary/20"></div>
+                                        <div className="w-1 h-1 bg-primary/30 rounded-full"></div>
+                                      </div>
+                                      <p className="text-[8px] text-center text-muted-foreground mt-1 leading-tight">
+                                        Present this coupon at checkout
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      ))
-                    )}
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                {/* Status */}
-                <div>
-                  <Label className="text-sm font-semibold text-muted-foreground">Status</Label>
-                  <div className="mt-1">
-                    <Badge variant={viewingOffer.is_active ? "default" : "secondary"}>
-                      {viewingOffer.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Created Date */}
-                <div>
-                  <Label className="text-sm font-semibold text-muted-foreground">Created</Label>
-                  <p className="text-sm mt-1">
-                    {new Date(viewingOffer.created_at).toLocaleString()}
-                  </p>
-                </div>
-
-                {/* Redemptions */}
-                <div>
-                  <Label className="text-sm font-semibold text-muted-foreground">Total Redemptions</Label>
-                  <p className="text-2xl font-bold text-primary mt-1">{viewingOffer.redemption_count}</p>
-                </div>
-              </div>
-            )}
+              );
+            })()}
              </DialogContent>
              </Dialog>
 

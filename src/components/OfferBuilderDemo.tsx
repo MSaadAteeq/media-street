@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Zap, Sparkles, Clock, ArrowRight } from "lucide-react";
 // Supabase removed - using Node.js API
 import { useToast } from "@/hooks/use-toast";
+import { generateOfferFromWebsite } from "@/services/generateOfferFromWebsite";
 import { useNavigate } from "react-router-dom";
 import mediaStreetLogoIcon from "@/assets/media-street-logo-icon.png";
 import { QRCodeSVG } from "qrcode.react";
@@ -47,12 +48,7 @@ const OfferBuilderDemo = () => {
     }
     setIsGenerating(true);
     try {
-      const { post } = await import('@/services/apis');
-      const response = await post({
-        end_point: 'offers/generate-from-website',
-        body: { website },
-        token: false
-      });
+      const response = await generateOfferFromWebsite(website);
 
       if (!response.success) {
         throw new Error(response.message || 'Failed to generate offer');
@@ -115,11 +111,13 @@ const OfferBuilderDemo = () => {
     } catch (error) {
       console.error("Error generating offer:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const displayMessage =
+        errorMessage.includes('not configured') || errorMessage.includes('503')
+          ? "The AI feature is currently unavailable. Please try again later."
+          : errorMessage || "Failed to generate offer. Please try again.";
       toast({
         title: "Error",
-        description: errorMessage.includes('not configured') || errorMessage.includes('503') 
-          ? "The AI feature is currently unavailable. Please try again later." 
-          : "Failed to generate offer. Please try again.",
+        description: displayMessage,
         variant: "destructive"
       });
     } finally {

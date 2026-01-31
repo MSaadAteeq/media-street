@@ -17,6 +17,7 @@ import Logo from "@/components/Logo";
 import OfferPreviewCard from "@/components/OfferPreviewCard";
 import smallBusinessPartnerships from "@/assets/small-business-partnerships.jpg";
 import { post, get } from "@/services/apis";
+import { generateOfferFromWebsite } from "@/services/generateOfferFromWebsite";
 import { useDispatch } from "react-redux";
 import { authActions } from "@/store/auth/auth";
 import type { AppDispatch } from "@/store";
@@ -298,14 +299,24 @@ export default function Login() {
     setIsLoading(true);
     setIsSigningUp(true);
     try {
+      // Get referral code from referral form if user entered it
+      const referralCode = referralForm.getValues("referralCode");
+      
+      const signupBody: any = {
+        fullName: data.fullName,
+        email: data.email,
+        password: data.password,
+        // retail_channel will be set in step 3 when creating location
+      };
+      
+      // Include referral_code if provided
+      if (referralCode && referralCode.trim()) {
+        signupBody.referral_code = referralCode.trim().toUpperCase();
+      }
+      
       const response = await post({
         end_point: `auth/signup`,
-        body: {
-          fullName: data.fullName,
-          email: data.email,
-          password: data.password,
-          // retail_channel will be set in step 3 when creating location
-        }
+        body: signupBody
       });
 
       if (response.success && response.data) {
@@ -474,11 +485,7 @@ export default function Login() {
 
     setIsGeneratingOffer(true);
     try {
-      const response = await post({
-        end_point: 'offers/generate-from-website',
-        body: { website },
-        token: false
-      });
+      const response = await generateOfferFromWebsite(website);
 
       if (response.success && response.data) {
         const data = response.data;
@@ -497,11 +504,12 @@ export default function Login() {
       } else {
         throw new Error(response.message || 'Failed to generate offer');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error generating offer:", error);
+      const msg = error instanceof Error ? error.message : "Failed to generate offer. Please enter one manually.";
       toast({
         title: "Error",
-        description: "Failed to generate offer. Please enter one manually.",
+        description: msg,
         variant: "destructive",
       });
     } finally {
@@ -515,11 +523,7 @@ export default function Login() {
 
     setIsGeneratingOffer(true);
     try {
-      const response = await post({
-        end_point: 'offers/generate-from-website',
-        body: { website, regenerateImage: true },
-        token: false
-      });
+      const response = await generateOfferFromWebsite(website, { regenerateImage: true });
 
       if (response.success && response.data?.offerImageUrl && generatedOfferData) {
         setGeneratedOfferData({
@@ -530,12 +534,15 @@ export default function Login() {
           title: "Success",
           description: "Image updated!",
         });
+      } else if (!response.success) {
+        throw new Error(response.message || "Failed to regenerate image");
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Error regenerating image:", error);
+      const msg = error instanceof Error ? error.message : "Failed to change image. Please try again.";
       toast({
         title: "Error",
-        description: "Failed to change image. Please try again.",
+        description: msg,
         variant: "destructive",
       });
     } finally {

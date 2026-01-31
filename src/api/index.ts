@@ -52,7 +52,6 @@ const apiHandler = async ({
       "Content-Type": "application/json",
       Accept: "*/*",
       ...(tokenValue && { Authorization: `Bearer ${tokenValue}` }),
-      ...configuration,
     },
     withCredentials: true, // Important for CORS with credentials
   });
@@ -75,7 +74,11 @@ const apiHandler = async ({
   );
 
   try {
-    const res = await apiInterceptor[method](end_point, body);
+    // For POST/PATCH: pass configuration as request config (e.g. params for redirect fallback)
+    // When HTTP→HTTPS redirect occurs, axios converts POST to GET; params survive in URL
+    const res = method === 'get'
+      ? await apiInterceptor.get(end_point, { params: body, ...configuration })
+      : await apiInterceptor[method](end_point, body, configuration);
 
     if (logoutTimeoutId) {
       clearTimeout(logoutTimeoutId);
