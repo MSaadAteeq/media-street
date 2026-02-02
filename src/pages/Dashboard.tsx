@@ -16,6 +16,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import Logo from "@/components/Logo";
 import { DollarSign, Eye, Store, Search, Download, MoreVertical, Calendar, Bell, Settings, Home, Info, ArrowUpDown, Headphones, TrendingUp, TrendingDown, Zap, Plus, Ticket, MapPin, Users, ExternalLink, LogOut, Gift, Pause, Minus, X, Printer, ShoppingBag, Bot, Monitor, QrCode, ChevronDown, ChevronUp, CheckCircle2, CheckCircle, User, Lightbulb, Handshake } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -475,78 +476,49 @@ const Dashboard = () => {
       const outboundViewsMonth = outboundImpressionsLast30Days.length;
       const outboundViewsLastMonth = outboundImpressionsPrevious30Days.length;
 
+      // Helper to extract user ID from populated/nested objects
+      const getOfferUserId = (r: any): string | null => {
+        const offer = r.offerId || r.offer;
+        if (!offer) return null;
+        const uid = offer.userId;
+        if (!uid) return null;
+        return uid._id?.toString?.() || uid.toString?.() || String(uid);
+      };
+      const getLocationUserId = (loc: any): string | null => {
+        if (!loc) return null;
+        const uid = loc.userId;
+        if (!uid) return null;
+        return uid._id?.toString?.() || uid.toString?.() || String(uid);
+      };
+      const getReferringLocationUserId = (r: any): string | null => {
+        const loc = r.referringLocationId;
+        return getLocationUserId(loc);
+      };
+
       // Calculate redemptions (inbound and outbound)
-      // Inbound: User's offers redeemed at other locations
-      // Outbound: Other users' offers redeemed at user's locations
+      // Inbound: User's offers redeemed (your offers - redeemed at your store when customer presents coupon)
+      // Outbound: Partner offers redeemed after customer saw them at your store (referring location = your store)
       const inboundRedemptionsMonth = currentUserId ? redemptionsLast30Days.filter((r: any) => {
-        // Get offer owner ID
-        const offerUserId = r.offerId?.userId?._id?.toString() || 
-                           r.offerId?.userId?.toString() || 
-                           r.offer?.userId?._id?.toString() || 
-                           r.offer?.userId?.toString() || 
-                           r.offer?.userId;
-        
-        // Get location owner ID (where redemption happened)
-        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || 
-                              r.redeemedAtLocationId?.userId?.toString() || 
-                              r.redeemedAtLocationId?.userId ||
-                              (r.redeemedAtLocationId && typeof r.redeemedAtLocationId === 'object' ? r.redeemedAtLocationId.userId : null);
-        
-        // Inbound: offer belongs to current user, but redeemed at different location
-        return offerUserId && 
-               locationUserId && 
-               offerUserId === currentUserId && 
-               locationUserId !== currentUserId;
+        const offerUserId = getOfferUserId(r);
+        return offerUserId && offerUserId === currentUserId;
       }).length : 0;
 
       const inboundRedemptionsLastMonth = currentUserId ? redemptionsPrevious30Days.filter((r: any) => {
-        const offerUserId = r.offerId?.userId?._id?.toString() || 
-                           r.offerId?.userId?.toString() || 
-                           r.offer?.userId?._id?.toString() || 
-                           r.offer?.userId?.toString() || 
-                           r.offer?.userId;
-        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || 
-                              r.redeemedAtLocationId?.userId?.toString() || 
-                              r.redeemedAtLocationId?.userId ||
-                              (r.redeemedAtLocationId && typeof r.redeemedAtLocationId === 'object' ? r.redeemedAtLocationId.userId : null);
-        return offerUserId && 
-               locationUserId && 
-               offerUserId === currentUserId && 
-               locationUserId !== currentUserId;
+        const offerUserId = getOfferUserId(r);
+        return offerUserId && offerUserId === currentUserId;
       }).length : 0;
 
-      // Calculate outbound redemptions (partner offers redeemed at user's locations)
+      // Outbound: Partner's offer redeemed where your store referred the customer (referringLocationId in user's locations)
       const outboundRedemptionsMonth = currentUserId ? redemptionsLast30Days.filter((r: any) => {
-        const offerUserId = r.offerId?.userId?._id?.toString() || 
-                           r.offerId?.userId?.toString() || 
-                           r.offer?.userId?._id?.toString() || 
-                           r.offer?.userId?.toString() || 
-                           r.offer?.userId;
-        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || 
-                              r.redeemedAtLocationId?.userId?.toString() || 
-                              r.redeemedAtLocationId?.userId ||
-                              (r.redeemedAtLocationId && typeof r.redeemedAtLocationId === 'object' ? r.redeemedAtLocationId.userId : null);
-        // Outbound: redemption happened at current user's location, but offer belongs to different user
-        return offerUserId && 
-               locationUserId && 
-               locationUserId === currentUserId && 
-               offerUserId !== currentUserId;
+        const offerUserId = getOfferUserId(r);
+        const referringUserId = getReferringLocationUserId(r);
+        return offerUserId && referringUserId && referringUserId === currentUserId && offerUserId !== currentUserId;
       }).length : 0;
 
       const outboundRedemptionsLastMonth = currentUserId ? redemptionsPrevious30Days.filter((r: any) => {
-        const offerUserId = r.offerId?.userId?._id?.toString() || 
-                           r.offerId?.userId?.toString() || 
-                           r.offer?.userId?._id?.toString() || 
-                           r.offer?.userId?.toString() || 
-                           r.offer?.userId;
-        const locationUserId = r.redeemedAtLocationId?.userId?._id?.toString() || 
-                              r.redeemedAtLocationId?.userId?.toString() || 
-                              r.redeemedAtLocationId?.userId ||
-                              (r.redeemedAtLocationId && typeof r.redeemedAtLocationId === 'object' ? r.redeemedAtLocationId.userId : null);
-        return offerUserId && 
-               locationUserId && 
-               locationUserId === currentUserId && 
-               offerUserId !== currentUserId;
+        const offerUserId = getOfferUserId(r);
+        const referringUserId = getReferringLocationUserId(r);
+        return offerUserId && referringUserId && referringUserId === currentUserId && offerUserId !== currentUserId;
       }).length : 0;
 
       setMonthlyMetrics({
@@ -1803,6 +1775,25 @@ const Dashboard = () => {
           <main className="p-6 space-y-6">
             {/* Monthly Metrics Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {loading ? (
+                <>
+                  {[1, 2, 3, 4].map((i) => (
+                    <Card key={i} className="overflow-hidden">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-2 flex-1">
+                            <Skeleton className="h-4 w-3/4" />
+                            <Skeleton className="h-9 w-12" />
+                            <Skeleton className="h-3 w-1/2" />
+                          </div>
+                          <Skeleton className="h-12 w-12 rounded-full flex-shrink-0" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </>
+              ) : (
+                <>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Card className="cursor-help hover:shadow-md transition-shadow">
@@ -1918,6 +1909,8 @@ const Dashboard = () => {
                   <p className="text-sm">The number of times partner offers have been redeemed after being referred from your store in the last 30 days. This includes redemptions through individual partnerships or Open Offer when you're the referring store.</p>
                 </TooltipContent>
               </Tooltip>
+                </>
+              )}
             </div>
 
             {/* Log Offer Redemption - Right aligned under notice */}
@@ -2326,8 +2319,19 @@ const Dashboard = () => {
               <CardContent className="pt-0">
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
-                    {/* Top 10 or first 3 retailers */}
-                    {leaderboardData.length > 0 ? (
+                    {/* Leaderboard skeleton when loading */}
+                    {loading ? (
+                      <>
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <div key={i} className="flex items-center space-x-2 rounded-lg px-3 py-2 bg-secondary/50 w-full max-w-[200px]">
+                            <Skeleton className="h-5 w-5 rounded-full" />
+                            <Skeleton className="h-4 flex-1 max-w-[80px]" />
+                            <Skeleton className="h-5 w-12 rounded-md" />
+                          </div>
+                        ))}
+                      </>
+                    ) : leaderboardData.length > 0 ? (
+                      /* Top 10 or first 3 retailers */
                       (showLeaderboard ? leaderboardData.slice(0, 10) : leaderboardData.slice(0, 3)).map((retailer, index) => (
                         <div key={retailer.user_id} className={`flex items-center space-x-2 transition-colors rounded-lg px-3 py-2 relative ${retailer.isCurrentUser ? 'bg-primary/10 border-2 border-primary/30 shadow-md' : 'bg-secondary/50 hover:bg-secondary/70'}`}>
                           <div className={`flex items-center justify-center w-5 h-5 rounded-full text-xs font-semibold ${retailer.isCurrentUser ? 'bg-primary text-primary-foreground' : 'bg-primary text-primary-foreground'}`}>
@@ -2342,7 +2346,7 @@ const Dashboard = () => {
                         </div>
                       ))
                     ) : (
-                      <div className="text-center py-4 text-muted-foreground text-sm">
+                      <div className="text-center py-4 text-muted-foreground text-sm w-full">
                         Leaderboard data will appear here once available
                       </div>
                     )}
@@ -2415,7 +2419,20 @@ const Dashboard = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {locationAnalytics.length === 0 ? (
+                      {loading ? (
+                        /* Table skeleton when loading */
+                        Array.from({ length: 5 }).map((_, i) => (
+                          <TableRow key={i} className="border-border">
+                            <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                            <TableCell><Skeleton className="h-20 w-20 rounded-md" /></TableCell>
+                            <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                            <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                            <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                            <TableCell><Skeleton className="h-4 w-6" /></TableCell>
+                            <TableCell><Skeleton className="h-6 w-10 rounded-full" /></TableCell>
+                          </TableRow>
+                        ))
+                      ) : locationAnalytics.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                             No locations found. Add a location to get started.

@@ -10,7 +10,7 @@ interface WelcomeCreditsDialogProps {
 
 export const WelcomeCreditsDialog = ({ open, onClose, creditAmount = 50 }: WelcomeCreditsDialogProps) => {
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
       <DialogContent className="sm:max-w-md text-center bg-background" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader className="space-y-4">
           <div className="mx-auto flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-500">

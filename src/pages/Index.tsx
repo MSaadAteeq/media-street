@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Hero from "@/components/Hero";
 import HowItWorks from "@/components/HowItWorks";
 import Benefits from "@/components/Benefits";
@@ -16,6 +18,23 @@ import PartnershipAccountability from "@/components/PartnershipAccountability";
 import InsightsPreview from "@/components/InsightPreview";
 
 const Index = () => {
+  const navigate = useNavigate();
+
+  // Redirect logged-in users to dashboard (session persists across tab close, browser restart, computer shutdown)
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      const role = localStorage.getItem("userRole")?.toLowerCase() || "retailer";
+      navigate(role === "admin" ? "/admin" : "/dashboard", { replace: true });
+    }
+  }, [navigate]);
+
+  // Don't flash landing page if user is logged in - show nothing until redirect
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  if (token) {
+    return null;
+  }
+
   return (
     <main className="min-h-screen">
       <Hero />
