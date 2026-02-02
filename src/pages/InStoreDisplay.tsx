@@ -167,18 +167,23 @@ const InStoreDisplay = () => {
           storeAddress: selectedLocation.address,
           transactionsPerDay: tabletRequestData.transactionsPerDay
         },
-        token: true
+        token: true,
+        configuration: { timeout: 60000 }
       });
 
-      if (response.success) {
+      if (response?.success) {
         setRequestSubmitted(true);
         toast.success("Request submitted successfully!");
       } else {
-        throw new Error(response.message || "Failed to submit request");
+        throw new Error(response?.message || "Failed to submit request");
       }
     } catch (error: any) {
       console.error('Error submitting tablet request:', error);
-      toast.error(error?.response?.data?.message || error?.message || "Failed to submit request. Please try again.");
+      const msg = error?.message || "Failed to submit request";
+      const isConnectionError = msg.includes("No response") || msg.includes("connect") || msg.includes("timeout") || msg.includes("ECONNREFUSED");
+      toast.error(isConnectionError 
+        ? "Could not reach server. If you're on the live site, ensure the backend is deployed and the API URL is configured."
+        : error?.response?.data?.message || msg);
     } finally {
       setSubmittingRequest(false);
     }
@@ -578,43 +583,26 @@ const InStoreDisplay = () => {
                           <img
                             src={item.image}
                             alt={item.title}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover object-center"
                           />
-                          {/* QR Code in top right corner - points to location carousel */}
-                          <div className="absolute top-12 right-12 bg-white p-4 rounded-lg shadow-lg">
+                          {/* QR Code - top right, white box */}
+                          <div className="absolute top-4 right-4 bg-white p-3 rounded-lg shadow-lg z-10">
                             <img 
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`${window.location.origin}/carousel/${selectedLocationId}`)}`}
+                              src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`${window.location.origin}/carousel/${selectedLocationId}`)}`}
                               alt="QR Code"
-                              className="w-38 h-38"
+                              className="w-24 h-24"
                             />
                           </div>
-                          {/* Media Street logo in top left corner */}
-                          <div className="absolute top-4 left-4 bg-white/30 backdrop-blur-sm px-4 py-3 rounded-lg shadow-lg flex items-center gap-3">
-                            <img 
-                              src={mediaStreetLogo}
-                              alt="Media Street"
-                              className="h-8"
-                            />
-                            <span className="text-sm font-semibold text-gray-800">Partner offers by Media Street</span>
+                          {/* Media Street pill - top left */}
+                          <div className="absolute top-4 left-4 bg-white/70 backdrop-blur-sm px-4 py-2 rounded-full shadow-md flex items-center gap-2 z-10">
+                            <img src={mediaStreetLogo} alt="Media Street" className="h-6" />
+                            <span className="text-sm font-medium text-gray-800">Partner offers by Media Street</span>
                           </div>
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
-                            <div className="absolute bottom-0 left-0 right-0 p-8 text-white space-y-4">
-                              <div className="flex items-center gap-3">
-                                <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
-                                  item.type === "ad" ? "bg-primary" : "bg-green-500"
-                                }`}>
-                                  {item.type === "ad" ? "Advertisement" : "Partner Offer"}
-                                </span>
-                                {item.partner && (
-                                  <span className="text-sm opacity-90">from {item.partner}</span>
-                                )}
-                              </div>
-                              <h2 className="text-5xl font-bold">{item.title}</h2>
-                              <p className="text-2xl opacity-90">{item.description}</p>
-                              {item.validUntil && (
-                                <p className="text-lg opacity-75">Valid: {item.validUntil}</p>
-                              )}
-                            </div>
+                          {/* Tagline - lighter background, full width, flush with bottom */}
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-4 py-3 rounded-t-lg z-10">
+                            <p className="text-white text-xl md:text-3xl font-bold text-left">
+                              {item.title}
+                            </p>
                           </div>
                         </div>
                       </CardContent>

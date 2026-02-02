@@ -31,66 +31,61 @@ const OfferPreviewCard = ({
   redemptionStoreName,
 }: OfferPreviewCardProps) => {
   return (
-    <Card className="overflow-hidden border-2 w-full max-w-2xl mx-auto" style={{ borderColor: brandColors.primary }}>
+    <Card className="overflow-hidden border-2 w-full max-w-2xl mx-auto rounded-2xl" style={{ borderColor: brandColors.primary }}>
       <CardContent className="p-0">
-        {/* Header with brand */}
-        <div 
-          className="p-3 flex items-center gap-3"
-          style={{ backgroundColor: `${brandColors.primary}10` }}
-        >
-          {brandLogoUrl ? (
-            <img 
-              src={brandLogoUrl} 
-              alt={businessName}
-              className="w-10 h-10 rounded-lg object-contain bg-white p-1"
-            />
-          ) : (
-            <div 
-              className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-lg"
-              style={{ backgroundColor: brandColors.primary }}
-            >
-              {businessName.charAt(0)}
-            </div>
-          )}
-          <div className="flex-1">
-            <p className="font-semibold text-sm">{businessName}</p>
-            <p className="text-xs text-muted-foreground">Partner Offer</p>
-          </div>
-          <img src={mediaStreetLogo} alt="Media Street" className="w-6 h-6 opacity-50" />
-        </div>
-
-        {/* Offer Image with Overlay */}
-        <div className="relative aspect-[4/3] bg-muted overflow-hidden">
+        {/* Top: Image with overlays - Bright Horizons style */}
+        <div className="relative aspect-video w-full bg-muted overflow-hidden">
           {offerImageUrl ? (
             <>
               <img 
                 src={offerImageUrl} 
                 alt="Offer" 
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover object-center"
               />
-              {/* Gradient overlay for better text readability */}
-              <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-transparent to-transparent" />
-              
-              {/* Business Name Overlay on Left */}
-              <div className="absolute left-6 top-1/2 -translate-y-1/2 z-10 max-w-[50%]">
-                <h2 className="text-white font-serif text-2xl md:text-3xl lg:text-4xl font-bold drop-shadow-2xl leading-tight">
-                  {businessName.toUpperCase()}
-                </h2>
+              {/* Media Street pill - top left */}
+              <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-white/70 backdrop-blur-sm px-3 py-2 rounded-full shadow-md">
+                <img src={mediaStreetLogo} alt="Media Street" className="w-5 h-5" />
+                <span className="text-sm font-medium text-gray-800">Partner offers by Media Street</span>
               </div>
               
-              {/* QR Code Overlay on Top Right */}
-              <div className="absolute right-4 top-4 z-10 flex flex-col items-center gap-2 bg-black/60 backdrop-blur-sm p-3 rounded-lg shadow-xl">
+              {/* QR Code - top right, white box */}
+              <div className="absolute top-4 right-4 z-10 flex flex-col items-center gap-1 bg-white p-3 rounded-lg shadow-lg">
                 <QRCodeSVG 
                   value="https://mediastreet.ai" 
-                  size={100}
+                  size={80}
                   level="L"
-                  bgColor="transparent"
-                  fgColor="white"
+                  bgColor="white"
+                  fgColor="#111827"
                 />
-                <p className="text-white text-xs font-medium text-center max-w-[140px]">
+                <p className="text-gray-800 text-xs font-medium text-center max-w-[120px]">
                   Scan to redeem at {redemptionStoreName || businessName}
                 </p>
               </div>
+              
+              {/* Tagline - lighter background, full width, flush with bottom */}
+              <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-4 py-3 rounded-t-lg z-10">
+                <p className="text-white text-xl md:text-2xl font-bold text-left">
+                  {callToAction}
+                </p>
+              </div>
+              
+              {showChangeImageButton && onChangeImage && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="absolute bottom-3 left-4 gap-1.5 bg-white/80 hover:bg-white text-gray-800 border-0 shadow-lg backdrop-blur-sm z-20"
+                  onClick={onChangeImage}
+                  disabled={isChangingImage}
+                >
+                  {isChangingImage ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <ImagePlus className="h-3.5 w-3.5" />
+                  )}
+                  Change Image
+                </Button>
+              )}
             </>
           ) : (
             <div 
@@ -102,37 +97,6 @@ const OfferPreviewCard = ({
               <p className="text-white/80 text-sm">No image available</p>
             </div>
           )}
-          
-          {showChangeImageButton && onChangeImage && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="absolute bottom-3 right-3 gap-1.5 bg-black/60 hover:bg-black/80 text-white border-0 shadow-lg backdrop-blur-sm"
-              onClick={onChangeImage}
-              disabled={isChangingImage}
-            >
-              {isChangingImage ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <ImagePlus className="h-3.5 w-3.5" />
-              )}
-              Change Image
-            </Button>
-          )}
-        </div>
-
-        {/* Call to Action at Bottom */}
-        <div 
-          className="p-4 text-center"
-          style={{ 
-            backgroundColor: brandColors.primary || '#6366f1',
-            background: `linear-gradient(135deg, ${brandColors.primary || '#6366f1'}, ${brandColors.secondary || '#4f46e5'})`
-          }}
-        >
-          <p className="text-white font-bold text-lg leading-tight">
-            {callToAction}
-          </p>
         </div>
       </CardContent>
     </Card>

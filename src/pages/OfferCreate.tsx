@@ -890,74 +890,55 @@ const OfferCreate = () => {
                 <p className="text-muted-foreground">How your offer will appear in partner stores</p>
               </CardHeader>
               <CardContent>
-                <div className="relative aspect-video w-full overflow-hidden rounded-lg border-2">
-                  {/* Background Image or Gradient */}
-                  {adImage ? (
-                    <img 
-                      src={URL.createObjectURL(adImage)}
-                      alt="Offer background"
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <div 
-                      className="w-full h-full flex items-center justify-center"
-                      style={{
-                        background: brandColors 
-                          ? `linear-gradient(135deg, ${brandColors.primary} 0%, ${brandColors.secondary} 100%)`
-                          : 'linear-gradient(135deg, rgb(147 51 234) 0%, rgb(126 58 242) 100%)'
-                      }}
-                    >
-                      <div className="text-center text-white/60">
-                        <div className="w-16 h-16 bg-white/20 rounded-full mx-auto mb-3 flex items-center justify-center">
-                          <Upload className="h-8 w-8" />
+                <div className="overflow-hidden rounded-lg border-2">
+                  {/* Image section - Bright Horizons style */}
+                  <div className="relative aspect-video w-full overflow-hidden">
+                    {adImage ? (
+                      <img 
+                        src={URL.createObjectURL(adImage)}
+                        alt="Offer background"
+                        className="w-full h-full object-cover object-center"
+                      />
+                    ) : (
+                      <div 
+                        className="w-full h-full flex items-center justify-center"
+                        style={{
+                          background: brandColors 
+                            ? `linear-gradient(135deg, ${brandColors.primary} 0%, ${brandColors.secondary} 100%)`
+                            : 'linear-gradient(135deg, rgb(147 51 234) 0%, rgb(126 58 242) 100%)'
+                        }}
+                      >
+                        <div className="text-center text-white/60">
+                          <div className="w-16 h-16 bg-white/20 rounded-full mx-auto mb-3 flex items-center justify-center">
+                            <Upload className="h-8 w-8" />
+                          </div>
+                          <p>Offer image preview</p>
                         </div>
-                        <p>Offer image preview</p>
                       </div>
+                    )}
+                    {/* Media Street pill - top left */}
+                    <div className="absolute top-4 left-4 bg-white/70 backdrop-blur-sm px-3 py-2 rounded-full shadow-md flex items-center gap-2 z-10">
+                      <img src={mediaStreetLogoIcon} alt="Media Street" className="w-4 h-4" />
+                      <span className="text-xs font-medium text-gray-800">Partner offers by Media Street</span>
                     </div>
-                  )}
-                  
-                  {/* Content Overlay */}
-                  <div className="absolute inset-0 flex flex-col justify-between p-6">
-                    {/* Top: Business Name and QR Code */}
-                    <div className="flex justify-between items-start">
-                      {/* Business Name in top left */}
-                      {(aiGeneratedStoreName || (selectedLocations.length > 0 && locations.find(l => l.id === selectedLocations[0])?.name)) && (
-                        <h3 className="text-xl font-bold text-white drop-shadow-lg">
-                          {aiGeneratedStoreName || locations.find(l => l.id === selectedLocations[0])?.name}
-                        </h3>
+                    {/* QR Code - top right, white box */}
+                    <div className="absolute top-4 right-4 bg-white p-2 rounded-lg shadow-lg z-10">
+                      {redemptionCode && (
+                        <QRCodeSVG 
+                          value={`${window.location.origin}/redeem/${redemptionCode}`}
+                          size={56}
+                          level="H"
+                          bgColor="white"
+                          fgColor="#111827"
+                        />
                       )}
-                      
-                      {/* QR Code in top right corner */}
-                      <div className="bg-white p-1.5 rounded-lg shadow-lg">
-                        {redemptionCode && (
-                          <QRCodeSVG 
-                            value={`${window.location.origin}/redeem/${redemptionCode}`}
-                            size={60}
-                            level="H"
-                          />
-                        )}
-                      </div>
                     </div>
-
-                    {/* Bottom: Offer Text */}
-                    <div className="space-y-2">
-                      <h2 className="text-3xl font-bold text-white drop-shadow-lg">
+                    {/* Tagline - lighter background, full width, flush with bottom */}
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-4 py-3 rounded-t-lg z-10">
+                      <p className="text-white text-xl md:text-2xl font-bold text-left">
                         {callToAction || "Your Offer Text"}
-                      </h2>
-                      <p className="text-white/90 text-sm drop-shadow-md">
-                        Valid: {formatExpirationDate(getExpirationDate())}
                       </p>
                     </div>
-                  </div>
-                  
-                  {/* Media Street logo in bottom right corner */}
-                  <div className="absolute bottom-2 right-2 bg-white/20 backdrop-blur-md px-2 py-1 rounded-full shadow-md flex items-center gap-1.5">
-                    <img 
-                      src={mediaStreetLogoIcon} 
-                      alt="Media Street" 
-                      className="w-4 h-4 rounded"
-                    />
-                    <span className="text-[10px] font-semibold text-gray-900">Partner offers by Media Street</span>
                   </div>
                 </div>
 
@@ -1073,13 +1054,13 @@ const OfferCreate = () => {
                         </div>
                       </div>
 
-                      {/* Offer Image */}
-                      <div className="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
+                      {/* Offer Image - fills full area, no short images */}
+                      <div className="w-full h-48 bg-gray-100 rounded-lg overflow-hidden">
                         {adImage ? (
                           <img 
                             src={URL.createObjectURL(adImage)} 
                             alt="Offer preview" 
-                            className="w-full h-full object-contain"
+                            className="w-full h-full object-cover object-center"
                           />
                         ) : (
                           <div className="text-gray-400 text-sm text-center">

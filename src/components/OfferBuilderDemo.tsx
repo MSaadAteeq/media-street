@@ -229,14 +229,10 @@ const OfferBuilderDemo = () => {
                       </div>
                     </div>
 
-                    {/* Bottom: Offer Text with semi-transparent background */}
-                    <div className="space-y-1.5 bg-black/20 backdrop-blur-sm p-3 rounded-lg max-w-[85%]">
-                      <h2 className="text-lg md:text-xl font-bold text-white drop-shadow-lg leading-tight">
+                    {/* Tagline - lighter background, full width, flush with bottom */}
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-4 py-3 rounded-t-lg z-10">
+                      <p className="text-white text-lg md:text-xl font-bold text-left">
                         {generatedOffer}
-                      </h2>
-                      <p className="text-white/90 text-xs drop-shadow-md flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5" />
-                        Expires in 30 days
                       </p>
                     </div>
                   </div>

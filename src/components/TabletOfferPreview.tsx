@@ -87,13 +87,13 @@ const TabletOfferPreview = ({
 
           {/* Main Content Area */}
           <div className="flex-1 flex overflow-hidden">
-            {/* Left Side - Offer Image */}
-            <div className="w-1/2 bg-gray-100 flex items-center justify-center p-4">
+            {/* Left Side - Offer Image - fills full area, no short images */}
+            <div className="w-1/2 bg-gray-100 relative overflow-hidden p-4 min-h-0">
               {offerImageUrl ? (
                 <img 
                   src={offerImageUrl} 
                   alt={businessName}
-                  className="max-w-full max-h-full object-contain rounded-lg"
+                  className="absolute inset-4 w-[calc(100%-2rem)] h-[calc(100%-2rem)] object-cover object-center rounded-lg"
                 />
               ) : (
                 <div 

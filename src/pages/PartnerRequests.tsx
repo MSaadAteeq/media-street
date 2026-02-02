@@ -1760,12 +1760,12 @@ const PartnerRequests = () => {
                             <Check className="h-4 w-4 mr-1" />
                             Approve
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => updateRequestStatus(request.id, 'rejected')} className="text-red-600 border-red-600 hover:bg-red-50">
+                          <Button size="sm" variant="outline" onClick={() => updateRequestStatus(request.id, 'rejected')} className="text-red-600 border-red-600 hover:bg-red-600 hover:text-white hover:border-red-600">
                             <X className="h-4 w-4 mr-1" />
                             Reject
                           </Button>
                         </div>}
-                        {request.status === 'approved' && <Button size="sm" variant="outline" onClick={() => handleCancelPartnership(request)} className="text-red-600 border-red-600 hover:bg-red-50">
+                        {request.status === 'approved' && <Button size="sm" variant="outline" onClick={() => handleCancelPartnership(request)} className="text-red-600 border-red-600 hover:bg-red-600 hover:text-white hover:border-red-600">
                           <Trash2 className="h-4 w-4 mr-1" />
                           Cancel
                         </Button>}

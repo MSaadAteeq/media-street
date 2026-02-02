@@ -533,13 +533,13 @@ const MobileCoupons = () => {
                 {currentOffer.business_name || currentOffer.location_name}
               </h2>
 
-              {/* Offer image - rounded, full width; placeholder when missing */}
-              <div className="w-full aspect-[4/3] bg-gray-100 rounded-xl overflow-hidden flex items-center justify-center">
+              {/* Offer image - 16:9 full-screen aspect, fills area */}
+              <div className="w-full aspect-video bg-gray-100 rounded-xl overflow-hidden">
                 {currentOffer.offer_image_url ? (
                   <img
                     src={currentOffer.offer_image_url}
                     alt="Offer"
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover object-center"
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center text-gray-400">
