@@ -110,6 +110,7 @@ const PartnerRequests = () => {
   
   // 3-step partnership request flow state
   const [partnershipStep, setPartnershipStep] = useState<1 | 2 | 3>(1);
+  const [isSendingPartnerRequest, setIsSendingPartnerRequest] = useState(false);
   const [displayCarousel, setDisplayCarousel] = useState(false);
   const [displayQR, setDisplayQR] = useState(false);
   const [creativeIdeas, setCreativeIdeas] = useState("");
@@ -910,6 +911,7 @@ const PartnerRequests = () => {
     setShowAuthDialog(true);
   };
   const sendPartnerRequest = async () => {
+    setIsSendingPartnerRequest(true);
     try {
       // Validate location selection - always required
       if (!selectedLocationId) {
@@ -1039,6 +1041,8 @@ const PartnerRequests = () => {
     } catch (error) {
       console.error('Error sending partner request:', error);
       toast.error('Failed to send partner request');
+    } finally {
+      setIsSendingPartnerRequest(false);
     }
   };
   const sendPartnerRequestFinal = async (senderId: string, recipientId: string) => {
@@ -1765,10 +1769,25 @@ const PartnerRequests = () => {
                             Reject
                           </Button>
                         </div>}
-                        {request.status === 'approved' && <Button size="sm" variant="outline" onClick={() => handleCancelPartnership(request)} className="text-red-600 border-red-600 hover:bg-red-600 hover:text-white hover:border-red-600">
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Cancel
-                        </Button>}
+                        {request.status === 'approved' && <div className="flex gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => {
+                              setSelectedPartnership(request);
+                              fetchMessages(request.id);
+                              setShowMessagingDialog(true);
+                            }}
+                            className="border-primary text-primary hover:bg-primary hover:text-white"
+                          >
+                            <MessageSquare className="h-4 w-4 mr-1" />
+                            Message
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => handleCancelPartnership(request)} className="text-red-600 border-red-600 hover:bg-red-600 hover:text-white hover:border-red-600">
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Cancel
+                          </Button>
+                        </div>}
                         {requestType === 'outgoing' && request.status === 'pending' && (
                           <Badge variant="outline" className="text-xs border-white/20 text-white bg-transparent rounded-full px-3 py-1">
                             Awaiting Response
@@ -1803,28 +1822,24 @@ const PartnerRequests = () => {
           setHasAgreed(false);
           setPromoCode("");
           setIsPromoValid(false);
+          setIsSendingPartnerRequest(false);
           if (userLocations.length > 1) {
             setSelectedLocationId("");
           }
         }
       }}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col overflow-hidden p-0">
+        <DialogContent className="sm:max-w-md max-h-[90vh] h-[90vh] flex flex-col overflow-hidden p-0">
           {/* Step 1: Select Your Location */}
           {partnershipStep === 1 && (
             <>
               <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
-                <div className="flex items-center justify-between">
-                  <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
-                    <Send className="h-5 w-5" />
-                    Select Your Location
-                  </DialogTitle>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowAuthDialog(false)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
+                <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
+                  <Send className="h-5 w-5" />
+                  Select Your Location
+                </DialogTitle>
               </DialogHeader>
               
-              <ScrollArea className="flex-1 min-h-0 px-6 [&_[data-radix-scroll-area-scrollbar]]:hidden">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6">
                 <div className="space-y-4 pb-4">
                   <p className="text-sm text-muted-foreground">
                     Select which of your locations to partner from:
@@ -1860,7 +1875,7 @@ const PartnerRequests = () => {
                     {selectedLocationId ? `${userLocations.filter(l => l.id === selectedLocationId).length} location selected` : 'No location selected'}
                   </p>
                 </div>
-              </ScrollArea>
+              </div>
               
               <DialogFooter className="flex-shrink-0 px-6 pb-6 pt-4 border-t">
                 <Button variant="outline" onClick={() => setShowAuthDialog(false)}>
@@ -1888,23 +1903,16 @@ const PartnerRequests = () => {
           {partnershipStep === 2 && (
             <>
               <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
-                      <Send className="h-5 w-5" />
-                      Confirm Display Options
-                    </DialogTitle>
-                    <DialogDescription className="mt-2 text-sm text-muted-foreground">
-                      Choose how you'll display <strong>{newPartnerStore}</strong>'s offer at your location
-                    </DialogDescription>
-                  </div>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowAuthDialog(false)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
+                <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
+                  <Send className="h-5 w-5" />
+                  Confirm Display Options
+                </DialogTitle>
+                <DialogDescription className="mt-2 text-sm text-muted-foreground">
+                  Choose how you'll display <strong>{newPartnerStore}</strong>'s offer at your location
+                </DialogDescription>
               </DialogHeader>
               
-              <ScrollArea className="flex-1 min-h-0 px-6 [&_[data-radix-scroll-area-scrollbar]]:hidden">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6">
                 <div className="space-y-4 pb-4">
                   <p className="text-sm text-muted-foreground">
                     Select which of your locations to send a partner request from:
@@ -1994,7 +2002,7 @@ const PartnerRequests = () => {
                       />
                     </div>
                 </div>
-              </ScrollArea>
+              </div>
               
               <DialogFooter className="flex-shrink-0 px-6 pb-6 pt-4 border-t">
                 <Button variant="outline" onClick={() => setShowAuthDialog(false)}>
@@ -2015,18 +2023,13 @@ const PartnerRequests = () => {
           {partnershipStep === 3 && (
             <>
               <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
-                <div className="flex items-center justify-between">
-                  <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
-                    <Check className="h-5 w-5" />
-                    Confirm Partnership Request
-                  </DialogTitle>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowAuthDialog(false)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
+                <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
+                  <Check className="h-5 w-5" />
+                  Confirm Partnership Request
+                </DialogTitle>
               </DialogHeader>
               
-              <ScrollArea className="flex-1 min-h-0 px-6 [&_[data-radix-scroll-area-scrollbar]]:hidden">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6">
                 <div className="space-y-4 pb-4">
                   <p className="text-sm text-muted-foreground">
                     You're about to send a partner request to <strong>{newPartnerStore}</strong>
@@ -2070,7 +2073,7 @@ const PartnerRequests = () => {
                     )}
                   </div>
                   
-                  <div className="flex items-start space-x-2 pt-2">
+                  <div className="flex items-center gap-2 pt-2">
                     <Checkbox 
                       id="agree-terms-confirm" 
                       checked={hasAgreed || isPromoValid} 
@@ -2078,15 +2081,15 @@ const PartnerRequests = () => {
                         if (!isPromoValid) {
                           setHasAgreed(checked as boolean);
                         }
-                      }} 
-                      className="mt-1" 
+                      }}
+                      className="shrink-0"
                     />
-                    <label htmlFor="agree-terms-confirm" className="text-xs text-muted-foreground leading-tight">
+                    <label htmlFor="agree-terms-confirm" className="text-xs text-muted-foreground leading-tight cursor-pointer">
                       I authorize Media Street to charge my card on file until cancelled.
                     </label>
                   </div>
                 </div>
-              </ScrollArea>
+              </div>
               
               <DialogFooter className="flex-shrink-0 px-6 pb-6 pt-4 border-t">
                 <Button variant="outline" onClick={() => setPartnershipStep(2)}>
@@ -2094,11 +2097,20 @@ const PartnerRequests = () => {
                 </Button>
                 <Button 
                   onClick={sendPartnerRequest} 
-                  disabled={!hasAgreed && !isPromoValid}
+                  disabled={(!hasAgreed && !isPromoValid) || isSendingPartnerRequest}
                   className="bg-green-600 hover:bg-green-700 text-white gap-2"
                 >
-                  <Check className="h-4 w-4" />
-                  Confirm & Request
+                  {isSendingPartnerRequest ? (
+                    <>
+                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Confirm & Request
+                    </>
+                  )}
                 </Button>
               </DialogFooter>
             </>

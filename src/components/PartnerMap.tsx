@@ -41,7 +41,7 @@ interface UserLocation {
 
 interface PartnerMapProps {
   partners: Partner[];
-  onSendRequest: (storeName: string) => void;
+  onSendRequest: (storeName: string) => void | Promise<void>;
   onRefresh?: () => void;
   userLocations?: UserLocation[];
   isLoading?: boolean;
@@ -64,6 +64,7 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
   const [selectedMyLocations, setSelectedMyLocations] = useState<string[]>([]);
   const [consentChecked, setConsentChecked] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
   const [myLocations, setMyLocations] = useState<UserLocation[]>([]);
   const [pendingRequestIds, setPendingRequestIds] = useState<Set<string>>(new Set());
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
@@ -208,7 +209,7 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
       userLocationIds: locationIds
     };
   }, [partners, propUserLocations, myLocations, userLocationsWithCoords, pendingRequestIds]);
-  const handleSubmitRequest = () => {
+  const handleSubmitRequest = async () => {
     if (selectedMyLocations.length === 0) {
       toast.error('Please select a location for this partnership');
       return;
@@ -217,24 +218,24 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
       toast.error('Please consent to the partnership terms');
       return;
     }
-    if (selectedRequestPartner) {
+    if (!selectedRequestPartner) return;
+    setIsSubmittingRequest(true);
+    try {
       // Mark this partner as having a pending request immediately
       setPendingRequestIds(prev => new Set([...prev, selectedRequestPartner.id]));
-      
-      // Send request for the selected location
-      // Note: The parent component (PartnerRequests) will handle the actual API call with location_id
-      onSendRequest(selectedRequestPartner.store_name);
+      // Await so user sees loading while parent opens the next modal
+      await onSendRequest(selectedRequestPartner.store_name);
       setShowRequestDialog(false);
       setSelectedMyLocations([]);
       setConsentChecked(false);
       setSelectedRequestPartner(null);
-      
-      // Refresh partners list after a short delay to get updated status
       if (onRefresh) {
-        setTimeout(() => {
-          onRefresh();
-        }, 1000);
+        setTimeout(() => onRefresh(), 1000);
       }
+    } catch (error) {
+      toast.error('Failed to send request. Please try again.');
+    } finally {
+      setIsSubmittingRequest(false);
     }
   };
   const handleCancelPartnership = async () => {
@@ -263,7 +264,6 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
   useEffect(() => {
     if (!mapContainer.current) return;
 
-    // Initialize map with stored token
     mapboxgl.accessToken = MAPBOX_TOKEN;
     try {
       map.current = new mapboxgl.Map({
@@ -308,17 +308,17 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
           </div>
         `;
 
-        // Create hover tooltip
+        // Create hover tooltip - rectangular, light background, black store name
         const hoverTooltip = document.createElement('div');
-        hoverTooltip.className = 'hidden absolute bg-background border border-border rounded-lg shadow-lg p-3 min-w-[220px] z-50';
-        hoverTooltip.style.pointerEvents = 'none';
+        hoverTooltip.className = 'hidden absolute bg-white border border-gray-200 rounded-none shadow-lg p-3 w-[260px] z-50';
+        hoverTooltip.style.cssText = 'pointer-events: none; word-break: break-word; overflow-wrap: break-word;';
         hoverTooltip.innerHTML = `
-          <div class="space-y-2">
-            ${partner.offer_image_url ? `<img src="${partner.offer_image_url}" class="w-full h-20 object-cover rounded" alt="Offer" />` : ''}
-            <h4 class="font-semibold text-foreground text-sm">${partner.store_name}</h4>
-            ${partner.retail_category ? `<p class="text-xs text-muted-foreground">${partner.retail_category}</p>` : ''}
-            <p class="text-xs text-muted-foreground">${partner.retail_address}</p>
-            ${partner.distance !== undefined ? `<p class="text-xs text-muted-foreground">${partner.distance.toFixed(1)} miles away</p>` : ''}
+          <div class="space-y-2" style="word-break: break-word; overflow-wrap: break-word;">
+            ${partner.offer_image_url ? `<img src="${partner.offer_image_url}" class="w-full h-20 object-cover rounded max-w-full" alt="Offer" />` : ''}
+            <h4 class="font-semibold text-sm break-words text-black" style="word-break: break-word; overflow-wrap: break-word; color: #000;">${partner.store_name}</h4>
+            ${partner.retail_category ? `<p class="text-xs break-words text-gray-600" style="word-break: break-word; overflow-wrap: break-word; color: #374151;">${partner.retail_category}</p>` : ''}
+            <p class="text-xs break-words text-gray-600" style="word-break: break-word; overflow-wrap: break-word; white-space: normal; color: #374151;">${partner.retail_address}</p>
+            ${partner.distance !== undefined ? `<p class="text-xs break-words text-gray-600" style="word-break: break-word; overflow-wrap: break-word; color: #374151;">${partner.distance.toFixed(1)} miles away</p>` : ''}
           </div>
         `;
         markerElement.appendChild(hoverTooltip);
@@ -336,21 +336,22 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
           setHoveredPartnerId(null);
         });
 
-        // Create popup content
+        // Create popup content - rectangular box, text wraps at word boundaries
         const popupContent = document.createElement('div');
-        popupContent.className = 'p-2 min-w-[280px]';
+        popupContent.className = 'p-3 partner-popup-inner';
+        popupContent.style.cssText = 'word-break: break-word; overflow-wrap: break-word;';
         popupContent.innerHTML = `
           <div class="space-y-3">
-            ${partner.offer_image_url ? `<img src="${partner.offer_image_url}" class="w-full h-32 object-cover rounded" alt="Current Offer" />` : ''}
-            <div>
-              <h3 class="font-semibold text-foreground">${partner.store_name}</h3>
-              ${partner.retail_category ? `<p class="text-sm text-muted-foreground font-medium">${partner.retail_category}</p>` : ''}
-              ${partner.offer_call_to_action ? `<p class="text-sm text-primary font-medium mt-1">${partner.offer_call_to_action}</p>` : ''}
-              <p class="text-sm text-muted-foreground mt-1">${partner.retail_address}</p>
-              ${partner.distance !== undefined ? `<p class="text-sm text-muted-foreground">${partner.distance.toFixed(1)} miles away</p>` : ''}
-              <p class="text-sm text-muted-foreground">Owner: ${partner.first_name} ${partner.last_name}</p>
+            ${partner.offer_image_url ? `<img src="${partner.offer_image_url}" class="w-full h-32 object-cover rounded max-w-full" alt="Current Offer" />` : ''}
+            <div style="word-break: break-word; overflow-wrap: break-word;">
+              <h3 class="font-semibold break-words text-black" style="word-break: break-word; overflow-wrap: break-word; color: #000;">${partner.store_name}</h3>
+              ${partner.retail_category ? `<p class="text-sm font-medium break-words text-gray-600" style="word-break: break-word; overflow-wrap: break-word; color: #374151;">${partner.retail_category}</p>` : ''}
+              ${partner.offer_call_to_action ? `<p class="text-sm font-medium mt-1 break-words" style="word-break: break-word; overflow-wrap: break-word; color: hsl(200 100% 50%);">${partner.offer_call_to_action}</p>` : ''}
+              <p class="text-sm mt-1 break-words text-gray-600" style="word-break: break-word; overflow-wrap: break-word; white-space: normal; color: #374151;">${partner.retail_address}</p>
+              ${partner.distance !== undefined ? `<p class="text-sm break-words text-gray-600" style="word-break: break-word; overflow-wrap: break-word; color: #374151;">${partner.distance.toFixed(1)} miles away</p>` : ''}
+              <p class="text-sm break-words text-gray-600" style="word-break: break-word; overflow-wrap: break-word; color: #374151;">Owner: ${partner.first_name} ${partner.last_name}</p>
             </div>
-            ${hasMaxPartners ? '<div class="bg-gray-100 p-2 rounded text-sm text-gray-600">This store has reached the maximum of 10 partnerships</div>' : isCurrentPartner ? '<button class="cancel-partnership-btn w-full bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-sm font-medium">Cancel Partnership</button>' : '<button class="send-request-btn w-full bg-primary hover:bg-primary/90 text-white px-3 py-1.5 rounded text-sm font-medium">Request Partnership</button>'}
+            ${hasMaxPartners ? '<div class="bg-gray-100 p-2 rounded text-sm text-gray-600 break-words" style="word-break: break-word;">This store has reached the maximum of 10 partnerships</div>' : isCurrentPartner ? '<button class="cancel-partnership-btn w-full bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-sm font-medium">Cancel Partnership</button>' : '<button class="send-request-btn w-full bg-primary hover:bg-primary/90 text-white px-3 py-1.5 rounded text-sm font-medium">Request Partnership</button>'}
           </div>
         `;
 
@@ -797,9 +798,18 @@ const PartnerMap: React.FC<PartnerMapProps> = ({
           }}>
             Cancel
           </Button>
-          <Button onClick={handleSubmitRequest} disabled={selectedMyLocations.length === 0 || !consentChecked}>
-            <Send className="h-4 w-4 mr-2" />
-            Send Request
+          <Button onClick={handleSubmitRequest} disabled={selectedMyLocations.length === 0 || !consentChecked || isSubmittingRequest}>
+            {isSubmittingRequest ? (
+              <>
+                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4 mr-2" />
+                Send Request
+              </>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

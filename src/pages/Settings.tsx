@@ -522,28 +522,23 @@ const Settings = () => {
 
   const fetchMessages = async (partnershipId: string) => {
     setLoadingMessages(true);
-    
-    // Try WebSocket first
-    if (socketManager.isConnected()) {
-      socketManager.requestMessages(partnershipId);
-      // Messages will be received via WebSocket event
-    } else {
-      // Fallback to API
-      try {
-        const response = await get({ 
-          end_point: `messages/partnership/${partnershipId}`, 
-          token: true 
-        });
-        if (response.success && response.data) {
-          setMessages(response.data || []);
-        }
-      } catch (error) {
-        console.error('Error fetching messages:', error);
-        toast.error('Failed to load messages');
+    setMessages([]);
+    try {
+      const response = await get({ 
+        end_point: `messages/partnership/${partnershipId}`, 
+        token: true 
+      });
+      if (response.success && response.data) {
+        setMessages(response.data || []);
+      } else {
         setMessages([]);
-      } finally {
-        setLoadingMessages(false);
       }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      toast.error('Failed to load messages');
+      setMessages([]);
+    } finally {
+      setLoadingMessages(false);
     }
   };
 
