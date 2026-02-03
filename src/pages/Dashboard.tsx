@@ -715,11 +715,15 @@ const Dashboard = () => {
       // Fetch leaderboard data
       try {
         const leaderboardResponse = await get({ end_point: 'leaderboard/referral', token: true });
-        if (leaderboardResponse.success && leaderboardResponse.data) {
-          setLeaderboardData(leaderboardResponse.data);
-        } else {
-          setLeaderboardData(processLeaderboardData(staticLeaderboardData));
-        }
+        const data = leaderboardResponse?.success && Array.isArray(leaderboardResponse?.data)
+          ? leaderboardResponse.data
+          : [];
+        // Use real data if any; otherwise show placeholder so the section is never empty
+        setLeaderboardData(
+          data.length > 0
+            ? data
+            : processLeaderboardData(staticLeaderboardData)
+        );
       } catch (error) {
         console.error('Error fetching leaderboard:', error);
         setLeaderboardData(processLeaderboardData(staticLeaderboardData));
